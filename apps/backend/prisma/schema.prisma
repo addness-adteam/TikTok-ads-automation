@@ -1,0 +1,73 @@
+// TikTok広告運用自動化システム - Prismaスキーマ
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================================
+// OAuth認証
+// ============================================================================
+
+model OAuthToken {
+  id              String   @id @default(uuid())
+  advertiserId    String   @unique
+  accessToken     String   @db.Text
+  refreshToken    String?  @db.Text
+  expiresAt       DateTime
+  scope           String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@map("oauth_tokens")
+}
+
+// ============================================================================
+// Campaign管理
+// ============================================================================
+
+model Campaign {
+  id              String   @id @default(uuid())
+  tiktokId        String   @unique // TikTok campaign_id
+  advertiserId    String
+  name            String
+  objectiveType   String
+  budgetMode      String?
+  budget          Float?
+  status          String
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  metrics         Metric[]
+
+  @@map("campaigns")
+}
+
+// ============================================================================
+// レポート・メトリクス
+// ============================================================================
+
+model Metric {
+  id              String   @id @default(uuid())
+  campaignId      String
+  statDate        DateTime
+  impressions     Int      @default(0)
+  clicks          Int      @default(0)
+  spend           Float    @default(0)
+  conversions     Int      @default(0)
+  ctr             Float    @default(0)
+  cpc             Float    @default(0)
+  cpm             Float    @default(0)
+  cpa             Float    @default(0)
+  createdAt       DateTime @default(now())
+
+  campaign        Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  @@unique([campaignId, statDate])
+  @@map("metrics")
+}

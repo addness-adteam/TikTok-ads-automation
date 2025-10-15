@@ -1,0 +1,33 @@
+# Pull Request Auto Labeler Configuration
+
+'backend':
+  - apps/backend/**/*
+
+'frontend':
+  - apps/frontend/**/*
+
+'shared-types':
+  - packages/shared-types/**/*
+
+'dependencies':
+  - package.json
+  - package-lock.json
+  - apps/*/package.json
+  - packages/*/package.json
+
+'documentation':
+  - docs/**/*
+  - '**/*.md'
+
+'ci/cd':
+  - .github/workflows/**/*
+  - .github/**/*
+
+'docker':
+  - docker-compose.yml
+  - Dockerfile
+  - docker/**/*
+
+'database':
+  - apps/backend/prisma/**/*
+  - docker/postgres/**/*

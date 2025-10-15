@@ -1,0 +1,1165 @@
+TikTok広告運用自動化システム 要件定義 v2.0（改訂版）
+最終更新日: 2025-10-04（JST）
+================================================================================
+
+【改訂履歴】
+v2.0: TikTok Marketing API仕様の詳細化、実装レベルの具体化
+      - セクション23「TikTok Marketing API 詳細仕様」を新規追加
+      - FR-9（連携/インテグレーション）を大幅拡充
+      - データモデル（セクション10）の詳細化
+      - API関連NFRの具体化
+================================================================================
+
+
+1. 目的・背景
+   * 目的: 広告運用の属人性を排除し、誰でもTikTok広告を最適運用できる環境を提供する。
+
+   * 狙い: ①設定作業の自動化、②予算配分・改善サイクルの自動実行、③AIによる常時最適化で「枯れない広告運用」を実現。
+
+   * 対象範囲: TikTok Ads（Auction型、アプリ/WEB、国内外アカウント）。将来拡張で他媒体へ拡張可能な設計。
+
+________________
+
+
+2. ステークホルダー
+   * ビジネス: マーケ責任者、事業責任者、ブランド担当
+
+   * 運用: メディアプランナー、広告運用者
+
+   * 技術: プロダクトマネージャー、MLエンジニア、バックエンド/フロントエンド、SRE、データ基盤
+
+   * 外部: 代理店、クリエイター、TikTok Ads API 提供元
+
+________________
+
+
+3. 成功指標（KGI/KPI）
+      * KGI: 獲得単価（CPA/CPI/CAC）またはROASの目標達成率、媒体横断比較での効率指標の上位維持
+
+      * 主要KPI
+         * 自動作成キャンペーン比率（>90%）
+         * 目標達成キャンペーン比率（例: 70%以上）
+         * 最適化サイクルの平均実行間隔（例: ≤ 2時間）
+         * 配信停止/逸脱の自動検知から復旧までのMTTR（例: ≤ 15分）
+         * クリエイティブテストのサイクル数/週（例: ≥ 10）
+
+________________
+
+
+4. 用語定義
+            * CR: クリエイティブ（動画/静止画/テキスト）
+            * 最適化サイクル: データ収集→評価→意思決定→実行→学習更新
+            * ポリシー: 予算上限・入札上限・ブランドセーフティ等の運用ガードレール
+            * Marketing API: TikTok Business APIのうち広告管理系エンドポイント
+            * Events API: TikTok サーバーサイドコンバージョントラッキングAPI
+
+________________
+
+
+5. スコープ
+5.1 In-Scope
+               1. CR投入〜配信設定の半自動化
+               2. 自動予算配分（ポートフォリオ/キャンペーン/アドグループ）
+               3. 自動入札/上限/ペーシング制御
+               4. クリエイティブテスト（多腕バンディット＋A/B）
+               5. アラート/異常検知/自動復旧
+               6. AI最適化（目標関数学習、ルックアライク、テキスト/動画改善提案）
+               7. レポーティング/ダッシュボード/監査ログ
+               8. ガバナンス（権限、ポリシー、承認フロー）
+
+5.2 Out-of-Scope（初期）
+                  * オフライン計測の自動インポート（v2以降）
+                  * マルチ媒体横断の自動最適化（v2以降）
+
+________________
+
+
+6. ユースケース
+                     1. CR投入: ユーザーが動画ファイル/URLを登録→自動で仕様検証・派生生成（尺/比率/キャプション）→下書き配信案を生成
+                     2. 自動配信設定: 目標（CPA/ROAS/Install）を選択→推奨キャンペーン構成・入札・配信時間を提示→ワンクリック作成
+                     3. 最適化: 2時間ごとに学習・低パフォーマCRの停止/予算再配分→上限遵守
+                     4. アラート: CPA逸脱、学習停滞、審査落ち、在庫不足を検知→自動/半自動アクション
+                     5. レポート: KPIハイライト、改善履歴、実験結果の可視化
+
+________________
+
+
+7. 機能要件（FR）
+
+FR-1 クリエイティブ管理
+      * CRアップロード（MP4/MOV/静止画）、メタ情報抽出（尺、サイズ、音声、テキスト）
+      * 自動バリエーション生成（サムネ、CTAテキスト、字幕、比率変換）※生成AIの安全フィルタ必須
+      * クリエイティブ評価指標（初動CTR/Hook率/完視聴率/コンバージョン貢献）
+
+FR-2 キャンペーン自動作成
+      * 目標/KPI/予算/期間/地域/配信時間/年齢等のテンプレ化
+      * ルールベース＋推奨ロジックでの構成案生成
+      * 承認ワークフロー（下書き→承認→作成）
+
+FR-3 予算配分・入札最適化
+      * 日次/月次上限、ポートフォリオ最適化（キャンペーン横断）
+      * ペーシング制御（過/未消化の補正）
+      * 入札戦略：Cost Cap（tCPA相当）/Maximum Delivery の自動切替
+         - 注意: TikTokは現在tROAS非対応、CPAベースの最適化のみ
+      * クリエイティブ/オーディエンス別の重み学習
+
+FR-4 実験フレームワーク
+      * A/B、MAB（ε-greedy/UCB/Thompson）
+      * トライアル期間・最小検出効果・サンプルサイズ計算の組込
+      * 途中停止基準（倫理/統計）
+
+FR-5 異常検知・アラート・自動復旧
+      * 指標逸脱、データ欠損、API失敗、審査落ち、在庫変動
+      * アクション：一時停止、予算移管、リトライ、ロールバック
+      * 通知：Slack/Email/Teams、Webhooks
+
+FR-6 AI最適化
+      * 目標関数学習（階層ベイズ/勾配ブースティング/オンライン学習）
+      * クリエイティブ提案（フック/CTA/字幕改善案）
+      * オーディエンスセグメント自動クラスタリング
+      * 反実仮想（What-if）シミュレーション
+
+FR-7 レポーティング/可視化
+      * ダッシュボード（KGI/KPI、漏斗、LTV、媒体比較）
+      * 実験結果サマリ、改善履歴、変更差分ログ
+      * エクスポート（CSV/Excel/Looker連携）
+
+FR-8 ガバナンス/権限/監査
+      * RBAC（閲覧/編集/承認/管理）
+      * 承認フロー（2段階承認可）
+      * 監査ログ（誰がいつ何を変更したか）
+      * マルチアカウント隔離（テナント）
+
+FR-9 連携/インテグレーション【大幅拡充】
+
+   FR-9.1 TikTok Marketing API 統合
+      * 認証: OAuth 2.0フロー
+         - Authorization Code Grant
+         - アクセストークン有効期限: 24時間（86400秒）
+         - リフレッシュトークン有効期限: 1年（31536000秒）
+         - 自動リフレッシュ機構の実装（有効期限30分前に自動更新）
+         - 認証情報の暗号化保存（KMS利用）
+
+      * APIバージョン管理
+         - 現行メインバージョン: v1.2, v1.3
+         - エンドポイントURL: https://business-api.tiktok.com/open_api/v{version}/
+         - Sandbox環境: https://sandbox-ads.tiktok.com/open_api/v{version}/
+         - バージョン抽象化レイヤーの実装
+         - 契約テスト（Contract Testing）でAPI仕様変更を検知
+
+      * レート制限対応
+         - 計測方式: 1分間スライディングウィンドウ
+         - エラーコード: HTTP 429 + error_code: rate_limit_exceeded
+         - 基本戦略:
+            ① トークンバケット方式でのクライアント側スロットリング
+            ② 指数バックオフ（初回1秒、最大64秒）
+            ③ リクエストバッチング（複数操作の統合）
+            ④ 優先度キュー（重要操作優先）
+         - エンドポイント別制限例:
+            * /video/list/: 600req/min
+            * Content Posting API: 6req/min per access_token
+            * 動画投稿: 2件/min、20件/day（上限）
+         - 上限引き上げ申請フロー整備
+
+      * Idempotency実装
+         - 重複実行防止のためIdempotency Keyヘッダー送信
+         - Campaign/AdGroup/Ad作成時に必須
+         - キー生成: UUID v4 + リクエストハッシュ
+
+   FR-9.2 Campaign Management API
+      * エンドポイント構造
+         - Campaign作成: POST /v1.2/campaign/create/
+         - Campaign取得: GET /v1.3/campaign/get/
+         - Campaign更新: POST /v1.2/campaign/update/
+         - Campaign削除: POST /v1.2/campaign/delete/（論理削除）
+
+      * 必須パラメータ（Campaign作成）
+         - advertiser_id: 広告主ID
+         - campaign_name: キャンペーン名
+         - objective_type: 目標タイプ
+            * REACH（リーチ）
+            * TRAFFIC（トラフィック）
+            * VIDEO_VIEW（動画視聴）
+            * COMMUNITY_INTERACTION（エンゲージメント）
+            * APP_PROMOTION（アプリインストール）
+            * LEAD_GENERATION（リード獲得）
+            * SALES（販売、TikTok Shop連携）
+         - budget_mode:
+            * BUDGET_MODE_DAY（日次予算）
+            * BUDGET_MODE_TOTAL（期間予算）
+            * BUDGET_MODE_INFINITE（無制限、非推奨）
+         - budget: 予算額（最低$50）
+
+      * AdGroup作成
+         - エンドポイント: POST /v1.2/adgroup/create/
+         - 必須パラメータ:
+            * campaign_id: 親キャンペーンID
+            * adgroup_name: アドグループ名
+            * placement: PLACEMENT_TIKTOK / PLACEMENT_PANGLE / PLACEMENT_AUTOMATIC
+            * optimization_goal: CLICK / CONVERSION / REACH / VIDEO_VIEW
+            * bid_type: BID_TYPE_CUSTOM / BID_TYPE_NO_BID
+            * budget: アドグループ予算（最低$20）
+            * schedule_start_time / schedule_end_time: 配信期間
+            * location_ids: ターゲット地域（国/地域コード配列）
+            * age_groups: 年齢セグメント
+            * gender: GENDER_MALE / GENDER_FEMALE / GENDER_UNLIMITED
+         - オプション:
+            * interest_category_ids: インタレストターゲティング
+            * device_model_ids: デバイスターゲティング
+            * languages: 言語ターゲティング
+
+      * Ad（広告）作成
+         - エンドポイント: POST /v1.2/ad/create/
+         - 必須パラメータ:
+            * adgroup_id: 親アドグループID
+            * ad_name: 広告名
+            * ad_format: SINGLE_VIDEO / SINGLE_IMAGE
+            * ad_text: 広告テキスト（最大100文字）
+            * video_id: 動画クリエイティブID（事前アップロード）
+            * image_ids: 画像ID配列
+            * display_name: アイデンティティ表示名
+            * call_to_action: LEARN_MORE / SHOP_NOW / DOWNLOAD / SIGN_UP など
+            * landing_page_url: 遷移先URL
+
+   FR-9.3 Creative Management API
+      * 動画アップロード
+         - エンドポイント: POST /v1.2/file/video/upload/
+         - サポート形式: MP4, MOV, MPEG, AVI
+         - 最大ファイルサイズ: 500MB
+         - アップロードフロー:
+            ① 動画ファイルをマルチパートフォームデータで送信
+            ② video_id取得
+            ③ ステータスポーリング（処理完了まで）
+         - レスポンス: video_id, video_cover_id（サムネイル）
+
+      * 画像アップロード
+         - エンドポイント: POST /v1.2/file/image/upload/
+         - サポート形式: JPG, PNG
+         - 最大ファイルサイズ: 10MB
+         - レスポンス: image_id
+
+      * Identity（広告主アイデンティティ）設定
+         - Custom Identity: 任意の表示名（display_name）
+         - TikTok Account: 既存TikTokアカウント連携
+
+   FR-9.4 Reporting API
+      * Integrated Reporting
+         - エンドポイント: GET /v1.3/report/integrated/get/
+         - モード:
+            * Synchronous（同期）: 即座に結果を返す（小規模データ）
+            * Asynchronous（非同期）: タスクIDを返し、後でポーリング（大規模データ）
+         - 必須パラメータ:
+            * advertiser_id: 広告主ID
+            * report_type: BASIC / AUDIENCE / PLAYABLE_MATERIAL / CATALOG / BC
+            * data_level: AUCTION_ADVERTISER / AUCTION_CAMPAIGN / AUCTION_ADGROUP / AUCTION_AD
+            * dimensions: レポート分割軸（配列）
+               例: ["campaign_id", "country_code", "stat_time_day"]
+            * metrics: 取得指標（配列）
+               例: ["impressions", "clicks", "spend", "cpc", "ctr", "conversions", "cost_per_conversion"]
+            * start_date / end_date: 集計期間（YYYY-MM-DD形式）
+            * page / page_size: ページネーション
+
+      * 主要メトリクス
+         - Basic Metrics:
+            * impressions: インプレッション数
+            * clicks: クリック数
+            * spend: 消費額
+            * ctr: クリック率
+            * cpc: クリック単価
+            * cpm: インプレッション単価（1000回あたり）
+         - Conversion Metrics:
+            * conversions: コンバージョン数
+            * conversion_rate: コンバージョン率（CVR）
+            * cost_per_conversion: 獲得単価（CPA）
+            * real_time_conversions: リアルタイムCV数
+         - Engagement Metrics:
+            * video_views: 動画視聴数
+            * video_views_p25/p50/p75/p100: 動画視聴完了率
+            * likes, comments, shares: エンゲージメント指標
+         - 注意: ROASは自動計算されない→売上データ突合が必要
+
+      * レポート鮮度
+         - リアルタイムデータ: 約15分遅延
+         - 確定データ: 約36時間後
+
+   FR-9.5 Webhook統合
+      * 対応イベント
+         - lead.create: リード獲得時（Lead Gen広告）
+         - ad.review_status_update: 広告審査ステータス変更
+         - authorization.removed: アカウント連携解除
+      * セットアップ
+         - Developer Portalでコールバック URL登録
+         - HTTPS必須
+         - 200 OK即座に返却（3秒以内）
+         - Idempotency対応（同一イベント重複送信の可能性）
+      * 再送ポリシー
+         - 200以外のレスポンス時、最大72時間再送
+         - 指数バックオフで再送間隔増加
+      * セキュリティ
+         - リクエスト署名検証（X-TikTok-Signature ヘッダー）
+         - Replay攻撃対策（タイムスタンプ検証）
+
+   FR-9.6 Events API（コンバージョントラッキング）
+      * 概要
+         - Pixel（クライアントサイド）+ Events API（サーバーサイド）の併用を推奨
+         - ブラウザ制約・アドブロッカー回避
+      * エンドポイント: POST /v1.3/event/track/
+      * 標準イベント
+         - ViewContent: コンテンツ閲覧
+         - AddToCart: カート追加
+         - InitiateCheckout: 購入手続き開始
+         - CompletePayment: 購入完了
+         - SubmitForm: フォーム送信
+      * 必須パラメータ
+         - pixel_code: PixelコードID
+         - event: イベント名
+         - event_time: UNIXタイムスタンプ
+         - user: ユーザー識別子（email, phone, IP, UA）
+         - properties: イベントプロパティ（value, currency, contents等）
+         - event_id: 重複排除用ID（Pixel送信時と同一IDで送信）
+      * プライバシー対応
+         - PII（email/phone）はSHA256ハッシュ化して送信
+         - GDPR/CCPA同意管理との連携
+
+   FR-9.7 外部計測ツール連携
+      * MMP（Mobile Measurement Partner）
+         - AppsFlyer, Adjust, Kochava, Singular等
+         - Postback URL設定（アプリインストール/イベント送信）
+         - Attribution Window設定（クリック/ビュー）
+      * Web Analytics
+         - GA4: Measurement Protocol経由でイベント送信
+         - Server-Side GTM: Events APIとの統合
+      * CDP（Customer Data Platform）
+         - Segment, mParticle等からのイベント転送
+         - LTV・顧客属性の取り込み
+
+   FR-9.8 データウェアハウス連携
+      * BigQuery/Redshift/Snowflakeへの日次バッチロード
+      * ETLパイプライン（Airflow/dbt）
+      * Reporting APIデータ + Events APIデータ + 社内売上データの統合
+      * Attribution分析・LTV分析基盤
+
+   FR-9.9 コラボレーションツール連携
+      * Slack/Teams
+         - アラート通知
+         - 承認リクエスト（ボタン付きメッセージ）
+         - 日次レポート配信
+      * Jira/Asana
+         - 審査落ち時の自動チケット起票
+         - クリエイティブ制作依頼ワークフロー
+
+________________
+
+
+8. 非機能要件（NFR）
+
+   * 可用性: 99.9%（主要最適化ジョブは冗長化）
+      - TikTok API障害時のフォールバック
+      - OAuth トークン失効時の自動再認証
+
+   * パフォーマンス
+      - 最適化サイクル実行 ≤ 5分/キャンペーン100件当たり
+      - Reporting API 同期モード: ≤ 3秒応答
+      - Reporting API 非同期モード: 大規模データ（1万行以上）対応
+      - API並列度: 最大10並列リクエスト（レート制限考慮）
+
+   * スケーラビリティ
+      - 1,000+キャンペーン、CR 1万点規模
+      - 水平スケーリング対応（API Connector, Job Worker）
+
+   * セキュリティ
+      - OAuth2、SCIM対応
+      - KMS（AWS KMS / GCP KMS）での暗号化
+      - At-Rest暗号化（DB）、In-Transit暗号化（TLS 1.3）
+      - APIキー・トークンのSecrets Manager管理
+      - 最小権限原則（IAM）
+      - キー自動ローテーション（90日）
+
+   * コンプライアンス
+      - 個人情報/広告識別子の取り扱い
+      - 同意管理（GDPR/CCPA）
+      - TikTok Politics, Governments, and Elections Advertising Policy対応
+         → 2026年1月10日までの対応必須（EU向け広告）
+
+   * 信頼性
+      - Idempotency（冪等性）保証
+      - ロールバック機構
+      - レート制限耐性（指数バックオフ）
+      - サーキットブレーカーパターン（連続失敗時の一時停止）
+
+   * 可観測性
+      - Logs: 構造化ログ（JSON）、レベル別出力
+      - Metrics: Prometheus/Datadog
+         * API呼出数、エラー率、レイテンシ（p50/p95/p99）
+         * レート制限到達率
+         * トークン更新成功率
+      - Traces: OpenTelemetry対応（分散トレーシング）
+      - SLO/SLI定義
+         * SLI例: API成功率 ≥ 99.5%、最適化ジョブ成功率 ≥ 99.9%
+
+   * 運用性
+      - Blue/Green Deployment
+      - Feature Flags（LaunchDarkly/Unleash）
+      - Runbook整備
+      - オンコール体制（PagerDuty/Opsgenie）
+
+________________
+
+
+9. システムアーキテクチャ（概略）
+
+   * フロントエンド
+      - Web（React/Next.js）
+      - 認可（RBAC）
+      - ダッシュボード（リアルタイム更新：WebSocket）
+
+   * BFF/API Gateway
+      - GraphQL/REST
+      - 認証・認可
+      - 入力検証
+      - レート制限プロキシ
+
+   * 最適化エンジン
+      - ルールエンジン
+      - オンライン学習（バンディット/勾配系）
+      - モデルサービング（TensorFlow Serving / MLflow）
+
+   * ジョブ基盤
+      - スケジューラ（Airflow / Temporal）
+      - メッセージキュー（Pub/Sub / SQS + SNS）
+      - Worker Pool（Celery / Kubernetes Jobs）
+
+   * TikTok API Connector（新規追加）
+      - OAuth管理モジュール
+      - レート制限管理（Token Bucket実装）
+      - リクエストリトライ・バックオフ
+      - Idempotency Key管理
+      - API バージョン抽象化レイヤー
+      - レスポンスキャッシュ（Redis）
+
+   * Webhook Receiver（新規追加）
+      - HTTPS エンドポイント
+      - 署名検証
+      - イベントキュー投入（Pub/Sub）
+      - Idempotency管理
+
+   * Events API Sender（新規追加）
+      - Pixel データ受信
+      - PII ハッシュ化
+      - バッチ送信（最大1000イベント/リクエスト）
+      - リトライ処理
+
+   * データ基盤
+      - DWH（BigQuery / Redshift / Snowflake）
+      - Feature Store（Feast / Tecton）
+      - モデルレジストリ（MLflow）
+      - ストリーミング処理（Kafka / Pub/Sub）
+
+   * 監査/設定
+      - ポリシーストア（Policy Engine: Open Policy Agent）
+      - 監査ログDB（不変ログ、改ざん防止）
+      - Secrets Manager（API Keys, OAuth Tokens）
+
+________________
+
+
+10. データモデル（詳細化）
+
+   * Advertiser（広告主アカウント）
+      - id, name, advertiser_id（TikTok側ID）, status, timezone
+      - oauth_tokens: { access_token, refresh_token, expires_at, scope }
+
+   * Campaign
+      - id, advertiser_id, campaign_id（TikTok側ID）
+      - name, objective_type, budget_mode, budget, status
+      - created_at, updated_at, tiktok_created_at
+      - idempotency_key
+
+   * AdGroup
+      - id, campaign_id, adgroup_id（TikTok側ID）
+      - name, placement, optimization_goal, bid_type, bid_price
+      - budget, schedule_start, schedule_end
+      - targeting: { location_ids, age_groups, gender, interests, devices }
+      - status, created_at, updated_at
+      - idempotency_key
+
+   * Ad
+      - id, adgroup_id, ad_id（TikTok側ID）
+      - name, ad_format, ad_text, display_name, call_to_action
+      - video_id, image_ids, landing_page_url
+      - status, review_status（PENDING/APPROVED/REJECTED）
+      - created_at, updated_at
+      - idempotency_key
+
+   * Creative（動画・画像素材）
+      - id, advertiser_id, creative_type（VIDEO/IMAGE）
+      - tiktok_video_id / tiktok_image_id
+      - file_path, file_size, duration, width, height
+      - metadata: { audio, caption, hook_point }
+      - variants: 派生CR（縦横比変換、尺変更）
+      - quality_score, status
+      - created_at, uploaded_at
+
+   * Metrics（集計データ）
+      - id, data_level（CAMPAIGN/ADGROUP/AD）, entity_id
+      - stat_date, dimensions: { country, gender, age, device }
+      - impressions, clicks, spend, conversions, revenue
+      - ctr, cpc, cpm, cvr, cpa, roas
+      - video_views, video_view_p25/p50/p75/p100
+      - engagement: { likes, comments, shares }
+      - synced_at
+
+   * Experiment（実験管理）
+      - id, name, experiment_type（AB/MAB）
+      - design: { arms, traffic_split, min_sample_size }
+      - status（DRAFT/RUNNING/PAUSED/COMPLETED）
+      - result: { winner, confidence, p_value }
+      - created_at, started_at, ended_at
+
+   * Policy（ポリシー/制約）
+      - id, advertiser_id, policy_type（BUDGET/BID/BRAND_SAFETY）
+      - constraints: { max_budget_daily, max_bid, ng_keywords }
+      - approval_required: boolean
+      - created_by, created_at
+
+   * ChangeLog（監査ログ）
+      - id, actor（user_id）, entity_type, entity_id
+      - action（CREATE/UPDATE/DELETE/APPROVE）
+      - before_state, after_state（JSON）
+      - timestamp, ip_address, user_agent
+
+   * WebhookEvent（Webhookイベント履歴）
+      - id, event_type, event_id（TikTok側）, received_at
+      - payload（JSON）, processed（boolean）, processed_at
+
+   * APILog（API呼出ログ）
+      - id, endpoint, method, request_params
+      - response_status, response_body, latency_ms
+      - rate_limit_remaining, idempotency_key
+      - timestamp
+
+________________
+
+
+11. ワークフロー（例）
+
+   1. CR登録→仕様検証→自動派生生成→品質スコア付与
+      - Video Upload API呼出→video_id取得
+      - ステータスポーリング（処理完了待ち）
+      - メタデータ抽出・DB保存
+
+   2. 配信設計→推奨案生成→承認→API作成
+      - Campaign Create API（Idempotency Key付与）
+      - AdGroup Create API（ターゲティング設定）
+      - Ad Create API（Creative紐付け）
+      - 各API呼出後のステータス確認
+
+   3. 最適化（2h周期）→評価→予算再配分/入札調整→変更記録
+      - Reporting API（過去2時間データ取得）
+      - 最適化エンジン判定
+      - AdGroup Update API（budget/bid変更）
+      - ChangeLog記録
+
+   4. アラート→自動復旧/承認要請→Runbook実行
+      - Webhook受信（ad.review_status_update: REJECTED）
+      - アラート発火（Slack通知）
+      - 自動一時停止 or 承認フロー起動
+
+   5. レポート→KPI・実験結果配信（メール/Slack）
+      - 日次バッチ: Reporting API（前日全データ）
+      - DWH格納
+      - ダッシュボード更新
+      - Slack定期配信
+
+________________
+
+
+12. ポリシー/ガードレール
+
+   * 予算上限・下限
+      - Campaign最低予算: $50
+      - AdGroup最低予算: $20
+      - 日次バーンレート: 月予算の5%以内/日（過消化防止）
+
+   * 入札上限
+      - Cost Cap: 目標CPA ± 30%の範囲で自動調整
+      - 学習期間の最低配信量: 50CV/週（学習促進）
+      - 過学習防止: 探索率下限10%（MAB）
+
+   * ブランドセーフティ
+      - NGワード辞書（ad_text検証）
+      - NGカテゴリ除外（TikTok Audience Network）
+
+   * 審査落ち・配信制限時の自動対処
+      - REJECTED検知→即座に停止＋Slack通知
+      - 代替CRへの自動切替（事前承認済みCRのみ）
+
+________________
+
+
+13. アルゴリズム設計（概要）
+
+   * 配分
+      - Thompson Sampling＋ペーシング補正
+      - 階層事前分布でCR/セグメント間移転学習
+
+   * 入札
+      - 目標関数: CVR×LTV/Cost で近似
+      - Cost Cap利用（TikTok側最適化）
+      - 勾配探索＋安全制約（予算/上限）
+
+   * シミュレーション
+      - 潜在効果推定（DID/傾向スコア）
+      - What-if評価
+
+   * 停止基準
+      - Bayesian Stop（後悔最小化）
+      - Safety Gate（逸脱閾値）
+
+________________
+
+
+14. 監視・アラート
+
+   * SLI/SLO
+      - ① 最適化ジョブ成功率 ≥ 99.9%
+      - ② API エラー率 ≤ 0.5%
+      - ③ API P95レイテンシ ≤ 2秒
+      - ④ レポート鮮度 ≤ 1時間（リアルタイムデータ）
+
+   * アラート閾値
+      - API連続失敗 5回 → Critical
+      - レート制限到達率 > 80% → Warning
+      - OAuth トークン更新失敗 → Critical
+      - Webhook署名検証失敗 → Warning
+
+   * 抑制
+      - ナイトモード（JST 22:00-08:00）: Warning以下は抑制
+
+   * ヘルスチェック
+      - TikTok API疎通確認（/advertiser/info/ など軽量エンドポイント）
+      - OAuth有効期限監視（残り1時間で警告）
+
+________________
+
+
+15. 権限・監査
+
+   * シングルサインオン（SSO）
+      - SAML 2.0 / OpenID Connect
+
+   * ロール
+      - Viewer: 閲覧のみ
+      - Operator: Campaign作成・編集
+      - Approver: 承認権限
+      - Admin: 全権限＋ポリシー設定
+
+   * 監査証跡
+      - 全変更をChangeLogテーブルに記録
+      - 改ざん防止（署名・タイムスタンプ）
+      - エクスポート機能（CSV/JSON）
+
+________________
+
+
+16. セキュリティ/プライバシー
+
+   * 最小権限原則
+      - API権限スコープ最小化（Campaign Management, Reporting のみ）
+      - IAM Role分離
+
+   * キー自動ローテーション
+      - OAuth Refresh Token: 自動更新
+      - Secrets Manager: 90日ローテーション
+
+   * PII/ADID
+      - Events API送信時: SHA256ハッシュ化
+      - ログ出力時: マスキング（email/phone）
+      - 保持期間: 13ヶ月（GDPR準拠）
+      - 削除リクエスト対応（Right to be Forgotten）
+
+   * 生成AIの安全設計
+      - プロンプト注入対策（入力検証）
+      - 出力フィルタ（NGワード/有害コンテンツ検出）
+
+________________
+
+
+17. 品質保証/テスト
+
+   * ユニット/統合/E2E
+      - API Connector: Mock Server利用
+      - 契約テスト（Pact）でTikTok API仕様変更検知
+
+   * Sandbox環境
+      - TikTok Sandbox環境活用
+         * URL: https://sandbox-ads.tiktok.com/
+         * 最大5サンドボックス作成
+         * テストユーザー10名まで
+      - 本番同等のフロー検証
+
+   * オフライン再現テスト
+      - API レスポンスリプレイ
+      - 過去データでのシミュレーション
+
+   * A/Aテスト
+      - アルゴリズム変更前後の差分検証
+
+   * シャドー配信→カナリアリリース→段階展開
+      - Feature Flagで段階的ロールアウト
+
+________________
+
+
+18. ロードマップ（例）
+
+   * Phase 0（0-1ヶ月）: PoC
+      - OAuth認証フロー実装
+      - Campaign/AdGroup/Ad作成（手動トリガー）
+      - 基本ダッシュボード（Reporting API連携）
+
+   * Phase 1（2-3ヶ月）: MVP
+      - 自動作成フロー（テンプレート）
+      - 基本最適化（ルールベース予算配分）
+      - アラート（Slack通知）
+      - Sandbox→本番移行
+
+   * Phase 2（4-6ヶ月）: 拡張
+      - 実験フレームワーク（A/B, MAB）
+      - AI提案（クリエイティブ改善）
+      - Events API統合（サーバーサイドCV）
+      - MMP連携（AppsFlyer/Adjust）
+
+   * Phase 3（7-9ヶ月）: 最適化
+      - ポートフォリオ最適化（複数キャンペーン横断）
+      - What-ifシミュレーション
+      - SLO整備・可観測性強化
+      - Auto Scaling対応
+
+________________
+
+
+19. 受け入れ基準（例）
+
+   * 10件以上のキャンペーンで自動作成成功率95%+
+   * OAuth自動更新成功率99.9%+
+   * 連続30日、最適化サイクル停止ゼロ（SLO内）
+   * API エラー率 ≤ 0.5%
+   * 基準期間比でCPA 10%以上改善（同条件）
+   * 重大障害からの自動復旧 MTTR ≤ 15分
+
+________________
+
+
+20. リスクと対策
+
+   * API仕様変更
+      - 対策: バージョン抽象化/契約テスト/ChangeLog監視
+      - TikTok Developer Portal通知購読
+
+   * レート制限超過
+      - 対策: クライアント側スロットリング、優先度キュー、バッチング
+      - 上限引き上げ申請（事前）
+
+   * データ欠損/遅延
+      - 対策: リアルタイムデータ + 確定データの二段階取得
+      - 欠損時の補完ロジック（前日比推定）
+      - 遅延耐性の推論（ベイズ更新）
+
+   * OAuth失効
+      - 対策: 自動リフレッシュ、有効期限監視、手動再認証フロー
+
+   * 過学習/探索不足
+      - 対策: 探索率下限（ε-greedy 10%）
+      - 冷スタート戦略（Equal Allocation期間）
+
+   * ガバナンス不備
+      - 対策: 承認ゲート、権限分離、監査ログ
+      - ポリシー違反の自動検知
+
+________________
+
+
+21. 運用/サポート
+
+   * Runbook
+      - 一般障害（API障害、ネットワーク）
+      - 審査落ち対応
+      - TikTok規約変更対応（ポリシーアップデート）
+      - OAuth再認証手順
+
+   * インシデント管理
+      - 優先度（P0-P4）定義
+      - コミュニケーションプラン（Slack Channel, Status Page）
+
+   * 変更管理
+      - CAB（Change Advisory Board）
+      - リリースノート自動生成
+
+________________
+
+
+22. 付録
+
+   * 想定ダッシュボード
+      - KPIカード（CPA, ROAS, Conversion, Spend）
+      - クリエイティブ Top/Flop（CTR, CVR順）
+      - 学習ログ（最適化履歴）
+      - アラート履歴
+
+   * 設定テンプレ
+      - 目標別プリセット
+         * tCPA（Cost Cap）: コンバージョン最大化
+         * Maximum Delivery: 予算消化優先
+
+   * APIコール上限戦略
+      - バッチング: 複数Campaign取得を1リクエストに統合
+      - 指数バックオフ: 1秒 → 2秒 → 4秒 → ... → 64秒（上限）
+      - Idempotency: 同一リクエストの重複実行防止
+
+________________
+
+
+23. TikTok Marketing API 詳細仕様【新規追加】
+
+23.1 ベースURL・認証
+   * Production: https://business-api.tiktok.com/open_api/
+   * Sandbox: https://sandbox-ads.tiktok.com/open_api/
+   * 認証方式: OAuth 2.0 Bearer Token
+   * リクエストヘッダー:
+      - Access-Token: {access_token}
+      - Content-Type: application/json
+
+23.2 共通レスポンス形式
+   {
+     "code": 0,              // 0=成功、非0=エラー
+     "message": "OK",
+     "request_id": "...",
+     "data": { ... }
+   }
+
+   * エラーコード例:
+      - 40001: Invalid Access Token
+      - 40002: Access Token Expired
+      - 40100: Invalid Parameters
+      - 40109: Rate Limit Exceeded
+      - 50000: Internal Server Error
+
+23.3 Campaign Management詳細フロー
+
+   ステップ1: Campaign作成
+   POST /v1.2/campaign/create/
+   {
+     "advertiser_id": "1234567890",
+     "campaign_name": "Q4 App Install Campaign",
+     "objective_type": "APP_PROMOTION",
+     "budget_mode": "BUDGET_MODE_DAY",
+     "budget": 100.00
+   }
+
+   レスポンス:
+   {
+     "code": 0,
+     "message": "OK",
+     "data": {
+       "campaign_id": 9876543210
+     }
+   }
+
+   ステップ2: AdGroup作成
+   POST /v1.2/adgroup/create/
+   {
+     "advertiser_id": "1234567890",
+     "campaign_id": 9876543210,
+     "adgroup_name": "iOS US 18-34 Female",
+     "placement": ["PLACEMENT_TIKTOK"],
+     "promotion_type": "APP_INSTALL",
+     "app_id": "id1234567890",
+     "optimization_goal": "INSTALL",
+     "bid_type": "BID_TYPE_CUSTOM",
+     "bid_price": 2.50,
+     "budget": 50.00,
+     "schedule_type": "SCHEDULE_START_END",
+     "schedule_start_time": "2025-10-05 00:00:00",
+     "schedule_end_time": "2025-10-31 23:59:59",
+     "location_ids": [6252001],  // USA
+     "age_groups": ["AGE_18_24", "AGE_25_34"],
+     "gender": "GENDER_FEMALE",
+     "operating_systems": ["IOS"]
+   }
+
+   ステップ3: Ad作成
+   POST /v1.2/ad/create/
+   {
+     "advertiser_id": "1234567890",
+     "adgroup_id": 1122334455,
+     "ad_name": "Video Ad - Creative A",
+     "ad_format": "SINGLE_VIDEO",
+     "ad_text": "Download now and get 50% off!",
+     "video_id": "v_abc123xyz",
+     "display_name": "MyApp Official",
+     "call_to_action": "DOWNLOAD",
+     "landing_page_url": "https://apps.apple.com/app/id1234567890",
+     "identity_type": "CUSTOMIZED_USER",
+     "identity_id": "custom_12345"
+   }
+
+23.4 Reporting API詳細
+
+   同期レポート取得例:
+   GET /v1.3/report/integrated/get/
+   {
+     "advertiser_id": "1234567890",
+     "report_type": "BASIC",
+     "data_level": "AUCTION_ADGROUP",
+     "dimensions": ["adgroup_id", "stat_time_day"],
+     "metrics": ["spend", "impressions", "clicks", "cpc", "ctr", "conversions", "cost_per_conversion"],
+     "start_date": "2025-10-01",
+     "end_date": "2025-10-04",
+     "page": 1,
+     "page_size": 100
+   }
+
+   レスポンス:
+   {
+     "code": 0,
+     "data": {
+       "page_info": {
+         "total_number": 245,
+         "page": 1,
+         "page_size": 100,
+         "total_page": 3
+       },
+       "list": [
+         {
+           "dimensions": {
+             "adgroup_id": "1122334455",
+             "stat_time_day": "2025-10-01"
+           },
+           "metrics": {
+             "spend": 48.52,
+             "impressions": 12450,
+             "clicks": 523,
+             "cpc": 0.093,
+             "ctr": 4.20,
+             "conversions": 28,
+             "cost_per_conversion": 1.73
+           }
+         },
+         ...
+       ]
+     }
+   }
+
+23.5 Events API詳細
+
+   POST /v1.3/event/track/
+   {
+     "pixel_code": "PIXEL123ABC",
+     "event": "CompletePayment",
+     "event_time": 1696435200,
+     "event_id": "unique_event_12345",  // Pixel送信と同一IDで重複排除
+     "user": {
+       "email": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",  // SHA256
+       "phone": "8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923adc6c92",  // SHA256
+       "ip": "192.168.1.1",
+       "user_agent": "Mozilla/5.0..."
+     },
+     "properties": {
+       "contents": [
+         {
+           "content_id": "PROD_12345",
+           "content_name": "Premium Plan",
+           "price": 99.99,
+           "quantity": 1
+         }
+       ],
+       "value": 99.99,
+       "currency": "USD"
+     }
+   }
+
+23.6 Webhook イベント例
+
+   リード獲得時:
+   POST https://your-server.com/webhook/tiktok
+   Headers:
+     X-TikTok-Signature: sha256=...
+     Content-Type: application/json
+
+   Body:
+   {
+     "event_type": "lead.create",
+     "event_id": "evt_abc123",
+     "timestamp": 1696435200,
+     "data": {
+       "advertiser_id": "1234567890",
+       "lead_id": "lead_xyz789",
+       "ad_id": "9988776655",
+       "form_fields": {
+         "email": "user@example.com",
+         "phone": "+1234567890"
+       }
+     }
+   }
+
+   署名検証（疑似コード）:
+   secret = "your_webhook_secret"
+   payload = request.body
+   signature = HMAC-SHA256(secret, payload)
+   if signature != request.headers['X-TikTok-Signature']:
+     return 403
+
+23.7 レート制限実装例（疑似コード）
+
+   class TikTokAPIClient:
+     def __init__(self):
+       self.tokens = {}  // endpoint → token bucket
+
+     def call_api(self, endpoint, params):
+       # Token Bucket確認
+       if not self.tokens[endpoint].consume(1):
+         backoff_time = exponential_backoff(retry_count)
+         sleep(backoff_time)
+         return self.call_api(endpoint, params)  // リトライ
+
+       # API呼出
+       response = requests.post(endpoint, json=params, headers={...})
+
+       # 429検知
+       if response.status_code == 429:
+         retry_after = response.headers.get('Retry-After', 60)
+         sleep(retry_after)
+         return self.call_api(endpoint, params)
+
+       return response
+
+23.8 Idempotency Key生成戦略
+
+   def generate_idempotency_key(operation, params):
+     """
+     operation: "campaign_create", "adgroup_update" など
+     params: APIリクエストパラメータ
+     """
+     # パラメータをソート・正規化
+     normalized = json.dumps(params, sort_keys=True)
+
+     # ハッシュ生成
+     hash_value = hashlib.sha256(normalized.encode()).hexdigest()
+
+     # UUID + ハッシュで一意性と冪等性を保証
+     return f"{operation}_{uuid.uuid4()}_{hash_value[:16]}"
+
+23.9 OAuth トークン管理フロー
+
+   1. 初回認証
+      - ユーザーをTikTok OAuth URLへリダイレクト
+      - Authorization Code取得
+      - POST /v2/oauth/token/ でAccess Token + Refresh Token取得
+      - DB暗号化保存（KMS）
+
+   2. 自動更新（有効期限30分前）
+      POST /v2/oauth/token/
+      {
+        "client_id": "your_app_id",
+        "client_secret": "your_app_secret",
+        "grant_type": "refresh_token",
+        "refresh_token": "existing_refresh_token"
+      }
+
+      レスポンス:
+      {
+        "access_token": "new_access_token",
+        "refresh_token": "new_refresh_token",
+        "expires_in": 86400,
+        "refresh_token_expires_in": 31536000
+      }
+
+   3. 失効時の処理
+      - 手動再認証フロー起動
+      - 管理者へSlack通知
+      - 一時的に自動化停止（手動運用へフォールバック）
+
+23.10 Sandbox環境セットアップ
+
+   1. Developer Portal (developers.tiktok.com) でアプリ作成
+   2. Sandbox モード有効化
+   3. テストユーザー追加（最大10名）
+   4. Sandbox URL使用: https://sandbox-ads.tiktok.com/open_api/v1.2/
+   5. 本番同等のフロー検証
+   6. 本番移行時: URLを本番URLに切替＋App Review申請
+
+23.11 主要エラーハンドリング
+
+   エラーコード    対処
+   ─────────────────────────────────────
+   40001/40002    OAuth再認証
+   40100          パラメータ検証強化
+   40109          レート制限待機・リトライ
+   50000          サーキットブレーカー発動→手動確認
+   40105          予算不足→アラート＋補充提案
+   40113          審査落ち→Webhook処理＋代替CR切替
+
+23.12 パフォーマンス最適化
+
+   * リクエストバッチング
+      - Campaign取得: GET /campaign/get/ に複数campaign_id指定
+      - 1リクエストで最大100件取得（APIドキュメント参照）
+
+   * キャッシング戦略
+      - Advertiser情報: 1時間キャッシュ（Redis）
+      - Campaign/AdGroup基本情報: 15分キャッシュ
+      - Metrics: キャッシュなし（常に最新取得）
+
+   * 並列処理
+      - 複数Advertiserの同時処理（最大10並列）
+      - レート制限を advertiser_id単位で管理
+
+   * 非同期レポート活用
+      - 1万行以上のデータ: 非同期モード
+      - タスクID取得→ポーリング（10秒間隔）→完了後ダウンロード
+
+________________
+
+
+【付録A】参考リンク
+
+   * TikTok for Business API Portal
+     https://business-api.tiktok.com/portal/docs
+
+   * TikTok for Developers
+     https://developers.tiktok.com/
+
+   * OAuth 2.0 仕様
+     https://developers.tiktok.com/doc/oauth-user-access-token-management
+
+   * Webhook ドキュメント
+     https://developers.tiktok.com/doc/webhooks-overview/
+
+   * Events API
+     https://ads.tiktok.com/help/article/events-api
+
+   * TikTok Business API SDK（公式）
+     https://github.com/tiktok/tiktok-business-api-sdk
+
+________________
+
+
+【付録B】用語集
+
+   * OAuth 2.0: オープンスタンダードな認可プロトコル
+   * Access Token: APIアクセス用の短期トークン（24h）
+   * Refresh Token: Access Token更新用の長期トークン（1年）
+   * Idempotency: 同一操作の複数回実行が1回実行と同じ結果になる性質
+   * Rate Limit: API呼出回数制限
+   * Webhook: イベント発生時のサーバー間Push通知
+   * Events API: サーバーサイドコンバージョントラッキング
+   * Pixel: ブラウザ側トラッキングタグ
+   * MMP: Mobile Measurement Partner（アプリ計測ツール）
+   * Cost Cap: 目標CPA指定型入札（TikTok版tCPA）
+   * Maximum Delivery: 予算内でCV数最大化入札
+
+________________
+
+
+以上
