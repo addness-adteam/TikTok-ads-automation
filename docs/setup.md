@@ -1,312 +1,112 @@
-# 環境構築手順
+# TikTok広告運用自動化システム - 環境構築手順書
 
-TikTok広告運用自動化システムの開発環境セットアップガイドです。
+**対象:** 開発者・運用担当者
+**最終更新日:** 2025-10-24
+**所要時間:** 約30分
 
-## 📋 前提条件
+---
 
-以下のソフトウェアがインストールされている必要があります：
+## 📋 目次
 
-- **Node.js**: 18.0.0 以上
-- **npm**: 9.0.0 以上
-- **Docker**: 20.10 以上
-- **Docker Compose**: 2.0 以上
-- **Git**: 2.30 以上
+1. [前提条件](#前提条件)
+2. [TikTok Developer アカウント設定](#tiktok-developer-アカウント設定)
+3. [ローカル環境構築](#ローカル環境構築)
+4. [データベースセットアップ](#データベースセットアップ)
+5. [開発サーバー起動](#開発サーバー起動)
+6. [動作確認](#動作確認)
+7. [トラブルシューティング](#トラブルシューティング)
 
-### バージョン確認
+---
 
-```bash
-node --version   # v18.0.0 以上
-npm --version    # 9.0.0 以上
-docker --version # 20.10 以上
-docker-compose --version # 2.0 以上
-```
+## 🔧 前提条件
 
-## 🚀 クイックスタート
+### 必須ソフトウェア
 
-### 1. リポジトリクローン
+| ソフトウェア | バージョン | 確認コマンド |
+|------------|----------|------------|
+| Node.js | 18以上 | \`node --version\` |
+| npm | 9以上 | \`npm --version\` |
+| Git | 最新 | \`git --version\` |
 
-```bash
+### 必要なアカウント
+
+1. **Neon Postgres**（無料） - https://neon.tech
+2. **TikTok for Developers**（無料） - https://developers.tiktok.com
+
+---
+
+## 🎯 TikTok Developer アカウント設定
+
+### Step 1: アプリケーション作成
+
+1. https://developers.tiktok.com/ にアクセス
+2. 「Apps」→「Create an app」をクリック
+3. App Name: TikTok Ads Automation
+
+### Step 2: OAuth設定
+
+**Redirect URIs** に追加:
+\`\`\`
+http://localhost:3001/auth/callback
+\`\`\`
+
+**Scopes** 選択:
+- Campaign Management
+- Reporting
+
+### Step 3: 認証情報取得
+
+- **App ID**
+- **App Secret**
+
+---
+
+## 💻 ローカル環境構築
+
+\`\`\`bash
+# リポジトリクローン
 git clone https://github.com/your-org/TikTok-ads-automation.git
 cd TikTok-ads-automation
-```
 
-### 2. 自動セットアップ（推奨）
-
-```bash
-make setup
-```
-
-このコマンドで以下が自動実行されます：
-- 依存関係のインストール
-- Docker コンテナ起動（PostgreSQL, Redis）
-- データベースマイグレーション
-
-### 3. 開発サーバー起動
-
-```bash
-make dev
-```
-
-以下のURLでアクセス可能になります：
-- **フロントエンド**: http://localhost:3000
-- **バックエンドAPI**: http://localhost:3001
-- **Prisma Studio**: http://localhost:5555（`make docker-tools` 実行後）
-
----
-
-## 📝 手動セットアップ
-
-自動セットアップがうまくいかない場合は、手動で実行してください。
-
-### ステップ1: 依存関係インストール
-
-```bash
+# 依存関係インストール
 npm install
-```
 
-### ステップ2: 環境変数設定
-
-```bash
-cp .env.example .env
-```
-
-`.env` ファイルを開き、必要な値を設定：
-
-```bash
-# 最低限必要な設定
-TIKTOK_APP_ID=your_app_id
-TIKTOK_APP_SECRET=your_app_secret
-DATABASE_URL=postgresql://tiktok_user:tiktok_pass@localhost:5432/tiktok_ads_automation
-```
-
-### ステップ3: Docker コンテナ起動
-
-```bash
-docker-compose up -d
-```
-
-起動確認：
-```bash
-docker-compose ps
-
-# 出力例:
-# NAME                   STATUS
-# tiktok-ads-postgres    Up (healthy)
-# tiktok-ads-redis       Up (healthy)
-```
-
-### ステップ4: データベースマイグレーション
-
-```bash
+# 環境変数設定
 cd apps/backend
-npx prisma migrate dev
-cd ../..
-```
-
-### ステップ5: 開発サーバー起動
-
-```bash
-npm run dev
-```
+cp .env.example .env
+# .envを編集してApp IDとSecretを設定
+\`\`\`
 
 ---
 
-## 🛠️ よく使うコマンド
+## 🗄️ データベースセットアップ
 
-### 開発
+\`\`\`bash
+cd apps/backend
 
-```bash
-# 全アプリ開発サーバー起動
-make dev
-
-# Backend のみ
-npm run dev --workspace=apps/backend
-
-# Frontend のみ
-npm run dev --workspace=apps/frontend
-```
-
-### ビルド
-
-```bash
-# 全アプリビルド
-make build
-
-# 個別ビルド
-npm run build --workspace=apps/backend
-```
-
-### Lint & Format
-
-```bash
-# Lint実行
-make lint
-
-# コードフォーマット
-make format
-```
-
-### Docker操作
-
-```bash
-# コンテナ起動
-make docker-up
-
-# 管理ツール起動（Prisma Studio, Redis Commander）
-make docker-tools
-
-# ログ確認
-make docker-logs
-
-# コンテナ停止
-make docker-down
-
-# 完全クリーンアップ（データ削除）
-make docker-clean
-```
-
-### データベース操作
-
-```bash
-# マイグレーション実行
-make db-migrate
-
-# Prisma Studio 起動
-make db-studio
+# Prismaマイグレーション実行
+npx prisma migrate deploy
 
 # シードデータ投入
-make db-seed
-
-# データベースリセット
-make db-reset
-```
+npx prisma db seed
+\`\`\`
 
 ---
 
-## 🔧 トラブルシューティング
+## 🚀 開発サーバー起動
 
-### ポート競合エラー
+\`\`\`bash
+# バックエンド
+cd apps/backend
+npm run dev
+# → http://localhost:4000
 
-既に使用されているポートがある場合：
-
-```bash
-# 使用中のポート確認（Windows）
-netstat -ano | findstr :5432
-netstat -ano | findstr :6379
-netstat -ano | findstr :3000
-
-# プロセス終了（管理者権限）
-taskkill /PID <PID> /F
-```
-
-または `docker-compose.yml` でポート番号を変更：
-
-```yaml
-postgres:
-  ports:
-    - '15432:5432'  # 15432に変更
-```
-
-### Docker コンテナが起動しない
-
-```bash
-# Docker Daemon 確認
-docker info
-
-# コンテナログ確認
-docker-compose logs postgres
-docker-compose logs redis
-
-# 完全再起動
-make docker-clean
-make docker-up
-```
-
-### データベース接続エラー
-
-```bash
-# PostgreSQL接続確認
-docker-compose exec postgres psql -U tiktok_user -d tiktok_ads_automation
-
-# 接続成功なら:
-# tiktok_ads_automation=#
-```
-
-### node_modules エラー
-
-```bash
-# 完全クリーンアップ
-make clean
-rm -rf node_modules apps/*/node_modules packages/*/node_modules
-
-# 再インストール
-npm install
-```
+# フロントエンド（別ターミナル）
+cd apps/frontend
+npm run dev
+# → http://localhost:3000
+\`\`\`
 
 ---
 
-## 🌐 開発環境URL一覧
-
-| サービス | URL | 説明 |
-|---------|-----|------|
-| Frontend | http://localhost:3000 | Next.js Webアプリ |
-| Backend API | http://localhost:3001 | NestJS API Server |
-| Prisma Studio | http://localhost:5555 | DB管理画面 |
-| Redis Commander | http://localhost:8081 | Redis管理画面 |
-| PostgreSQL | localhost:5432 | Database |
-| Redis | localhost:6379 | Cache/Queue |
-
----
-
-## 📚 次のステップ
-
-環境構築が完了したら：
-
-1. [アーキテクチャドキュメント](./architecture.md) を確認
-2. [API仕様書](./api-spec.md) を確認
-3. TikTok Developer アカウント作成（Task 0.2）
-4. OAuth実装（Task 0.3）
-
----
-
-## 💡 便利なTips
-
-### VS Code 拡張機能
-
-推奨拡張機能（`.vscode/extensions.json` に定義）:
-
-- ESLint
-- Prettier
-- Prisma
-- Docker
-- TypeScript関連
-
-### Git フック
-
-コミット前に自動でLint実行：
-
-```bash
-npm install -D husky lint-staged
-npx husky install
-```
-
-### 環境変数の管理
-
-開発環境の秘密情報は **絶対に Git にコミットしない**：
-
-```bash
-# .gitignore に含まれていることを確認
-cat .gitignore | grep .env
-
-# 出力に .env が含まれていればOK
-```
-
----
-
-## 📞 サポート
-
-問題が解決しない場合：
-
-- GitHub Issues: [リンク]
-- Slack: #tiktok-ads-automation
-- ドキュメント: このディレクトリ内の他のファイル
+**作成日:** 2025-10-24
