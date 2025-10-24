@@ -82,6 +82,17 @@ export class TiktokService {
 
       // 各Advertiser用にトークンを保存
       for (const advertiserId of advertiserIds) {
+        // まずAdvertiserレコードを作成（存在しない場合）
+        await this.prisma.advertiser.upsert({
+          where: { tiktokAdvertiserId: advertiserId },
+          create: {
+            tiktokAdvertiserId: advertiserId,
+            name: `Advertiser ${advertiserId}`,
+          },
+          update: {},
+        });
+
+        // 次にOAuthTokenを保存
         await this.prisma.oAuthToken.upsert({
           where: { advertiserId },
           create: {
@@ -489,12 +500,14 @@ export class TiktokService {
         // メトリクスをupsert
         await this.prisma.metric.upsert({
           where: {
-            campaignId_statDate: {
+            metric_campaign_unique: {
+              entityType: 'CAMPAIGN',
               campaignId: campaign.id,
               statDate: statDate,
             },
           },
           create: {
+            entityType: 'CAMPAIGN',
             campaignId: campaign.id,
             statDate: statDate,
             impressions: parseInt(metrics.impressions || '0', 10),

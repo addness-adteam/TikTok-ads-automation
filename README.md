@@ -43,13 +43,15 @@ TikTok-ads-automation/
 - Recharts（チャート）
 
 **インフラ**
-- AWS（本番環境）
-- Docker + Docker Compose（開発環境）
+- Vercel（本番・開発環境）
+- Neon Postgres（データベース）
+- Upstash Redis（キャッシュ）
 - GitHub Actions（CI/CD）
 
 **監視・ログ**
-- Winston（ログ）
-- Prometheus + Grafana（メトリクス）
+- Vercel Logs（ログ）
+- Vercel Analytics（メトリクス）
+- Sentry（エラートラッキング）
 - OpenTelemetry（トレーシング）
 
 ## 🚀 クイックスタート
@@ -58,8 +60,9 @@ TikTok-ads-automation/
 
 - Node.js 18以上
 - npm 9以上
-- Docker & Docker Compose
 - Git
+- Neon Postgres アカウント（無料）
+- Upstash Redis アカウント（無料・オプション）
 
 ### セットアップ
 
@@ -74,13 +77,13 @@ npm install
 # 環境変数設定
 cp .env.example .env
 # .env ファイルを編集
-
-# Docker で DB・Redis 起動
-docker-compose up -d
+# - DATABASE_URL: Neon PostgresのURL
+# - REDIS_URL: Upstash RedisのURL（オプション）
 
 # Prisma マイグレーション実行
 cd apps/backend
-npx prisma migrate dev
+npx prisma db push
+npx prisma db seed
 
 # 開発サーバー起動（全アプリ）
 cd ../..

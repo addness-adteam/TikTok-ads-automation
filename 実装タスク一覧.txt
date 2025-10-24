@@ -33,8 +33,8 @@ TikTok広告運用自動化システム 実装タスク一覧
   │  └─ .gitignore, .editorconfig設定
   │
   ├─ 0.1.3 開発環境構築
-  │  └─ Docker Compose (ローカル開発環境)
-  │  └─ PostgreSQL, Redis コンテナ
+  │  └─ Vercel環境セットアップ（Neon Postgres, Upstash Redis）
+  │  └─ データベース接続設定（Neon）
   │  └─ 環境変数管理 (.env.example)
   │  └─ Linter/Formatter (ESLint, Prettier, Black等)
   │
@@ -405,30 +405,32 @@ TikTok広告運用自動化システム 実装タスク一覧
      └─ ダッシュボード設定
 
 □ Task 1.9: 本番環境構築 (Week 11)
-  ├─ 1.9.1 インフラ構築（IaC）
-  │  └─ Terraform/Pulumi でインフラコード化
-  │  └─ VPC, Subnet, Security Group
-  │  └─ ECS/GKE/AKS クラスタ
-  │  └─ RDS/Cloud SQL（PostgreSQL）
-  │  └─ ElastiCache/Memorystore（Redis）
+  ├─ 1.9.1 Vercelインフラ構築
+  │  └─ Vercel Projectセットアップ
+  │  └─ Neon Postgres（本番用データベース）
+  │  └─ Upstash Redis（本番用キャッシュ）
+  │  └─ Vercel Blob Storage（Creative保存用）
   │
   ├─ 1.9.2 Secrets管理
-  │  └─ AWS Secrets Manager / GCP Secret Manager
+  │  └─ Vercel Environment Variables
   │  └─ TikTok API Key, OAuth Token
   │  └─ DB認証情報、外部API Key
   │
   ├─ 1.9.3 デプロイパイプライン
-  │  └─ GitHub Actions → Docker Build → Push ECR/GCR
-  │  └─ Blue/Green Deployment
+  │  └─ GitHub連携 → Vercel自動デプロイ
+  │  └─ Preview Deployments（プルリクごと）
+  │  └─ Production Deployments（mainブランチ）
   │  └─ Smoke Test
   │
   ├─ 1.9.4 監視・アラート設定
-  │  └─ CloudWatch/Stackdriver
+  │  └─ Vercel Analytics & Speed Insights
+  │  └─ Vercel Logs（リアルタイムログ）
+  │  └─ Sentry（エラートラッキング）
   │  └─ PagerDuty/Opsgenie 連携
   │  └─ オンコール体制構築
   │
   └─ 1.9.5 バックアップ・DR
-     └─ DB自動バックアップ（日次）
+     └─ Neon自動バックアップ（継続的）
      └─ リストア手順書
      └─ DR計画（RTO/RPO定義）
 

@@ -2,7 +2,6 @@
 
 generator client {
   provider = "prisma-client-js"
-  output   = "../generated/prisma"
 }
 
 datasource db {
@@ -11,18 +10,43 @@ datasource db {
 }
 
 // ============================================================================
+// 広告主（Advertiser）
+// ============================================================================
+
+model Advertiser {
+  id                  String      @id @default(uuid())
+  tiktokAdvertiserId  String      @unique
+  name                String
+  timezone            String      @default("UTC")
+  currency            String      @default("USD")
+  status              String      @default("ACTIVE")
+  createdAt           DateTime    @default(now())
+  updatedAt           DateTime    @updatedAt
+
+  oauthTokens         OAuthToken[]
+  campaigns           Campaign[]
+  creatives           Creative[]
+  experiments         Experiment[]
+  userAdvertisers     UserAdvertiser[]
+
+  @@map("advertisers")
+}
+
+// ============================================================================
 // OAuth認証
 // ============================================================================
 
 model OAuthToken {
-  id              String   @id @default(uuid())
-  advertiserId    String   @unique
-  accessToken     String   @db.Text
-  refreshToken    String?  @db.Text
+  id              String      @id @default(uuid())
+  advertiserId    String      @unique
+  accessToken     String      @db.Text
+  refreshToken    String?     @db.Text
   expiresAt       DateTime
   scope           String?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  advertiser      Advertiser  @relation(fields: [advertiserId], references: [tiktokAdvertiserId], onDelete: Cascade)
 
   @@map("oauth_tokens")
 }
@@ -32,20 +56,105 @@ model OAuthToken {
 // ============================================================================
 
 model Campaign {
-  id              String   @id @default(uuid())
-  tiktokId        String   @unique // TikTok campaign_id
+  id              String      @id @default(uuid())
+  tiktokId        String      @unique
   advertiserId    String
   name            String
   objectiveType   String
   budgetMode      String?
   budget          Float?
   status          String
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
 
+  advertiser      Advertiser  @relation(fields: [advertiserId], references: [id], onDelete: Cascade)
+  adGroups        AdGroup[]
   metrics         Metric[]
 
   @@map("campaigns")
+}
+
+// ============================================================================
+// AdGroup管理
+// ============================================================================
+
+model AdGroup {
+  id              String      @id @default(uuid())
+  tiktokId        String      @unique
+  campaignId      String
+  name            String
+  placementType   String?
+  budgetMode      String?
+  budget          Float?
+  bidType         String?
+  bidPrice        Float?
+  targeting       Json?
+  schedule        Json?
+  status          String
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  campaign        Campaign    @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  ads             Ad[]
+  metrics         Metric[]
+
+  @@map("adgroups")
+}
+
+// ============================================================================
+// Ad管理
+// ============================================================================
+
+model Ad {
+  id              String      @id @default(uuid())
+  tiktokId        String      @unique
+  adgroupId       String
+  name            String
+  creativeId      String
+  adText          String?
+  callToAction    String?
+  landingPageUrl  String?
+  displayName     String?
+  status          String
+  reviewStatus    String?
+  reviewMessage   String?
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  adGroup         AdGroup     @relation(fields: [adgroupId], references: [id], onDelete: Cascade)
+  creative        Creative    @relation(fields: [creativeId], references: [id], onDelete: Restrict)
+  metrics         Metric[]
+
+  @@map("ads")
+}
+
+// ============================================================================
+// Creative管理
+// ============================================================================
+
+model Creative {
+  id              String      @id @default(uuid())
+  advertiserId    String
+  tiktokVideoId   String?
+  tiktokImageId   String?
+  type            String
+  url             String
+  thumbnailUrl    String?
+  filename        String
+  fileSize        Int?
+  duration        Int?
+  width           Int?
+  height          Int?
+  aspectRatio     String?
+  metadata        Json?
+  status          String      @default("PROCESSING")
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  advertiser      Advertiser  @relation(fields: [advertiserId], references: [id], onDelete: Cascade)
+  ads             Ad[]
+
+  @@map("creatives")
 }
 
 // ============================================================================
@@ -53,21 +162,212 @@ model Campaign {
 // ============================================================================
 
 model Metric {
-  id              String   @id @default(uuid())
-  campaignId      String
+  id              String      @id @default(uuid())
+  entityType      String
+  campaignId      String?
+  adgroupId       String?
+  adId            String?
   statDate        DateTime
-  impressions     Int      @default(0)
-  clicks          Int      @default(0)
-  spend           Float    @default(0)
-  conversions     Int      @default(0)
-  ctr             Float    @default(0)
-  cpc             Float    @default(0)
-  cpm             Float    @default(0)
-  cpa             Float    @default(0)
-  createdAt       DateTime @default(now())
+  impressions     Int         @default(0)
+  clicks          Int         @default(0)
+  spend           Float       @default(0)
+  conversions     Int         @default(0)
+  ctr             Float       @default(0)
+  cpc             Float       @default(0)
+  cpm             Float       @default(0)
+  cpa             Float       @default(0)
+  videoViews      Int         @default(0)
+  videoWatched2s  Int         @default(0)
+  videoWatched6s  Int         @default(0)
+  createdAt       DateTime    @default(now())
 
-  campaign        Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  campaign        Campaign?   @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  adGroup         AdGroup?    @relation(fields: [adgroupId], references: [id], onDelete: Cascade)
+  ad              Ad?         @relation(fields: [adId], references: [id], onDelete: Cascade)
 
-  @@unique([campaignId, statDate])
+  @@unique([entityType, campaignId, statDate], name: "metric_campaign_unique")
+  @@index([entityType, adgroupId, statDate], name: "metric_adgroup_idx")
+  @@index([entityType, adId, statDate], name: "metric_ad_idx")
+  @@index([statDate], name: "metric_statdate_idx")
   @@map("metrics")
+}
+
+// ============================================================================
+// ユーザー・権限管理
+// ============================================================================
+
+model User {
+  id              String      @id @default(uuid())
+  email           String      @unique
+  name            String
+  passwordHash    String?
+  status          String      @default("ACTIVE")
+  lastLoginAt     DateTime?
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  userRoles       UserRole[]
+  userAdvertisers UserAdvertiser[]
+  experiments     Experiment[]
+  changeLogs      ChangeLog[]
+
+  @@map("users")
+}
+
+model Role {
+  id              String      @id @default(uuid())
+  name            String      @unique
+  description     String?
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  userRoles       UserRole[]
+  rolePermissions RolePermission[]
+
+  @@map("roles")
+}
+
+model Permission {
+  id              String      @id @default(uuid())
+  name            String      @unique
+  resource        String
+  action          String
+  description     String?
+  createdAt       DateTime    @default(now())
+
+  rolePermissions RolePermission[]
+
+  @@map("permissions")
+}
+
+// 中間テーブル: User ←→ Role
+model UserRole {
+  userId          String
+  roleId          String
+  assignedAt      DateTime    @default(now())
+
+  user            User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role            Role        @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@id([userId, roleId])
+  @@map("user_roles")
+}
+
+// 中間テーブル: Role ←→ Permission
+model RolePermission {
+  roleId          String
+  permissionId    String
+  assignedAt      DateTime    @default(now())
+
+  role            Role        @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission      Permission  @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+  @@map("role_permissions")
+}
+
+// 中間テーブル: User ←→ Advertiser
+model UserAdvertiser {
+  userId          String
+  advertiserId    String
+  assignedAt      DateTime    @default(now())
+
+  user            User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  advertiser      Advertiser  @relation(fields: [advertiserId], references: [id], onDelete: Cascade)
+
+  @@id([userId, advertiserId])
+  @@map("user_advertisers")
+}
+
+// ============================================================================
+// 変更履歴・監査ログ
+// ============================================================================
+
+model ChangeLog {
+  id              String      @id @default(uuid())
+  entityType      String
+  entityId        String
+  action          String
+  userId          String?
+  source          String      @default("MANUAL")
+  beforeData      Json?
+  afterData       Json?
+  reason          String?
+  createdAt       DateTime    @default(now())
+
+  user            User?       @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([entityType, entityId], name: "changelog_entity_idx")
+  @@index([userId], name: "changelog_user_idx")
+  @@index([createdAt], name: "changelog_created_idx")
+  @@map("change_logs")
+}
+
+// ============================================================================
+// 実験フレームワーク（A/Bテスト・MAB）
+// ============================================================================
+
+model Experiment {
+  id              String      @id @default(uuid())
+  advertiserId    String
+  name            String
+  hypothesis      String?
+  experimentType  String
+  status          String      @default("DRAFT")
+  startDate       DateTime?
+  endDate         DateTime?
+  config          Json?
+  result          Json?
+  winner          String?
+  createdBy       String
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  advertiser      Advertiser  @relation(fields: [advertiserId], references: [id], onDelete: Cascade)
+  creator         User        @relation(fields: [createdBy], references: [id], onDelete: Restrict)
+
+  @@map("experiments")
+}
+
+// ============================================================================
+// Webhook受信イベント
+// ============================================================================
+
+model WebhookEvent {
+  id              String      @id @default(uuid())
+  eventId         String      @unique
+  eventType       String
+  payload         Json
+  signature       String?
+  processed       Boolean     @default(false)
+  processedAt     DateTime?
+  error           String?
+  createdAt       DateTime    @default(now())
+
+  @@index([eventType], name: "webhook_event_type_idx")
+  @@index([processed], name: "webhook_processed_idx")
+  @@map("webhook_events")
+}
+
+// ============================================================================
+// API呼び出しログ
+// ============================================================================
+
+model APILog {
+  id              String      @id @default(uuid())
+  endpoint        String
+  method          String
+  requestBody     Json?
+  responseStatus  Int
+  responseBody    Json?
+  duration        Int
+  advertiserId    String?
+  userId          String?
+  error           String?
+  createdAt       DateTime    @default(now())
+
+  @@index([endpoint], name: "apilog_endpoint_idx")
+  @@index([responseStatus], name: "apilog_status_idx")
+  @@index([createdAt], name: "apilog_created_idx")
+  @@map("api_logs")
 }
