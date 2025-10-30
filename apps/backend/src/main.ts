@@ -9,11 +9,29 @@ async function bootstrap() {
 
   // CORS設定
   app.enableCors({
-    origin: process.env.CORS_ORIGINS?.split(',') || [
-      'http://localhost:3000',
-      'http://localhost:3001',
-      'http://localhost:3002',
-    ],
+    origin: (origin, callback) => {
+      const allowedOrigins = process.env.CORS_ORIGINS?.split(',') || [
+        'http://localhost:3000',
+        'http://localhost:3001',
+        'http://localhost:3002',
+      ];
+
+      // 本番環境のドメイン
+      const productionDomains = [
+        'https://adsp-database.com',
+        'https://www.adsp-database.com',
+      ];
+
+      // Vercelのプレビューデプロイメントも許可
+      const isVercelDeploy = origin && origin.includes('.vercel.app');
+      const isAllowed = !origin || allowedOrigins.includes(origin) || productionDomains.includes(origin) || isVercelDeploy;
+
+      if (isAllowed) {
+        callback(null, true);
+      } else {
+        callback(new Error('Not allowed by CORS'));
+      }
+    },
     credentials: true,
   });
 
