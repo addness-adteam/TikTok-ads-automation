@@ -20,20 +20,37 @@ export default function LoginPage() {
     try {
       setIsRedirecting(true);
 
+      console.log('API URL:', process.env.NEXT_PUBLIC_API_URL);
+      console.log('Fetching auth URL...');
+
       // バックエンドから認証URLを取得
       const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/auth/tiktok/url`);
+
+      console.log('Response status:', response.status);
+      console.log('Response headers:', response.headers);
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('API Error:', errorText);
+        alert(`認証URLの取得に失敗しました (ステータス: ${response.status})\n詳細: ${errorText}`);
+        setIsRedirecting(false);
+        return;
+      }
+
       const data = await response.json();
+      console.log('Response data:', data);
 
       if (data.authUrl) {
+        console.log('Redirecting to:', data.authUrl);
         // TikTok認証ページへリダイレクト
         window.location.href = data.authUrl;
       } else {
-        alert('認証URLの取得に失敗しました');
+        alert('認証URLの取得に失敗しました\nレスポンスにauthUrlが含まれていません');
         setIsRedirecting(false);
       }
     } catch (error) {
       console.error('Login error:', error);
-      alert('ログインに失敗しました');
+      alert(`ログインに失敗しました\nエラー: ${error instanceof Error ? error.message : String(error)}`);
       setIsRedirecting(false);
     }
   };
