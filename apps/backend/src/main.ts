@@ -38,5 +38,6 @@ async function bootstrap() {
   const port = process.env.PORT ?? 4000;
   await app.listen(port);
   console.log(`Application is running on: http://localhost:${port}`);
+  console.log(`CORS enabled for: adsp-database.com and *.vercel.app`);
 }
 bootstrap();
