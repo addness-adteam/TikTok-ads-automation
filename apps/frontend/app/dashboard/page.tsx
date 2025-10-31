@@ -1,9 +1,7 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
-import { TrendingUp, DollarSign, MousePointerClick, Target, AlertCircle, Loader2, LogOut } from 'lucide-react';
-import { useAuth } from '@/lib/context/AuthContext';
+import { useState } from 'react';
+import { TrendingUp, DollarSign, MousePointerClick, Target, AlertCircle, Loader2 } from 'lucide-react';
 import { KpiCard } from '@/components/dashboard/kpi-card';
 import { PerformanceChart } from '@/components/dashboard/performance-chart';
 import { CampaignList } from '@/components/dashboard/campaign-list';
@@ -11,21 +9,10 @@ import { useDashboardData } from '@/lib/hooks/useDashboardData';
 
 export default function DashboardPage() {
   const router = useRouter();
-  const { isAuthenticated, isLoading: authLoading, logout } = useAuth();
   const [selectedMetric, setSelectedMetric] = useState<'spend' | 'impressions' | 'clicks' | 'conversions'>('spend');
   const { campaigns, kpiData, chartData, isLoading, error, isUsingMockData } = useDashboardData();
 
-  // 未認証の場合はログインページにリダイレクト
-  useEffect(() => {
-    if (!authLoading && !isAuthenticated) {
-      router.push('/login');
-    }
-  }, [isAuthenticated, authLoading, router]);
-
-  const handleLogout = () => {
-    logout();
-    router.push('/login');
-  };
+  // OAuth認証不要 - 固定トークンを使用
 
   // ローディング状態
   if (isLoading) {
@@ -43,18 +30,9 @@ export default function DashboardPage() {
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
       <header className="bg-white border-b border-gray-200">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">TikTok広告ダッシュボード</h1>
-            <p className="text-sm text-gray-600 mt-1">広告パフォーマンスの概要</p>
-          </div>
-          <button
-            onClick={handleLogout}
-            className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
-          >
-            <LogOut className="w-4 h-4" />
-            ログアウト
-          </button>
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+          <h1 className="text-2xl font-bold text-gray-900">TikTok広告ダッシュボード</h1>
+          <p className="text-sm text-gray-600 mt-1">広告パフォーマンスの概要（13アカウント）</p>
         </div>
       </header>
 
