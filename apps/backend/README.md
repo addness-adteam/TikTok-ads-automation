@@ -96,4 +96,4 @@ Nest is an MIT-licensed open source project. It can grow thanks to the sponsors 
 ## License
 
 Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
-# Force redeploy - Fix App ID and redirect URI for TikTok OAuth
+# Force redeploy - Configure correct URLs for production OAuth flow
