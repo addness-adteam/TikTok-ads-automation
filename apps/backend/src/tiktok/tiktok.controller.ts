@@ -1,5 +1,5 @@
 import { Controller, Get, Post, Query, Body, Logger, Res } from '@nestjs/common';
-import { Response } from 'express';
+import type { Response } from 'express';
 import { TiktokService } from './tiktok.service';
 
 @Controller('auth/tiktok')
