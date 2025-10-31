@@ -1,4 +1,5 @@
-import { Controller, Get, Post, Query, Body, Logger } from '@nestjs/common';
+import { Controller, Get, Post, Query, Body, Logger, Res } from '@nestjs/common';
+import { Response } from 'express';
 import { TiktokService } from './tiktok.service';
 
 @Controller('auth/tiktok')
@@ -22,25 +23,29 @@ export class TiktokController {
    * GET /auth/tiktok/callback?auth_code=xxx&state=xxx
    */
   @Get('callback')
-  async handleCallback(@Query('auth_code') authCode: string) {
+  async handleCallback(
+    @Query('auth_code') authCode: string,
+    @Res() res: Response,
+  ) {
     this.logger.log(`OAuth callback received with auth_code: ${authCode?.substring(0, 10)}...`);
 
+    const frontendUrl = process.env.FRONTEND_URL || 'https://adsp-database.com';
+
     if (!authCode) {
-      return { success: false, error: 'No auth_code provided' };
+      this.logger.error('No auth_code provided');
+      return res.redirect(`${frontendUrl}/login?error=no_auth_code`);
     }
 
     try {
       const tokenData = await this.tiktokService.getAccessToken(authCode);
-      return {
-        success: true,
-        data: tokenData,
-      };
+
+      // 認証成功 - ダッシュボードにリダイレクト
+      this.logger.log('OAuth authentication successful, redirecting to dashboard');
+      return res.redirect(`${frontendUrl}/dashboard`);
     } catch (error) {
       this.logger.error('OAuth callback failed', error);
-      return {
-        success: false,
-        error: error.response?.data || error.message,
-      };
+      const errorMessage = encodeURIComponent(error.response?.data?.message || error.message || 'Authentication failed');
+      return res.redirect(`${frontendUrl}/login?error=${errorMessage}`);
     }
   }
 
