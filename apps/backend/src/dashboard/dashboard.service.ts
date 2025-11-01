@@ -29,8 +29,8 @@ export class DashboardService {
     this.logger.log(`Fetching data for period: ${startDate} to ${endDate}`);
 
     // 全Advertiserのキャンペーンを取得
-    const allCampaigns = [];
-    const allReportData = [];
+    const allCampaigns: any[] = [];
+    const allReportData: any[] = [];
 
     for (const advertiserId of this.advertiserIds) {
       try {
