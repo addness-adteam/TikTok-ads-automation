@@ -8,7 +8,6 @@ import { CampaignList } from '@/components/dashboard/campaign-list';
 import { useDashboardData } from '@/lib/hooks/useDashboardData';
 
 export default function DashboardPage() {
-  const router = useRouter();
   const [selectedMetric, setSelectedMetric] = useState<'spend' | 'impressions' | 'clicks' | 'conversions'>('spend');
   const { campaigns, kpiData, chartData, isLoading, error, isUsingMockData } = useDashboardData();
 
