@@ -217,6 +217,40 @@ export class TiktokService {
   }
 
   /**
+   * Ad Group（広告セット）一覧を取得
+   * GET /v1.3/adgroup/get/
+   */
+  async getAdGroups(advertiserId: string, accessToken: string, campaignIds?: string[]) {
+    try {
+      this.logger.log(`Fetching ad groups for advertiser: ${advertiserId}`);
+
+      const requestBody: any = {
+        advertiser_id: advertiserId,
+        page_size: 1000, // 最大1000件取得
+      };
+
+      if (campaignIds && campaignIds.length > 0) {
+        requestBody.filtering = {
+          campaign_ids: campaignIds,
+        };
+      }
+
+      const response = await this.httpClient.get('/v1.3/adgroup/get/', {
+        headers: {
+          'Access-Token': accessToken,
+        },
+        params: requestBody,
+      });
+
+      this.logger.log(`Retrieved ${response.data.data?.list?.length || 0} ad groups`);
+      return response.data;
+    } catch (error) {
+      this.logger.error('Failed to get ad groups', error.response?.data || error.message);
+      throw error;
+    }
+  }
+
+  /**
    * Campaign作成
    * POST /v1.2/campaign/create/
    */

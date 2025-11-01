@@ -40,19 +40,53 @@ export class DashboardService {
           this.accessToken,
         );
 
+        // 広告セット取得
+        const adGroupsResponse = await this.tiktokService.getAdGroups(
+          advertiserId,
+          this.accessToken,
+        );
+
+        // キャンペーンIDごとに広告セットの予算を集計
+        const adGroupsByCampaign: Record<string, any[]> = {};
+        if (adGroupsResponse?.data?.list) {
+          adGroupsResponse.data.list.forEach((adGroup: any) => {
+            const campaignId = adGroup.campaign_id;
+            if (!adGroupsByCampaign[campaignId]) {
+              adGroupsByCampaign[campaignId] = [];
+            }
+            adGroupsByCampaign[campaignId].push(adGroup);
+          });
+        }
+
         if (campaignsResponse?.data?.list) {
-          const campaigns = campaignsResponse.data.list.map((c: any) => ({
-            id: c.campaign_id,
-            tiktokId: c.campaign_id,
-            advertiserId: c.advertiser_id,
-            name: c.campaign_name,
-            objectiveType: c.objective_type,
-            budgetMode: c.budget_mode,
-            budget: c.budget,
-            status: c.operation_status,
-            createdAt: c.create_time,
-            updatedAt: c.modify_time,
-          }));
+          const campaigns = campaignsResponse.data.list.map((c: any) => {
+            const adGroups = adGroupsByCampaign[c.campaign_id] || [];
+
+            // 広告セットの日予算を集計
+            let totalAdGroupBudget = 0;
+            let adGroupBudgetMode = '';
+
+            adGroups.forEach((ag: any) => {
+              if (ag.budget) {
+                totalAdGroupBudget += parseFloat(ag.budget);
+                adGroupBudgetMode = ag.budget_mode || '';
+              }
+            });
+
+            return {
+              id: c.campaign_id,
+              tiktokId: c.campaign_id,
+              advertiserId: c.advertiser_id,
+              name: c.campaign_name,
+              objectiveType: c.objective_type,
+              budgetMode: c.budget_mode || adGroupBudgetMode,
+              budget: c.budget || (totalAdGroupBudget > 0 ? totalAdGroupBudget : null),
+              adGroupCount: adGroups.length,
+              status: c.operation_status,
+              createdAt: c.create_time,
+              updatedAt: c.modify_time,
+            };
+          });
           allCampaigns.push(...campaigns);
         }
 
