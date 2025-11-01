@@ -6,6 +6,7 @@ import { AppService } from './app.service';
 import { PrismaModule } from './prisma/prisma.module';
 import { TiktokModule } from './tiktok/tiktok.module';
 import { JobsModule } from './jobs/jobs.module';
+import { DashboardModule } from './dashboard/dashboard.module';
 
 @Module({
   imports: [
@@ -17,6 +18,7 @@ import { JobsModule } from './jobs/jobs.module';
     PrismaModule,
     TiktokModule,
     JobsModule,
+    DashboardModule,
   ],
   controllers: [AppController],
   providers: [AppService],

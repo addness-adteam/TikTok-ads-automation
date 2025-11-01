@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useAuth } from '../context/AuthContext';
-import { getCampaigns, getReport, Campaign } from '../api';
+import { Campaign } from '../api';
 
 // モックデータ（APIが利用できない場合のフォールバック）
 const mockKpiData = {
@@ -84,7 +83,6 @@ interface DashboardData {
 }
 
 export function useDashboardData(): DashboardData {
-  const { accessToken, advertiserId } = useAuth();
   const [campaigns, setCampaigns] = useState<Campaign[]>(mockCampaigns);
   const [kpiData, setKpiData] = useState(mockKpiData);
   const [chartData, setChartData] = useState(mockChartData);
@@ -97,103 +95,27 @@ export function useDashboardData(): DashboardData {
       setIsLoading(true);
       setError(null);
 
-      // 認証情報がない場合はモックデータを使用
-      if (!advertiserId || !accessToken) {
-        console.log('認証情報が未設定のため、モックデータを使用します');
-        setIsUsingMockData(true);
-        setIsLoading(false);
-        return;
-      }
-
       try {
-        // Campaign一覧を取得
-        const campaignsResponse = await getCampaigns(advertiserId, accessToken);
+        // 新しいダッシュボードAPIエンドポイントを呼び出す
+        const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/dashboard`);
 
-        if (campaignsResponse.success && campaignsResponse.data?.data?.list) {
-          const fetchedCampaigns = campaignsResponse.data.data.list.map((c: any) => ({
-            id: c.campaign_id,
-            tiktokId: c.campaign_id,
-            advertiserId: c.advertiser_id,
-            name: c.campaign_name,
-            objectiveType: c.objective_type,
-            budgetMode: c.budget_mode,
-            budget: c.budget,
-            status: c.operation_status,
-            createdAt: c.create_time,
-            updatedAt: c.modify_time,
-          }));
-
-          setCampaigns(fetchedCampaigns);
-          setIsUsingMockData(false);
+        if (!response.ok) {
+          throw new Error(`API error: ${response.status}`);
         }
 
-        // レポートデータを取得（過去7日間）
-        const endDate = new Date().toISOString().split('T')[0];
-        const startDate = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+        const result = await response.json();
 
-        const reportResponse = await getReport(
-          advertiserId,
-          accessToken,
-          'AUCTION_CAMPAIGN',
-          startDate,
-          endDate
-        );
+        if (result.success && result.data) {
+          const { campaigns: fetchedCampaigns, kpiData: fetchedKpiData, chartData: fetchedChartData } = result.data;
 
-        if (reportResponse.success && reportResponse.data?.data?.list) {
-          const reportData = reportResponse.data.data.list;
-
-          // KPIデータを計算
-          let totalSpend = 0;
-          let totalImpressions = 0;
-          let totalClicks = 0;
-          let totalConversions = 0;
-
-          const chartDataMap: Record<string, any> = {};
-
-          reportData.forEach((record: any) => {
-            const metrics = record.metrics || {};
-            const date = record.dimensions?.stat_time_day || record.stat_time_day;
-
-            totalSpend += parseFloat(metrics.spend || '0');
-            totalImpressions += parseInt(metrics.impressions || '0', 10);
-            totalClicks += parseInt(metrics.clicks || '0', 10);
-            totalConversions += parseInt(metrics.conversions || '0', 10);
-
-            if (date) {
-              if (!chartDataMap[date]) {
-                chartDataMap[date] = {
-                  date,
-                  spend: 0,
-                  impressions: 0,
-                  clicks: 0,
-                  conversions: 0,
-                };
-              }
-
-              chartDataMap[date].spend += parseFloat(metrics.spend || '0');
-              chartDataMap[date].impressions += parseInt(metrics.impressions || '0', 10);
-              chartDataMap[date].clicks += parseInt(metrics.clicks || '0', 10);
-              chartDataMap[date].conversions += parseInt(metrics.conversions || '0', 10);
-            }
-          });
-
-          const avgCtr = totalClicks > 0 ? (totalClicks / totalImpressions) * 100 : 0;
-          const avgCpa = totalConversions > 0 ? totalSpend / totalConversions : 0;
-
-          setKpiData({
-            totalSpend,
-            totalImpressions,
-            totalClicks,
-            totalConversions,
-            avgCtr,
-            avgCpa,
-          });
-
-          setChartData(
-            Object.values(chartDataMap).sort((a, b) => a.date.localeCompare(b.date))
-          );
-
+          setCampaigns(fetchedCampaigns || []);
+          setKpiData(fetchedKpiData || mockKpiData);
+          setChartData(fetchedChartData || mockChartData);
           setIsUsingMockData(false);
+
+          console.log(`実データ取得成功: ${fetchedCampaigns?.length || 0} キャンペーン`);
+        } else {
+          throw new Error(result.error || 'データの取得に失敗しました');
         }
       } catch (err: any) {
         console.error('データ取得エラー:', err);
@@ -205,7 +127,7 @@ export function useDashboardData(): DashboardData {
     };
 
     fetchData();
-  }, [accessToken, advertiserId]);
+  }, []);
 
   return {
     campaigns,
