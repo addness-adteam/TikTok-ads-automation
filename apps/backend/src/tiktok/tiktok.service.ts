@@ -80,16 +80,23 @@ export class TiktokService {
 
       const scopeStr = scope ? JSON.stringify(scope) : null;
 
+      // TikTok APIから全広告主の情報を一括取得
+      let advertiserNameMap: { [key: string]: string } = {};
+      try {
+        const advertiserData = await this.getAdvertiserInfo(accessToken);
+        if (advertiserData?.data?.list) {
+          for (const adv of advertiserData.data.list) {
+            advertiserNameMap[adv.advertiser_id] = adv.advertiser_name || `Advertiser ${adv.advertiser_id}`;
+          }
+        }
+      } catch (error) {
+        this.logger.warn('Failed to fetch advertiser names, using fallback names');
+      }
+
       // 各Advertiser用にトークンを保存
       for (const advertiserId of advertiserIds) {
-        // TikTok APIから広告主情報を取得して実際の名前を取得
-        let advertiserName = `Advertiser ${advertiserId}`;
-        try {
-          const advertiserInfo = await this.getAdvertiserDetails(advertiserId, accessToken);
-          advertiserName = advertiserInfo.name || advertiserName;
-        } catch (error) {
-          this.logger.warn(`Failed to fetch advertiser name for ${advertiserId}, using fallback name`);
-        }
+        // マッピングから名前を取得、なければフォールバック
+        const advertiserName = advertiserNameMap[advertiserId] || `Advertiser ${advertiserId}`;
 
         // まずAdvertiserレコードを作成（存在しない場合）
         await this.prisma.advertiser.upsert({
@@ -188,35 +195,6 @@ export class TiktokService {
       this.logger.log('Advertiser data:', JSON.stringify(response.data, null, 2));
 
       return response.data;
-    } catch (error) {
-      this.logger.error('Failed to get advertiser info', error.response?.data || error.message);
-      throw error;
-    }
-  }
-
-  /**
-   * 広告主詳細情報を取得（名前など）
-   * GET /v1.3/advertiser/info/
-   */
-  async getAdvertiserDetails(advertiserId: string, accessToken: string) {
-    try {
-      this.logger.log(`Fetching advertiser info for: ${advertiserId}`);
-
-      const response = await this.httpClient.get('/v1.3/advertiser/info/', {
-        headers: {
-          'Access-Token': accessToken,
-        },
-        params: {
-          advertiser_ids: [advertiserId],
-        },
-      });
-
-      const advertisers = response.data.data?.list || [];
-      if (advertisers.length === 0) {
-        throw new Error(`Advertiser not found: ${advertiserId}`);
-      }
-
-      return advertisers[0];
     } catch (error) {
       this.logger.error('Failed to get advertiser info', error.response?.data || error.message);
       throw error;
