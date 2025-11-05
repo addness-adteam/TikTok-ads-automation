@@ -251,6 +251,184 @@ export class TiktokService {
   }
 
   /**
+   * 単一Ad Group取得
+   * GET /v1.3/adgroup/get/
+   */
+  async getAdGroup(advertiserId: string, accessToken: string, adgroupId: string) {
+    try {
+      this.logger.log(`Fetching adgroup: ${adgroupId}`);
+
+      const response = await this.httpClient.get('/v1.3/adgroup/get/', {
+        headers: {
+          'Access-Token': accessToken,
+        },
+        params: {
+          advertiser_id: advertiserId,
+          filtering: {
+            adgroup_ids: [adgroupId],
+          },
+        },
+      });
+
+      const adgroups = response.data.data?.list || [];
+      if (adgroups.length === 0) {
+        throw new Error(`AdGroup not found: ${adgroupId}`);
+      }
+
+      return adgroups[0];
+    } catch (error) {
+      this.logger.error('Failed to get adgroup', error.response?.data || error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * AdGroup更新
+   * POST /v1.2/adgroup/update/
+   */
+  async updateAdGroup(
+    advertiserId: string,
+    accessToken: string,
+    adgroupId: string,
+    updates: {
+      budget?: number;
+      status?: string;
+    },
+  ) {
+    try {
+      this.logger.log(`Updating adgroup: ${adgroupId}`);
+
+      const requestBody: any = {
+        advertiser_id: advertiserId,
+        adgroup_id: adgroupId,
+      };
+
+      if (updates.budget) {
+        requestBody.budget = updates.budget;
+      }
+
+      if (updates.status) {
+        requestBody.operation_status = updates.status;
+      }
+
+      const response = await this.httpClient.post('/v1.2/adgroup/update/', requestBody, {
+        headers: {
+          'Access-Token': accessToken,
+        },
+      });
+
+      this.logger.log('AdGroup updated successfully');
+      return response.data;
+    } catch (error) {
+      this.logger.error('Failed to update adgroup', error.response?.data || error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * Ad（広告）一覧を取得
+   * GET /v1.3/ad/get/
+   */
+  async getAds(advertiserId: string, accessToken: string, adgroupIds?: string[]) {
+    try {
+      this.logger.log(`Fetching ads for advertiser: ${advertiserId}`);
+
+      const requestBody: any = {
+        advertiser_id: advertiserId,
+        page_size: 1000,
+      };
+
+      if (adgroupIds && adgroupIds.length > 0) {
+        requestBody.filtering = {
+          adgroup_ids: adgroupIds,
+        };
+      }
+
+      const response = await this.httpClient.get('/v1.3/ad/get/', {
+        headers: {
+          'Access-Token': accessToken,
+        },
+        params: requestBody,
+      });
+
+      this.logger.log(`Retrieved ${response.data.data?.list?.length || 0} ads`);
+      return response.data;
+    } catch (error) {
+      this.logger.error('Failed to get ads', error.response?.data || error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * Ad更新
+   * POST /v1.2/ad/update/
+   */
+  async updateAd(
+    advertiserId: string,
+    accessToken: string,
+    adId: string,
+    updates: {
+      status?: string;
+    },
+  ) {
+    try {
+      this.logger.log(`Updating ad: ${adId}`);
+
+      const requestBody: any = {
+        advertiser_id: advertiserId,
+        ad_id: adId,
+      };
+
+      if (updates.status) {
+        requestBody.operation_status = updates.status;
+      }
+
+      const response = await this.httpClient.post('/v1.2/ad/update/', requestBody, {
+        headers: {
+          'Access-Token': accessToken,
+        },
+      });
+
+      this.logger.log('Ad updated successfully');
+      return response.data;
+    } catch (error) {
+      this.logger.error('Failed to update ad', error.response?.data || error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * 単一Campaign取得
+   */
+  async getCampaign(advertiserId: string, accessToken: string, campaignId: string) {
+    try {
+      this.logger.log(`Fetching campaign: ${campaignId}`);
+
+      const response = await this.httpClient.get('/v1.3/campaign/get/', {
+        headers: {
+          'Access-Token': accessToken,
+        },
+        params: {
+          advertiser_id: advertiserId,
+          filtering: {
+            campaign_ids: [campaignId],
+          },
+        },
+      });
+
+      const campaigns = response.data.data?.list || [];
+      if (campaigns.length === 0) {
+        throw new Error(`Campaign not found: ${campaignId}`);
+      }
+
+      return campaigns[0];
+    } catch (error) {
+      this.logger.error('Failed to get campaign', error.response?.data || error.message);
+      throw error;
+    }
+  }
+
+  /**
    * Campaign作成
    * POST /v1.2/campaign/create/
    */
@@ -307,6 +485,216 @@ export class TiktokService {
       return response.data;
     } catch (error) {
       this.logger.error('Failed to create campaign', error.response?.data || error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * AdGroup作成
+   * POST /v1.2/adgroup/create/
+   */
+  async createAdGroup(
+    advertiserId: string,
+    campaignId: string,
+    adgroupName: string,
+    options: {
+      placementType?: string;
+      placements?: string[];
+      budgetMode?: string;
+      budget?: number;
+      bidType?: string;
+      bidPrice?: number;
+      optimizationGoal?: string;
+      pixelId?: string;
+      optimizationEvent?: string;
+      targeting?: any;
+      scheduleStartTime?: string;
+      scheduleEndTime?: string;
+    },
+    accessToken: string,
+  ) {
+    try {
+      this.logger.log(`Creating adgroup: ${adgroupName} for campaign: ${campaignId}`);
+
+      const requestBody: any = {
+        advertiser_id: advertiserId,
+        campaign_id: campaignId,
+        adgroup_name: adgroupName,
+        placement_type: options.placementType || 'PLACEMENT_TYPE_NORMAL',
+        placements: options.placements || ['PLACEMENT_TIKTOK'],
+        location_ids: options.targeting?.location_ids || ['6252001'],
+        languages: options.targeting?.languages || ['ja'],
+        age_groups: options.targeting?.age_groups || ['AGE_18_24', 'AGE_25_34', 'AGE_35_44', 'AGE_45_54', 'AGE_55_100'],
+        gender: options.targeting?.gender || 'GENDER_UNLIMITED',
+        budget_mode: options.budgetMode || 'BUDGET_MODE_DAY',
+        budget: options.budget,
+        bid_type: options.bidType || 'BID_TYPE_NO_BID',
+        optimization_goal: options.optimizationGoal || 'COMPLETE_PAYMENT',
+        schedule_type: 'SCHEDULE_START_END',
+        schedule_start_time: options.scheduleStartTime,
+      };
+
+      if (options.bidPrice) {
+        requestBody.bid_price = options.bidPrice;
+      }
+
+      if (options.scheduleEndTime) {
+        requestBody.schedule_end_time = options.scheduleEndTime;
+      }
+
+      if (options.pixelId) {
+        requestBody.pixel_id = options.pixelId;
+      }
+
+      if (options.optimizationEvent) {
+        requestBody.conversion_id = options.optimizationEvent;
+      }
+
+      if (options.targeting?.included_custom_audiences) {
+        requestBody.included_custom_audiences = options.targeting.included_custom_audiences;
+      }
+
+      if (options.targeting?.excluded_custom_audiences) {
+        requestBody.excluded_custom_audiences = options.targeting.excluded_custom_audiences;
+      }
+
+      if (options.targeting?.spending_power) {
+        requestBody.spending_power = options.targeting.spending_power;
+      }
+
+      const response = await this.httpClient.post('/v1.2/adgroup/create/', requestBody, {
+        headers: {
+          'Access-Token': accessToken,
+        },
+      });
+
+      this.logger.log('AdGroup created successfully');
+      this.logger.log('AdGroup data:', JSON.stringify(response.data, null, 2));
+
+      // DBに保存
+      if (response.data.data?.adgroup_id) {
+        await this.prisma.adGroup.create({
+          data: {
+            tiktokId: String(response.data.data.adgroup_id),
+            campaignId,
+            name: adgroupName,
+            placementType: options.placementType,
+            budgetMode: options.budgetMode,
+            budget: options.budget,
+            bidType: options.bidType,
+            bidPrice: options.bidPrice,
+            targeting: options.targeting,
+            schedule: {
+              startTime: options.scheduleStartTime,
+              endTime: options.scheduleEndTime,
+            },
+            status: 'ENABLE',
+          },
+        });
+        this.logger.log(`AdGroup saved to database: ${response.data.data.adgroup_id}`);
+      }
+
+      return response.data;
+    } catch (error) {
+      this.logger.error('Failed to create adgroup', error.response?.data || error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * Ad作成
+   * POST /v1.2/ad/create/
+   */
+  async createAd(
+    advertiserId: string,
+    adgroupId: string,
+    adName: string,
+    options: {
+      identity?: string;
+      videoId?: string;
+      imageIds?: string[];
+      adText?: string;
+      callToAction?: string;
+      landingPageUrl?: string;
+      displayMode?: string;
+      creativeAuthorized?: boolean;
+    },
+    accessToken: string,
+  ) {
+    try {
+      this.logger.log(`Creating ad: ${adName} for adgroup: ${adgroupId}`);
+
+      const requestBody: any = {
+        advertiser_id: advertiserId,
+        adgroup_id: adgroupId,
+        ad_name: adName,
+        ad_text: options.adText,
+        call_to_action: options.callToAction || 'LEARN_MORE',
+        landing_page_url: options.landingPageUrl,
+        identity_id: options.identity || 'addness08',
+        identity_type: 'TT_USER',
+        is_smart_creative: options.creativeAuthorized || false,
+      };
+
+      if (options.videoId) {
+        requestBody.video_id = options.videoId;
+      }
+
+      if (options.imageIds && options.imageIds.length > 0) {
+        requestBody.image_ids = options.imageIds;
+      }
+
+      if (options.displayMode) {
+        requestBody.display_mode = options.displayMode;
+      }
+
+      const response = await this.httpClient.post('/v1.2/ad/create/', requestBody, {
+        headers: {
+          'Access-Token': accessToken,
+        },
+      });
+
+      this.logger.log('Ad created successfully');
+      this.logger.log('Ad data:', JSON.stringify(response.data, null, 2));
+
+      // DBに保存
+      if (response.data.data?.ad_id) {
+        // まず、creativeIdを取得する必要がある（videoIdまたはimageIdから検索）
+        let creativeId: string | null = null;
+        if (options.videoId) {
+          const creative = await this.prisma.creative.findFirst({
+            where: { tiktokVideoId: options.videoId },
+          });
+          creativeId = creative?.id || null;
+        } else if (options.imageIds && options.imageIds.length > 0) {
+          const creative = await this.prisma.creative.findFirst({
+            where: { tiktokImageId: options.imageIds[0] },
+          });
+          creativeId = creative?.id || null;
+        }
+
+        if (creativeId) {
+          await this.prisma.ad.create({
+            data: {
+              tiktokId: String(response.data.data.ad_id),
+              adgroupId,
+              name: adName,
+              creativeId,
+              adText: options.adText,
+              callToAction: options.callToAction,
+              landingPageUrl: options.landingPageUrl,
+              displayName: options.identity,
+              status: 'ENABLE',
+              reviewStatus: 'IN_REVIEW',
+            },
+          });
+          this.logger.log(`Ad saved to database: ${response.data.data.ad_id}`);
+        }
+      }
+
+      return response.data;
+    } catch (error) {
+      this.logger.error('Failed to create ad', error.response?.data || error.message);
       throw error;
     }
   }

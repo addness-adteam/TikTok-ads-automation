@@ -1,0 +1,561 @@
+import { Injectable, Logger } from '@nestjs/common';
+import { PrismaService } from '../prisma/prisma.service';
+import { TiktokService } from '../tiktok/tiktok.service';
+import { GoogleSheetsService } from '../google-sheets/google-sheets.service';
+import { AppealService } from '../appeal/appeal.service';
+
+interface AdPerformance {
+  adId: string;
+  adName: string;
+  adgroupId: string;
+  campaignId: string;
+  advertiserId: string;
+  status: string;
+  impressions: number;
+  spend: number;
+  cvCount: number;
+  frontSalesCount: number;
+  cpa: number;
+  frontCPO: number;
+  registrationPath: string;
+  appealName: string;
+}
+
+interface OptimizationDecision {
+  adId: string;
+  adName: string;
+  adgroupId: string;
+  action: 'PAUSE' | 'CONTINUE' | 'INCREASE_BUDGET';
+  reason: string;
+  currentBudget?: number;
+  newBudget?: number;
+}
+
+@Injectable()
+export class OptimizationService {
+  private readonly logger = new Logger(OptimizationService.name);
+
+  constructor(
+    private prisma: PrismaService,
+    private tiktokService: TiktokService,
+    private googleSheetsService: GoogleSheetsService,
+    private appealService: AppealService,
+  ) {}
+
+  /**
+   * 予算調整を実行（全Advertiser対象）
+   */
+  async executeOptimization(accessToken: string) {
+    this.logger.log('Starting budget optimization for all advertisers');
+
+    const advertiserIds = await this.getActiveAdvertiserIds();
+    const results: any[] = [];
+
+    for (const advertiserId of advertiserIds) {
+      try {
+        const result = await this.optimizeAdvertiser(advertiserId, accessToken);
+        results.push(result);
+      } catch (error) {
+        this.logger.error(`Failed to optimize advertiser ${advertiserId}:`, error);
+        results.push({
+          advertiserId,
+          success: false,
+          error: error.message,
+        });
+      }
+    }
+
+    return {
+      success: true,
+      results,
+    };
+  }
+
+  /**
+   * 特定Advertiserの予算調整を実行
+   */
+  async optimizeAdvertiser(advertiserId: string, accessToken: string) {
+    this.logger.log(`Optimizing advertiser: ${advertiserId}`);
+
+    // 訴求情報を取得
+    const advertiser = await this.prisma.advertiser.findUnique({
+      where: { tiktokAdvertiserId: advertiserId },
+      include: {
+        appeal: true,
+      },
+    });
+
+    if (!advertiser) {
+      throw new Error(`Advertiser ${advertiserId} not found`);
+    }
+
+    if (!advertiser.appeal) {
+      throw new Error(`No appeal assigned to advertiser ${advertiserId}`);
+    }
+
+    const appeal = advertiser.appeal;
+
+    // 配信中の広告を取得
+    const activeAds = await this.getActiveAds(advertiserId, accessToken);
+    this.logger.log(`Found ${activeAds.length} active ads for advertiser ${advertiserId}`);
+
+    // 各広告のパフォーマンスを評価
+    const adPerformances: AdPerformance[] = [];
+    for (const ad of activeAds) {
+      try {
+        const performance = await this.evaluateAdPerformance(ad, appeal, accessToken);
+        if (performance) {
+          adPerformances.push(performance);
+        }
+      } catch (error) {
+        this.logger.error(`Failed to evaluate ad ${ad.ad_id}:`, error);
+      }
+    }
+
+    // 最適化判断を実行
+    const decisions: OptimizationDecision[] = [];
+    for (const performance of adPerformances) {
+      const decision = await this.makeOptimizationDecision(performance, appeal);
+      decisions.push(decision);
+    }
+
+    // 広告セットごとにグループ化して実行
+    const adgroupDecisions = this.groupDecisionsByAdGroup(decisions);
+    const executionResults: any[] = [];
+
+    for (const [adgroupId, adDecisions] of Object.entries(adgroupDecisions)) {
+      try {
+        const result = await this.executeAdGroupOptimization(
+          adgroupId,
+          adDecisions,
+          advertiserId,
+          accessToken,
+        );
+        executionResults.push(result);
+      } catch (error) {
+        this.logger.error(`Failed to optimize adgroup ${adgroupId}:`, error);
+      }
+    }
+
+    return {
+      advertiserId,
+      success: true,
+      totalAds: activeAds.length,
+      evaluated: adPerformances.length,
+      decisions: decisions.length,
+      executed: executionResults.length,
+      results: executionResults,
+    };
+  }
+
+  /**
+   * 配信中の広告を取得
+   */
+  private async getActiveAds(advertiserId: string, accessToken: string) {
+    // TikTok APIから広告一覧を取得
+    const adsResponse = await this.tiktokService.getAds(advertiserId, accessToken);
+
+    // ステータスが配信中（ENABLE）の広告のみフィルタリング
+    return adsResponse.data?.list?.filter((ad: any) => ad.operation_status === 'ENABLE') || [];
+  }
+
+  /**
+   * 広告のパフォーマンスを評価
+   */
+  private async evaluateAdPerformance(
+    ad: any,
+    appeal: any,
+    accessToken: string,
+  ): Promise<AdPerformance | null> {
+    // 広告名をパース
+    const parsedName = this.parseAdName(ad.ad_name);
+    if (!parsedName) {
+      this.logger.error(`Invalid ad name format: ${ad.ad_name}`);
+      return null;
+    }
+
+    // 登録経路を生成
+    const registrationPath = this.generateRegistrationPath(parsedName.lpName, appeal.name);
+
+    // 過去7日間の期間を計算（当日は含めない）
+    const { startDate, endDate } = this.calculateEvaluationPeriod();
+
+    // TikTok APIから過去7日間のメトリクスを取得
+    const metrics = await this.getAdMetrics(ad.ad_id, startDate, endDate);
+
+    // スプレッドシートからCV数とフロント販売本数を取得
+    const cvCount = await this.googleSheetsService.getCVCount(
+      appeal.name,
+      appeal.cvSpreadsheetUrl,
+      registrationPath,
+      startDate,
+      endDate,
+    );
+
+    const frontSalesCount = await this.googleSheetsService.getFrontSalesCount(
+      appeal.name,
+      appeal.frontSpreadsheetUrl,
+      registrationPath,
+      startDate,
+      endDate,
+    );
+
+    // CPAとフロントCPOを計算
+    const cpa = cvCount > 0 ? metrics.spend / cvCount : 0;
+    const frontCPO = frontSalesCount > 0 ? metrics.spend / frontSalesCount : 0;
+
+    return {
+      adId: ad.ad_id,
+      adName: ad.ad_name,
+      adgroupId: ad.adgroup_id,
+      campaignId: ad.campaign_id,
+      advertiserId: ad.advertiser_id,
+      status: ad.operation_status,
+      impressions: metrics.impressions,
+      spend: metrics.spend,
+      cvCount,
+      frontSalesCount,
+      cpa,
+      frontCPO,
+      registrationPath,
+      appealName: appeal.name,
+    };
+  }
+
+  /**
+   * 広告名をパース
+   * 形式: 出稿日/制作者名/クリエイティブ名/LP名-番号
+   */
+  private parseAdName(adName: string): { date: string; creator: string; creativeName: string; lpName: string } | null {
+    const parts = adName.split('/');
+    if (parts.length !== 4) {
+      return null;
+    }
+
+    return {
+      date: parts[0],
+      creator: parts[1],
+      creativeName: parts[2],
+      lpName: parts[3],
+    };
+  }
+
+  /**
+   * 登録経路を生成
+   * 形式: TikTok広告-訴求-LP名および番号
+   */
+  private generateRegistrationPath(lpName: string, appealName: string): string {
+    return `TikTok広告-${appealName}-${lpName}`;
+  }
+
+  /**
+   * 評価期間を計算（過去7日間、当日は含めない）
+   */
+  private calculateEvaluationPeriod(): { startDate: Date; endDate: Date } {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const endDate = new Date(today);
+    endDate.setDate(endDate.getDate() - 1); // 昨日
+
+    const startDate = new Date(endDate);
+    startDate.setDate(startDate.getDate() - 6); // 7日前
+
+    return { startDate, endDate };
+  }
+
+  /**
+   * 広告のメトリクスを取得（過去7日間）
+   */
+  private async getAdMetrics(adId: string, startDate: Date, endDate: Date) {
+    const metrics = await this.prisma.metric.findMany({
+      where: {
+        adId,
+        statDate: {
+          gte: startDate,
+          lte: endDate,
+        },
+      },
+    });
+
+    // 合計を計算
+    const totalImpressions = metrics.reduce((sum, m) => sum + m.impressions, 0);
+    const totalSpend = metrics.reduce((sum, m) => sum + m.spend, 0);
+
+    return {
+      impressions: totalImpressions,
+      spend: totalSpend,
+    };
+  }
+
+  /**
+   * 最適化判断を実行
+   */
+  private async makeOptimizationDecision(
+    performance: AdPerformance,
+    appeal: any,
+  ): Promise<OptimizationDecision> {
+    const { impressions, spend, cvCount, frontSalesCount, cpa, frontCPO } = performance;
+    const { allowableCPA, targetCPA, allowableFrontCPO, targetFrontCPO } = appeal;
+
+    // 5000インプレッション未達の場合
+    if (impressions < 5000) {
+      return {
+        adId: performance.adId,
+        adName: performance.adName,
+        adgroupId: performance.adgroupId,
+        action: 'CONTINUE',
+        reason: `インプレッション数が5000未満（${impressions}）のため、継続配信`,
+      };
+    }
+
+    // フロント販売が1件以上ある場合
+    if (frontSalesCount >= 1) {
+      if (frontCPO <= targetFrontCPO) {
+        return {
+          adId: performance.adId,
+          adName: performance.adName,
+          adgroupId: performance.adgroupId,
+          action: 'INCREASE_BUDGET',
+          reason: `フロントCPO（${frontCPO.toFixed(2)}）が目標値（${targetFrontCPO}）以下のため、予算30%増額`,
+        };
+      } else if (frontCPO <= allowableFrontCPO) {
+        return {
+          adId: performance.adId,
+          adName: performance.adName,
+          adgroupId: performance.adgroupId,
+          action: 'CONTINUE',
+          reason: `フロントCPO（${frontCPO.toFixed(2)}）が許容値（${allowableFrontCPO}）以下のため、継続配信`,
+        };
+      } else {
+        return {
+          adId: performance.adId,
+          adName: performance.adName,
+          adgroupId: performance.adgroupId,
+          action: 'PAUSE',
+          reason: `フロントCPO（${frontCPO.toFixed(2)}）が許容値（${allowableFrontCPO}）を超過のため、停止`,
+        };
+      }
+    }
+
+    // フロント販売が0件の場合
+    if (frontSalesCount === 0) {
+      // 全期間の広告費を取得
+      const totalSpend = await this.getTotalAdSpend(performance.adId);
+
+      if (cpa <= allowableCPA && totalSpend <= allowableFrontCPO) {
+        return {
+          adId: performance.adId,
+          adName: performance.adName,
+          adgroupId: performance.adgroupId,
+          action: 'CONTINUE',
+          reason: `CPA（${cpa.toFixed(2)}）が許容値以下かつ累積広告費（${totalSpend}）が許容フロントCPO以下のため、継続配信`,
+        };
+      } else {
+        return {
+          adId: performance.adId,
+          adName: performance.adName,
+          adgroupId: performance.adgroupId,
+          action: 'PAUSE',
+          reason: `CPA（${cpa.toFixed(2)}）が許容値を超過または累積広告費が許容フロントCPOを超過のため、停止`,
+        };
+      }
+    }
+
+    // デフォルトは継続
+    return {
+      adId: performance.adId,
+      adName: performance.adName,
+      adgroupId: performance.adgroupId,
+      action: 'CONTINUE',
+      reason: '判定基準に該当せず、継続配信',
+    };
+  }
+
+  /**
+   * 広告の累積広告費を取得
+   */
+  private async getTotalAdSpend(adId: string): Promise<number> {
+    const metrics = await this.prisma.metric.findMany({
+      where: { adId },
+    });
+
+    return metrics.reduce((sum, m) => sum + m.spend, 0);
+  }
+
+  /**
+   * 広告セットごとに判断をグループ化
+   */
+  private groupDecisionsByAdGroup(
+    decisions: OptimizationDecision[],
+  ): Record<string, OptimizationDecision[]> {
+    const grouped: Record<string, OptimizationDecision[]> = {};
+
+    for (const decision of decisions) {
+      if (!grouped[decision.adgroupId]) {
+        grouped[decision.adgroupId] = [];
+      }
+      grouped[decision.adgroupId].push(decision);
+    }
+
+    return grouped;
+  }
+
+  /**
+   * 広告セット単位で最適化を実行
+   */
+  private async executeAdGroupOptimization(
+    adgroupId: string,
+    decisions: OptimizationDecision[],
+    advertiserId: string,
+    accessToken: string,
+  ) {
+    this.logger.log(`Executing optimization for adgroup: ${adgroupId}`);
+
+    // まず配信停止の広告を処理
+    const pauseDecisions = decisions.filter((d) => d.action === 'PAUSE');
+    for (const decision of pauseDecisions) {
+      await this.pauseAd(decision.adId, advertiserId, accessToken, decision.reason);
+    }
+
+    // 残りの判断を確認
+    const remainingDecisions = decisions.filter((d) => d.action !== 'PAUSE');
+
+    if (remainingDecisions.length === 0) {
+      return {
+        adgroupId,
+        action: 'NO_CHANGE',
+        reason: '全ての広告が停止されました',
+      };
+    }
+
+    // 予算増額の広告が1つでもあれば予算を増額
+    const hasIncreaseBudget = remainingDecisions.some((d) => d.action === 'INCREASE_BUDGET');
+
+    if (hasIncreaseBudget) {
+      await this.increaseBudget(adgroupId, advertiserId, accessToken, 0.3); // 30%増額
+      return {
+        adgroupId,
+        action: 'INCREASE_BUDGET',
+        reason: '予算増額対象の広告が存在するため、広告セットの予算を30%増額',
+      };
+    }
+
+    // それ以外は継続
+    return {
+      adgroupId,
+      action: 'CONTINUE',
+      reason: '配信継続',
+    };
+  }
+
+  /**
+   * 広告を停止
+   */
+  private async pauseAd(adId: string, advertiserId: string, accessToken: string, reason: string) {
+    this.logger.log(`Pausing ad: ${adId}, reason: ${reason}`);
+
+    // TikTok APIで広告を停止
+    await this.tiktokService.updateAd(advertiserId, accessToken, adId, { status: 'DISABLE' });
+
+    // ChangeLogに記録
+    await this.logChange('AD', adId, 'PAUSE', 'OPTIMIZATION', null, { status: 'DISABLE' }, reason);
+  }
+
+  /**
+   * 広告セットの予算を増額
+   */
+  private async increaseBudget(
+    adgroupId: string,
+    advertiserId: string,
+    accessToken: string,
+    increaseRate: number,
+  ) {
+    this.logger.log(`Increasing budget for adgroup: ${adgroupId} by ${increaseRate * 100}%`);
+
+    // 広告セット情報を取得
+    const adgroup = await this.tiktokService.getAdGroup(advertiserId, accessToken, adgroupId);
+    const currentBudget = adgroup.budget;
+    const newBudget = currentBudget * (1 + increaseRate);
+
+    // 予算が広告セットに設定されている場合
+    if (adgroup.budget_mode && adgroup.budget) {
+      await this.tiktokService.updateAdGroup(advertiserId, accessToken, adgroupId, {
+        budget: newBudget,
+      });
+
+      await this.logChange(
+        'ADGROUP',
+        adgroupId,
+        'UPDATE_BUDGET',
+        'OPTIMIZATION',
+        { budget: currentBudget },
+        { budget: newBudget },
+        `予算を${increaseRate * 100}%増額（${currentBudget} → ${newBudget}）`,
+      );
+    } else {
+      // 予算がキャンペーンに設定されている場合
+      const campaign = await this.tiktokService.getCampaign(advertiserId, accessToken, adgroup.campaign_id);
+      const currentCampaignBudget = campaign.budget;
+      const newCampaignBudget = currentCampaignBudget * (1 + increaseRate);
+
+      await this.tiktokService.updateCampaign(advertiserId, accessToken, adgroup.campaign_id, {
+        budget: newCampaignBudget,
+      });
+
+      await this.logChange(
+        'CAMPAIGN',
+        adgroup.campaign_id,
+        'UPDATE_BUDGET',
+        'OPTIMIZATION',
+        { budget: currentCampaignBudget },
+        { budget: newCampaignBudget },
+        `予算を${increaseRate * 100}%増額（${currentCampaignBudget} → ${newCampaignBudget}）`,
+      );
+    }
+  }
+
+  /**
+   * 変更ログを記録
+   */
+  private async logChange(
+    entityType: string,
+    entityId: string,
+    action: string,
+    source: string,
+    beforeData: any,
+    afterData: any,
+    reason: string,
+  ) {
+    await this.prisma.changeLog.create({
+      data: {
+        entityType,
+        entityId,
+        action,
+        source,
+        beforeData,
+        afterData,
+        reason,
+      },
+    });
+  }
+
+  /**
+   * アクティブなAdvertiser IDのリストを取得
+   */
+  private async getActiveAdvertiserIds(): Promise<string[]> {
+    const advertisers = await this.prisma.advertiser.findMany({
+      where: {
+        status: 'ACTIVE',
+        appealId: {
+          not: null,
+        },
+      },
+      select: {
+        tiktokAdvertiserId: true,
+      },
+    });
+
+    return advertisers.map((a) => a.tiktokAdvertiserId);
+  }
+}

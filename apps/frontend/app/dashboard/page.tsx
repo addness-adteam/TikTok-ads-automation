@@ -6,6 +6,7 @@ import { KpiCard } from '@/components/dashboard/kpi-card';
 import { PerformanceChart } from '@/components/dashboard/performance-chart';
 import { CampaignList } from '@/components/dashboard/campaign-list';
 import { useDashboardData } from '@/lib/hooks/useDashboardData';
+import { AppLayout } from '@/components/layout/AppLayout';
 
 export default function DashboardPage() {
   const [selectedMetric, setSelectedMetric] = useState<'spend' | 'impressions' | 'clicks' | 'conversions'>('spend');
@@ -16,17 +17,20 @@ export default function DashboardPage() {
   // ローディング状態
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <Loader2 className="w-12 h-12 text-blue-600 animate-spin mx-auto mb-4" />
-          <p className="text-gray-600">データを読み込み中...</p>
+      <AppLayout>
+        <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+          <div className="text-center">
+            <Loader2 className="w-12 h-12 text-blue-600 animate-spin mx-auto mb-4" />
+            <p className="text-gray-600">データを読み込み中...</p>
+          </div>
         </div>
-      </div>
+      </AppLayout>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <AppLayout>
+      <div className="min-h-screen bg-gray-50">
       {/* Header */}
       <header className="bg-white border-b border-gray-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
@@ -137,6 +141,7 @@ export default function DashboardPage() {
         {/* Campaign一覧 */}
         <CampaignList campaigns={campaigns} />
       </main>
-    </div>
+      </div>
+    </AppLayout>
   );
 }

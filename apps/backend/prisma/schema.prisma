@@ -10,6 +10,27 @@ datasource db {
 }
 
 // ============================================================================
+// 訴求マスタ（Appeal）
+// ============================================================================
+
+model Appeal {
+  id                    String      @id @default(uuid())
+  name                  String      @unique
+  targetCPA             Float?
+  allowableCPA          Float?
+  targetFrontCPO        Float?
+  allowableFrontCPO     Float?
+  cvSpreadsheetUrl      String?
+  frontSpreadsheetUrl   String?
+  createdAt             DateTime    @default(now())
+  updatedAt             DateTime    @updatedAt
+
+  advertisers           Advertiser[]
+
+  @@map("appeals")
+}
+
+// ============================================================================
 // 広告主（Advertiser）
 // ============================================================================
 
@@ -17,12 +38,14 @@ model Advertiser {
   id                  String      @id @default(uuid())
   tiktokAdvertiserId  String      @unique
   name                String
+  appealId            String?
   timezone            String      @default("UTC")
   currency            String      @default("USD")
   status              String      @default("ACTIVE")
   createdAt           DateTime    @default(now())
   updatedAt           DateTime    @updatedAt
 
+  appeal              Appeal?     @relation(fields: [appealId], references: [id], onDelete: SetNull)
   oauthTokens         OAuthToken[]
   campaigns           Campaign[]
   creatives           Creative[]
@@ -135,6 +158,7 @@ model Ad {
 model Creative {
   id              String      @id @default(uuid())
   advertiserId    String
+  name            String
   tiktokVideoId   String?
   tiktokImageId   String?
   type            String
