@@ -85,7 +85,7 @@ export class TiktokService {
         // TikTok APIから広告主情報を取得して実際の名前を取得
         let advertiserName = `Advertiser ${advertiserId}`;
         try {
-          const advertiserInfo = await this.getAdvertiserInfo(advertiserId, accessToken);
+          const advertiserInfo = await this.getAdvertiserDetails(advertiserId, accessToken);
           advertiserName = advertiserInfo.name || advertiserName;
         } catch (error) {
           this.logger.warn(`Failed to fetch advertiser name for ${advertiserId}, using fallback name`);
@@ -195,10 +195,10 @@ export class TiktokService {
   }
 
   /**
-   * 広告主情報を取得
+   * 広告主詳細情報を取得（名前など）
    * GET /v1.3/advertiser/info/
    */
-  async getAdvertiserInfo(advertiserId: string, accessToken: string) {
+  async getAdvertiserDetails(advertiserId: string, accessToken: string) {
     try {
       this.logger.log(`Fetching advertiser info for: ${advertiserId}`);
 
