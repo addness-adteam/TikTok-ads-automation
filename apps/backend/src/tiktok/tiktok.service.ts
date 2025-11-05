@@ -82,14 +82,25 @@ export class TiktokService {
 
       // 各Advertiser用にトークンを保存
       for (const advertiserId of advertiserIds) {
+        // TikTok APIから広告主情報を取得して実際の名前を取得
+        let advertiserName = `Advertiser ${advertiserId}`;
+        try {
+          const advertiserInfo = await this.getAdvertiserInfo(advertiserId, accessToken);
+          advertiserName = advertiserInfo.name || advertiserName;
+        } catch (error) {
+          this.logger.warn(`Failed to fetch advertiser name for ${advertiserId}, using fallback name`);
+        }
+
         // まずAdvertiserレコードを作成（存在しない場合）
         await this.prisma.advertiser.upsert({
           where: { tiktokAdvertiserId: advertiserId },
           create: {
             tiktokAdvertiserId: advertiserId,
-            name: `Advertiser ${advertiserId}`,
+            name: advertiserName,
           },
-          update: {},
+          update: {
+            name: advertiserName, // 既存の場合も名前を更新
+          },
         });
 
         // 次にOAuthTokenを保存
@@ -177,6 +188,35 @@ export class TiktokService {
       this.logger.log('Advertiser data:', JSON.stringify(response.data, null, 2));
 
       return response.data;
+    } catch (error) {
+      this.logger.error('Failed to get advertiser info', error.response?.data || error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * 広告主情報を取得
+   * GET /v1.3/advertiser/info/
+   */
+  async getAdvertiserInfo(advertiserId: string, accessToken: string) {
+    try {
+      this.logger.log(`Fetching advertiser info for: ${advertiserId}`);
+
+      const response = await this.httpClient.get('/v1.3/advertiser/info/', {
+        headers: {
+          'Access-Token': accessToken,
+        },
+        params: {
+          advertiser_ids: [advertiserId],
+        },
+      });
+
+      const advertisers = response.data.data?.list || [];
+      if (advertisers.length === 0) {
+        throw new Error(`Advertiser not found: ${advertiserId}`);
+      }
+
+      return advertisers[0];
     } catch (error) {
       this.logger.error('Failed to get advertiser info', error.response?.data || error.message);
       throw error;
