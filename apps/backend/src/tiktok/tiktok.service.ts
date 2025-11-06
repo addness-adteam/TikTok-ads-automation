@@ -229,7 +229,14 @@ export class TiktokService {
       this.logger.log(`Retrieved ${response.data.data?.list?.length || 0} campaigns`);
       return response.data;
     } catch (error) {
-      this.logger.error('Failed to get campaigns', error.response?.data || error.message);
+      this.logger.error('Failed to get campaigns');
+      this.logger.error(`Error details: ${JSON.stringify({
+        message: error.message,
+        status: error.response?.status,
+        statusText: error.response?.statusText,
+        data: error.response?.data,
+        code: error.code,
+      })}`);
       throw error;
     }
   }
@@ -242,28 +249,37 @@ export class TiktokService {
     try {
       this.logger.log(`Fetching ad groups for advertiser: ${advertiserId}`);
 
-      const requestBody: any = {
+      const params: any = {
         advertiser_id: advertiserId,
-        page_size: 1000, // 最大1000件取得
+        page_size: 100, // TikTok API v1.3の最大値
       };
 
       if (campaignIds && campaignIds.length > 0) {
-        requestBody.filtering = {
+        params.filtering = JSON.stringify({
           campaign_ids: campaignIds,
-        };
+        });
       }
+
+      this.logger.log(`Request params: ${JSON.stringify(params)}`);
 
       const response = await this.httpClient.get('/v1.3/adgroup/get/', {
         headers: {
           'Access-Token': accessToken,
         },
-        params: requestBody,
+        params,
       });
 
       this.logger.log(`Retrieved ${response.data.data?.list?.length || 0} ad groups`);
       return response.data;
     } catch (error) {
-      this.logger.error('Failed to get ad groups', error.response?.data || error.message);
+      this.logger.error('Failed to get ad groups');
+      this.logger.error(`Error details: ${JSON.stringify({
+        message: error.message,
+        status: error.response?.status,
+        statusText: error.response?.statusText,
+        data: error.response?.data,
+        code: error.code,
+      })}`);
       throw error;
     }
   }
@@ -351,28 +367,37 @@ export class TiktokService {
     try {
       this.logger.log(`Fetching ads for advertiser: ${advertiserId}`);
 
-      const requestBody: any = {
+      const params: any = {
         advertiser_id: advertiserId,
-        page_size: 1000,
+        page_size: 100, // TikTok API v1.3の最大値
       };
 
       if (adgroupIds && adgroupIds.length > 0) {
-        requestBody.filtering = {
+        params.filtering = JSON.stringify({
           adgroup_ids: adgroupIds,
-        };
+        });
       }
+
+      this.logger.log(`Request params: ${JSON.stringify(params)}`);
 
       const response = await this.httpClient.get('/v1.3/ad/get/', {
         headers: {
           'Access-Token': accessToken,
         },
-        params: requestBody,
+        params,
       });
 
       this.logger.log(`Retrieved ${response.data.data?.list?.length || 0} ads`);
       return response.data;
     } catch (error) {
-      this.logger.error('Failed to get ads', error.response?.data || error.message);
+      this.logger.error('Failed to get ads');
+      this.logger.error(`Error details: ${JSON.stringify({
+        message: error.message,
+        status: error.response?.status,
+        statusText: error.response?.statusText,
+        data: error.response?.data,
+        code: error.code,
+      })}`);
       throw error;
     }
   }
@@ -852,7 +877,14 @@ export class TiktokService {
       this.logger.log(`Retrieved report data: ${response.data.data?.list?.length || 0} records`);
       return response.data;
     } catch (error) {
-      this.logger.error('Failed to get report', error.response?.data || error.message);
+      this.logger.error('Failed to get report');
+      this.logger.error(`Error details: ${JSON.stringify({
+        message: error.message,
+        status: error.response?.status,
+        statusText: error.response?.statusText,
+        data: error.response?.data,
+        code: error.code,
+      })}`);
       throw error;
     }
   }

@@ -108,9 +108,12 @@ export class OptimizationService {
           adPerformances.push(performance);
         }
       } catch (error) {
-        this.logger.error(`Failed to evaluate ad ${ad.ad_id}:`, error);
+        this.logger.error(`Failed to evaluate ad ${ad.ad_id} (${ad.ad_name}):`, error.message);
+        this.logger.error(`Error stack: ${error.stack}`);
       }
     }
+
+    this.logger.log(`Successfully evaluated ${adPerformances.length} ads out of ${activeAds.length} active ads`);
 
     // 最適化判断を実行
     const decisions: OptimizationDecision[] = [];
@@ -156,7 +159,14 @@ export class OptimizationService {
     const adsResponse = await this.tiktokService.getAds(advertiserId, accessToken);
 
     // ステータスが配信中（ENABLE）の広告のみフィルタリング
-    return adsResponse.data?.list?.filter((ad: any) => ad.operation_status === 'ENABLE') || [];
+    const activeAds = adsResponse.data?.list?.filter((ad: any) => ad.operation_status === 'ENABLE') || [];
+
+    this.logger.log(`Active ads count: ${activeAds.length}`);
+    if (activeAds.length > 0) {
+      this.logger.log(`Sample ad names: ${activeAds.slice(0, 3).map((ad: any) => ad.ad_name).join(', ')}`);
+    }
+
+    return activeAds;
   }
 
   /**
@@ -167,12 +177,16 @@ export class OptimizationService {
     appeal: any,
     accessToken: string,
   ): Promise<AdPerformance | null> {
+    this.logger.log(`Evaluating ad: ${ad.ad_id}, name: ${ad.ad_name}`);
+
     // 広告名をパース
     const parsedName = this.parseAdName(ad.ad_name);
     if (!parsedName) {
-      this.logger.error(`Invalid ad name format: ${ad.ad_name}`);
+      this.logger.warn(`Invalid ad name format, skipping ad: ${ad.ad_name}`);
       return null;
     }
+
+    this.logger.log(`Parsed ad name successfully: ${JSON.stringify(parsedName)}`);
 
     // 登録経路を生成
     const registrationPath = this.generateRegistrationPath(parsedName.lpName, appeal.name);

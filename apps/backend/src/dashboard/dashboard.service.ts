@@ -105,7 +105,9 @@ export class DashboardService {
           allReportData.push(...reportResponse.data.list);
         }
       } catch (error) {
-        this.logger.warn(`Failed to fetch data for advertiser ${advertiserId}:`, error.message);
+        this.logger.error(`Failed to fetch data for advertiser ${advertiserId}`);
+        this.logger.error(`Error message: ${error.message}`);
+        this.logger.error(`Error stack: ${error.stack}`);
         // エラーがあっても他のAdvertiserのデータは取得を続ける
       }
     }

@@ -24,10 +24,18 @@ export class AdvertiserController {
 
     try {
       const advertisers = await this.advertiserService.findAll();
-      return advertisers;
+      return {
+        success: true,
+        data: advertisers,
+      };
     } catch (error) {
-      this.logger.error('Failed to get advertisers', error);
-      throw error;
+      this.logger.error('Failed to get advertisers');
+      this.logger.error(`Error message: ${error.message}`);
+      this.logger.error(`Error stack: ${error.stack}`);
+      return {
+        success: false,
+        error: error.message || 'Failed to fetch advertisers',
+      };
     }
   }
 
@@ -41,10 +49,18 @@ export class AdvertiserController {
 
     try {
       const advertiser = await this.advertiserService.findOne(id);
-      return advertiser;
+      return {
+        success: true,
+        data: advertiser,
+      };
     } catch (error) {
-      this.logger.error('Failed to get advertiser', error);
-      throw error;
+      this.logger.error('Failed to get advertiser');
+      this.logger.error(`Error message: ${error.message}`);
+      this.logger.error(`Error stack: ${error.stack}`);
+      return {
+        success: false,
+        error: error.message || 'Failed to fetch advertiser',
+      };
     }
   }
 
@@ -62,10 +78,18 @@ export class AdvertiserController {
 
     try {
       const advertiser = await this.advertiserService.assignAppeal(id, appealId);
-      return advertiser;
+      return {
+        success: true,
+        data: advertiser,
+      };
     } catch (error) {
-      this.logger.error('Failed to assign appeal to advertiser', error);
-      throw error;
+      this.logger.error('Failed to assign appeal to advertiser');
+      this.logger.error(`Error message: ${error.message}`);
+      this.logger.error(`Error stack: ${error.stack}`);
+      return {
+        success: false,
+        error: error.message || 'Failed to assign appeal',
+      };
     }
   }
 }

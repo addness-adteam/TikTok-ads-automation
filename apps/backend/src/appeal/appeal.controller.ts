@@ -27,10 +27,18 @@ export class AppealController {
 
     try {
       const appeals = await this.appealService.findAll();
-      return appeals;
+      return {
+        success: true,
+        data: appeals,
+      };
     } catch (error) {
-      this.logger.error('Failed to get appeals', error);
-      throw error;
+      this.logger.error('Failed to get appeals');
+      this.logger.error(`Error message: ${error.message}`);
+      this.logger.error(`Error stack: ${error.stack}`);
+      return {
+        success: false,
+        error: error.message || 'Failed to fetch appeals',
+      };
     }
   }
 
