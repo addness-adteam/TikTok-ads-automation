@@ -4,6 +4,14 @@ import { useState, useEffect } from 'react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { Plus, Edit2, Trash2, Loader2, AlertCircle, Save, X } from 'lucide-react';
 
+// API URLを取得（本番環境では固定URL、開発環境ではlocalhost）
+const getApiUrl = () => {
+  if (typeof window === 'undefined') return 'http://localhost:4000';
+  return window.location.hostname === 'localhost'
+    ? 'http://localhost:4000'
+    : 'https://tik-tok-ads-automation-backend.vercel.app';
+};
+
 interface Appeal {
   id: string;
   name: string;
@@ -39,10 +47,20 @@ export default function AppealsPage() {
   const fetchAppeals = async () => {
     try {
       setIsLoading(true);
-      const response = await fetch('http://localhost:4000/api/appeals');
+      const response = await fetch(`${getApiUrl()}/api/appeals`);
       if (!response.ok) throw new Error('訴求の取得に失敗しました');
-      const data = await response.json();
-      setAppeals(data);
+      const result = await response.json();
+
+      // レスポンス形式を確認して適切にデータをセット
+      if (result.success && result.data) {
+        setAppeals(result.data);
+      } else if (Array.isArray(result)) {
+        // 旧形式（配列）にも対応
+        setAppeals(result);
+      } else {
+        throw new Error(result.error || '訴求の取得に失敗しました');
+      }
+
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : '訴求の取得に失敗しました');
@@ -53,10 +71,19 @@ export default function AppealsPage() {
 
   const fetchAdvertisers = async () => {
     try {
-      const response = await fetch('http://localhost:4000/api/advertisers');
+      const response = await fetch(`${getApiUrl()}/api/advertisers`);
       if (!response.ok) throw new Error('広告アカウントの取得に失敗しました');
-      const data = await response.json();
-      setAdvertisers(data);
+      const result = await response.json();
+
+      // レスポンス形式を確認して適切にデータをセット
+      if (result.success && result.data) {
+        setAdvertisers(result.data);
+      } else if (Array.isArray(result)) {
+        // 旧形式（配列）にも対応
+        setAdvertisers(result);
+      } else {
+        console.error('広告アカウントの取得に失敗:', result.error);
+      }
     } catch (err) {
       console.error('広告アカウントの取得に失敗:', err);
     }
@@ -86,8 +113,8 @@ export default function AppealsPage() {
 
     try {
       const url = editingAppeal.id
-        ? `http://localhost:4000/api/appeals/${editingAppeal.id}`
-        : 'http://localhost:4000/api/appeals';
+        ? `${getApiUrl()}/api/appeals/${editingAppeal.id}`
+        : `${getApiUrl()}/api/appeals`;
 
       const method = editingAppeal.id ? 'PATCH' : 'POST';
 
@@ -111,7 +138,7 @@ export default function AppealsPage() {
     if (!confirm('この訴求を削除しますか？')) return;
 
     try {
-      const response = await fetch(`http://localhost:4000/api/appeals/${id}`, {
+      const response = await fetch(`${getApiUrl()}/api/appeals/${id}`, {
         method: 'DELETE',
       });
 
@@ -125,7 +152,7 @@ export default function AppealsPage() {
 
   const handleAssignAdvertiser = async (advertiserId: string, appealId: string | null) => {
     try {
-      const response = await fetch(`http://localhost:4000/api/advertisers/${advertiserId}/appeal`, {
+      const response = await fetch(`${getApiUrl()}/api/advertisers/${advertiserId}/appeal`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ appealId }),

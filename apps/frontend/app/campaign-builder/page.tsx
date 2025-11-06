@@ -49,9 +49,10 @@ export default function CampaignBuilderPage() {
   const fetchData = async () => {
     try {
       setIsLoading(true);
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
       const [advertisersRes, creativesRes] = await Promise.all([
-        fetch('http://localhost:4000/api/advertisers'),
-        fetch('http://localhost:4000/api/creatives'),
+        fetch(`${apiUrl}/api/advertisers`),
+        fetch(`${apiUrl}/api/creatives`),
       ]);
 
       if (!advertisersRes.ok || !creativesRes.ok) {
@@ -129,7 +130,8 @@ export default function CampaignBuilderPage() {
     setSuccessMessage(null);
 
     try {
-      const response = await fetch('http://localhost:4000/api/campaign-builder/create', {
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
+      const response = await fetch(`${apiUrl}/api/campaign-builder/create`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

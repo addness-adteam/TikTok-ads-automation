@@ -42,7 +42,8 @@ export default function OptimizationPage() {
   const fetchAdvertisers = async () => {
     try {
       setIsLoadingAdvertisers(true);
-      const response = await fetch('http://localhost:4000/api/advertisers');
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
+      const response = await fetch(`${apiUrl}/api/advertisers`);
       if (!response.ok) {
         throw new Error('Failed to fetch advertisers');
       }
@@ -71,8 +72,9 @@ export default function OptimizationPage() {
     setError(null);
 
     try {
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
       const response = await fetch(
-        `http://localhost:4000/api/optimization/execute/${selectedAdvertiserId}`,
+        `${apiUrl}/api/optimization/execute/${selectedAdvertiserId}`,
         {
           method: 'POST',
           headers: {
@@ -106,7 +108,8 @@ export default function OptimizationPage() {
     setError(null);
 
     try {
-      const response = await fetch('http://localhost:4000/api/optimization/execute', {
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
+      const response = await fetch(`${apiUrl}/api/optimization/execute`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

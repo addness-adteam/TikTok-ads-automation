@@ -45,9 +45,10 @@ export default function CreativesPage() {
   const fetchData = async () => {
     try {
       setIsLoading(true);
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
       const [creativesRes, advertisersRes] = await Promise.all([
-        fetch('http://localhost:4000/api/creatives'),
-        fetch('http://localhost:4000/api/advertisers'),
+        fetch(`${apiUrl}/api/creatives`),
+        fetch(`${apiUrl}/api/advertisers`),
       ]);
 
       if (!creativesRes.ok || !advertisersRes.ok) {
@@ -104,7 +105,8 @@ export default function CreativesPage() {
       formData.append('advertiserId', selectedAdvertiserId);
       formData.append('name', creativeName);
 
-      const response = await fetch('http://localhost:4000/api/creatives/upload', {
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
+      const response = await fetch(`${apiUrl}/api/creatives/upload`, {
         method: 'POST',
         body: formData,
       });
@@ -137,7 +139,8 @@ export default function CreativesPage() {
     if (!confirm('このCreativeを削除しますか？')) return;
 
     try {
-      const response = await fetch(`http://localhost:4000/api/creatives/${id}`, {
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
+      const response = await fetch(`${apiUrl}/api/creatives/${id}`, {
         method: 'DELETE',
       });
 
