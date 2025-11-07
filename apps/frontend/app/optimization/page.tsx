@@ -4,6 +4,14 @@ import { useState, useEffect } from 'react';
 import { Loader2, PlayCircle, CheckCircle, XCircle, AlertCircle } from 'lucide-react';
 import { AppLayout } from '@/components/layout/AppLayout';
 
+// API URLを取得（本番環境では固定URL、開発環境ではlocalhost）
+const getApiUrl = () => {
+  if (typeof window === 'undefined') return 'http://localhost:4000';
+  return window.location.hostname === 'localhost'
+    ? 'http://localhost:4000'
+    : 'https://tik-tok-ads-automation-backend.vercel.app';
+};
+
 interface Advertiser {
   id: string;
   tiktokAdvertiserId: string;
