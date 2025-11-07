@@ -32,6 +32,29 @@ interface OptimizationResult {
   decisions?: number;
   executed?: number;
   error?: string;
+  detailedLogs?: Array<{
+    adId: string;
+    adName: string;
+    action: 'PAUSE' | 'CONTINUE' | 'INCREASE_BUDGET';
+    reason: string;
+    currentBudget?: number;
+    newBudget?: number;
+    metrics: {
+      cpa?: number;
+      frontCpo?: number;
+      cvCount?: number;
+      frontSalesCount?: number;
+      spend?: number;
+      impressions?: number;
+      clicks?: number;
+    };
+    targets: {
+      targetCPA?: number;
+      allowableCPA?: number;
+      targetFrontCPO?: number;
+      allowableFrontCPO?: number;
+    };
+  }>;
 }
 
 export default function OptimizationPage() {
@@ -234,6 +257,80 @@ export default function OptimizationPage() {
                     </p>
                   </div>
                 </div>
+              </div>
+            </div>
+          )}
+
+          {/* 詳細ログ表示 */}
+          {executionResults && executionResults.detailedLogs && executionResults.detailedLogs.length > 0 && (
+            <div className="mb-6 bg-white border border-gray-200 rounded-lg p-6">
+              <h3 className="text-lg font-semibold text-gray-900 mb-4">
+                個別広告結果 (全{executionResults.detailedLogs.length}件)
+              </h3>
+              <div className="space-y-4">
+                {executionResults.detailedLogs.map((log, index) => {
+                  const actionIcon = log.action === 'PAUSE' ? '⏸️' :
+                                    log.action === 'INCREASE_BUDGET' ? '📈' : '✅';
+                  const actionText = log.action === 'PAUSE' ? 'pause' :
+                                    log.action === 'INCREASE_BUDGET' ? 'increase' : 'maintain';
+                  const actionColor = log.action === 'PAUSE' ? 'text-red-700' :
+                                     log.action === 'INCREASE_BUDGET' ? 'text-blue-700' : 'text-green-700';
+
+                  return (
+                    <div key={index} className="border border-gray-200 rounded-lg p-4 bg-gray-50">
+                      <div className="flex items-start gap-2 mb-2">
+                        <span className="text-xl">{actionIcon}</span>
+                        <div className="flex-1">
+                          <p className="font-medium text-gray-900">広告: {log.adName}</p>
+                          <p className={`text-sm font-semibold ${actionColor} mt-1`}>
+                            判定: {actionText}
+                            {log.currentBudget !== undefined && log.newBudget !== undefined && (
+                              <span className="ml-2">
+                                (¥{log.currentBudget.toLocaleString()} → ¥{log.newBudget.toLocaleString()})
+                              </span>
+                            )}
+                          </p>
+                          <p className="text-sm text-gray-700 mt-1">理由: {log.reason}</p>
+
+                          <div className="mt-2 text-sm text-gray-600 space-y-1">
+                            {log.metrics.cpa !== undefined && (
+                              <div>
+                                CPA: ¥{Math.round(log.metrics.cpa).toLocaleString()}
+                                {log.targets.targetCPA && (
+                                  <span className="ml-2">(目標¥{Math.round(log.targets.targetCPA).toLocaleString()})</span>
+                                )}
+                              </div>
+                            )}
+                            {log.metrics.frontCpo !== undefined && (
+                              <div>
+                                フロントCPO: ¥{Math.round(log.metrics.frontCpo).toLocaleString()}
+                                {log.targets.targetFrontCPO && (
+                                  <span className="ml-2">(目標¥{Math.round(log.targets.targetFrontCPO).toLocaleString()})</span>
+                                )}
+                              </div>
+                            )}
+                            {(log.metrics.cvCount !== undefined || log.metrics.frontSalesCount !== undefined) && (
+                              <div>
+                                実績: CV{log.metrics.cvCount || 0}件, フロント{log.metrics.frontSalesCount || 0}件
+                              </div>
+                            )}
+                            {log.metrics.spend !== undefined && (
+                              <div>
+                                メトリクス: 支出¥{Math.round(log.metrics.spend).toLocaleString()}
+                                {log.metrics.impressions !== undefined && (
+                                  <span className="ml-2">/ Imp {log.metrics.impressions.toLocaleString()}</span>
+                                )}
+                                {log.metrics.clicks !== undefined && (
+                                  <span className="ml-2">/ Click {log.metrics.clicks.toLocaleString()}</span>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           )}
