@@ -29,6 +29,7 @@ interface OptimizationDecision {
   reason: string;
   currentBudget?: number;
   newBudget?: number;
+  performance?: AdPerformance; // 追加：パフォーマンス情報
 }
 
 @Injectable()
@@ -140,6 +141,32 @@ export class OptimizationService {
       }
     }
 
+    // 各広告の詳細ログを作成
+    const detailedLogs = decisions.map(decision => ({
+      adId: decision.adId,
+      adName: decision.adName,
+      adgroupId: decision.adgroupId,
+      action: decision.action,
+      reason: decision.reason,
+      currentBudget: decision.currentBudget,
+      newBudget: decision.newBudget,
+      metrics: {
+        cpa: decision.performance?.cpa,
+        frontCpo: decision.performance?.frontCpo,
+        cvCount: decision.performance?.cvCount,
+        frontSalesCount: decision.performance?.frontSalesCount,
+        spend: decision.performance?.spend,
+        impressions: decision.performance?.impressions,
+        clicks: decision.performance?.clicks,
+      },
+      targets: {
+        targetCPA: appeal.targetCPA,
+        allowableCPA: appeal.allowableCPA,
+        targetFrontCPO: appeal.targetFrontCPO,
+        allowableFrontCPO: appeal.allowableFrontCPO,
+      }
+    }));
+
     return {
       advertiserId,
       success: true,
@@ -148,6 +175,7 @@ export class OptimizationService {
       decisions: decisions.length,
       executed: executionResults.length,
       results: executionResults,
+      detailedLogs, // 追加：各広告の詳細ログ
     };
   }
 
@@ -312,43 +340,31 @@ export class OptimizationService {
     const { impressions, spend, cvCount, frontSalesCount, cpa, frontCPO } = performance;
     const { allowableCPA, targetCPA, allowableFrontCPO, targetFrontCPO } = appeal;
 
+    // ヘルパー関数：decisionにperformanceを追加
+    const createDecision = (action: 'PAUSE' | 'CONTINUE' | 'INCREASE_BUDGET', reason: string, currentBudget?: number, newBudget?: number): OptimizationDecision => ({
+      adId: performance.adId,
+      adName: performance.adName,
+      adgroupId: performance.adgroupId,
+      action,
+      reason,
+      currentBudget,
+      newBudget,
+      performance,
+    });
+
     // 5000インプレッション未達の場合
     if (impressions < 5000) {
-      return {
-        adId: performance.adId,
-        adName: performance.adName,
-        adgroupId: performance.adgroupId,
-        action: 'CONTINUE',
-        reason: `インプレッション数が5000未満（${impressions}）のため、継続配信`,
-      };
+      return createDecision('CONTINUE', `インプレッション数が5000未満（${impressions}）のため、継続配信`);
     }
 
     // フロント販売が1件以上ある場合
     if (frontSalesCount >= 1) {
       if (frontCPO <= targetFrontCPO) {
-        return {
-          adId: performance.adId,
-          adName: performance.adName,
-          adgroupId: performance.adgroupId,
-          action: 'INCREASE_BUDGET',
-          reason: `フロントCPO（${frontCPO.toFixed(2)}）が目標値（${targetFrontCPO}）以下のため、予算30%増額`,
-        };
+        return createDecision('INCREASE_BUDGET', `フロントCPO（¥${frontCPO.toFixed(0)}）が目標値（¥${targetFrontCPO}）以下のため、予算30%増額`);
       } else if (frontCPO <= allowableFrontCPO) {
-        return {
-          adId: performance.adId,
-          adName: performance.adName,
-          adgroupId: performance.adgroupId,
-          action: 'CONTINUE',
-          reason: `フロントCPO（${frontCPO.toFixed(2)}）が許容値（${allowableFrontCPO}）以下のため、継続配信`,
-        };
+        return createDecision('CONTINUE', `フロントCPO（¥${frontCPO.toFixed(0)}）が許容値（¥${allowableFrontCPO}）以下のため、継続配信`);
       } else {
-        return {
-          adId: performance.adId,
-          adName: performance.adName,
-          adgroupId: performance.adgroupId,
-          action: 'PAUSE',
-          reason: `フロントCPO（${frontCPO.toFixed(2)}）が許容値（${allowableFrontCPO}）を超過のため、停止`,
-        };
+        return createDecision('PAUSE', `フロントCPO（¥${frontCPO.toFixed(0)}）が許容値（¥${allowableFrontCPO}）を超過のため、停止`);
       }
     }
 
@@ -358,32 +374,14 @@ export class OptimizationService {
       const totalSpend = await this.getTotalAdSpend(performance.adId);
 
       if (cpa <= allowableCPA && totalSpend <= allowableFrontCPO) {
-        return {
-          adId: performance.adId,
-          adName: performance.adName,
-          adgroupId: performance.adgroupId,
-          action: 'CONTINUE',
-          reason: `CPA（${cpa.toFixed(2)}）が許容値以下かつ累積広告費（${totalSpend}）が許容フロントCPO以下のため、継続配信`,
-        };
+        return createDecision('CONTINUE', `CPA（¥${cpa.toFixed(0)}）が許容値以下かつ累積広告費（¥${totalSpend.toFixed(0)}）が許容フロントCPO以下のため、継続配信`);
       } else {
-        return {
-          adId: performance.adId,
-          adName: performance.adName,
-          adgroupId: performance.adgroupId,
-          action: 'PAUSE',
-          reason: `CPA（${cpa.toFixed(2)}）が許容値を超過または累積広告費が許容フロントCPOを超過のため、停止`,
-        };
+        return createDecision('PAUSE', `CPA（¥${cpa.toFixed(0)}）が許容値を超過または累積広告費が許容フロントCPOを超過のため、停止`);
       }
     }
 
     // デフォルトは継続
-    return {
-      adId: performance.adId,
-      adName: performance.adName,
-      adgroupId: performance.adgroupId,
-      action: 'CONTINUE',
-      reason: '判定基準に該当せず、継続配信',
-    };
+    return createDecision('CONTINUE', '判定基準に該当せず、継続配信');
   }
 
   /**
