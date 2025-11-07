@@ -59,7 +59,7 @@ interface OptimizationResult {
 
 export default function OptimizationPage() {
   const [advertisers, setAdvertisers] = useState<Advertiser[]>([]);
-  const [selectedAdvertiserId, setSelectedAdvertiserId] = useState<string>('');
+  const [selectedAdvertiserIds, setSelectedAdvertiserIds] = useState<string[]>([]);
   const [isLoadingAdvertisers, setIsLoadingAdvertisers] = useState(true);
   const [isExecuting, setIsExecuting] = useState(false);
   const [executionResults, setExecutionResults] = useState<OptimizationResult | null>(null);
@@ -102,9 +102,30 @@ export default function OptimizationPage() {
     }
   };
 
+  // チェックボックスのトグル処理
+  const toggleAdvertiserSelection = (advertiserId: string) => {
+    setSelectedAdvertiserIds(prev => {
+      if (prev.includes(advertiserId)) {
+        return prev.filter(id => id !== advertiserId);
+      } else {
+        return [...prev, advertiserId];
+      }
+    });
+  };
+
+  // 全選択
+  const selectAll = () => {
+    setSelectedAdvertiserIds(advertisers.map(adv => adv.tiktokAdvertiserId));
+  };
+
+  // 全解除
+  const deselectAll = () => {
+    setSelectedAdvertiserIds([]);
+  };
+
   const executeOptimization = async () => {
-    if (!selectedAdvertiserId) {
-      setError('アカウントを選択してください');
+    if (selectedAdvertiserIds.length === 0) {
+      setError('少なくとも1つのアカウントを選択してください');
       return;
     }
 
@@ -113,15 +134,15 @@ export default function OptimizationPage() {
     setError(null);
 
     try {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
+      const apiUrl = getApiUrl();
       const response = await fetch(
-        `${apiUrl}/api/optimization/execute/${selectedAdvertiserId}`,
+        `${apiUrl}/api/optimization/execute-selected`,
         {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({}),
+          body: JSON.stringify({ advertiserIds: selectedAdvertiserIds }),
         }
       );
 
@@ -230,6 +251,11 @@ export default function OptimizationPage() {
               <div className="flex-1">
                 <h3 className="text-sm font-semibold text-green-900 mb-1">
                   予算調整が完了しました
+                  {(executionResults as any).totalAdvertisers && (
+                    <span className="ml-2 text-xs font-normal">
+                      ({(executionResults as any).totalAdvertisers}アカウント)
+                    </span>
+                  )}
                 </h3>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-3">
                   <div>
@@ -351,36 +377,64 @@ export default function OptimizationPage() {
             ) : (
               <div className="space-y-4">
                 <div>
-                  <label
-                    htmlFor="advertiser-select"
-                    className="block text-sm font-medium text-gray-700 mb-2"
-                  >
-                    最適化するアカウントを選択
-                  </label>
-                  <select
-                    id="advertiser-select"
-                    value={selectedAdvertiserId}
-                    onChange={(e) => setSelectedAdvertiserId(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    disabled={isExecuting}
-                  >
-                    <option value="">-- アカウントを選択 --</option>
-                    {advertisers.map((advertiser) => (
-                      <option
-                        key={advertiser.id}
-                        value={advertiser.tiktokAdvertiserId}
+                  <div className="flex items-center justify-between mb-3">
+                    <label className="block text-sm font-medium text-gray-700">
+                      最適化するアカウントを選択（複数選択可）
+                    </label>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={selectAll}
+                        disabled={isExecuting}
+                        className="text-sm text-blue-600 hover:text-blue-700 underline disabled:text-gray-400"
                       >
-                        {advertiser.name} ({advertiser.tiktokAdvertiserId})
-                        {advertiser.appeal && ` - ${advertiser.appeal.name}`}
-                      </option>
+                        全選択
+                      </button>
+                      <span className="text-gray-400">|</span>
+                      <button
+                        onClick={deselectAll}
+                        disabled={isExecuting}
+                        className="text-sm text-blue-600 hover:text-blue-700 underline disabled:text-gray-400"
+                      >
+                        全解除
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="border border-gray-300 rounded-lg p-3 max-h-64 overflow-y-auto space-y-2">
+                    {advertisers.map((advertiser) => (
+                      <label
+                        key={advertiser.id}
+                        className="flex items-start gap-3 p-2 hover:bg-gray-50 rounded cursor-pointer"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={selectedAdvertiserIds.includes(advertiser.tiktokAdvertiserId)}
+                          onChange={() => toggleAdvertiserSelection(advertiser.tiktokAdvertiserId)}
+                          disabled={isExecuting}
+                          className="mt-1 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                        />
+                        <div className="flex-1">
+                          <div className="text-sm font-medium text-gray-900">
+                            {advertiser.name}
+                          </div>
+                          <div className="text-xs text-gray-500">
+                            {advertiser.tiktokAdvertiserId}
+                            {advertiser.appeal && ` - ${advertiser.appeal.name}`}
+                          </div>
+                        </div>
+                      </label>
                     ))}
-                  </select>
+                  </div>
+
+                  <div className="mt-2 text-sm text-gray-600">
+                    {selectedAdvertiserIds.length}件のアカウントを選択中
+                  </div>
                 </div>
 
                 <div className="flex gap-3">
                   <button
                     onClick={executeOptimization}
-                    disabled={!selectedAdvertiserId || isExecuting}
+                    disabled={selectedAdvertiserIds.length === 0 || isExecuting}
                     className="flex-1 flex items-center justify-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
                   >
                     {isExecuting ? (
