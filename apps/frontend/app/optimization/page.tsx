@@ -42,15 +42,25 @@ export default function OptimizationPage() {
   const fetchAdvertisers = async () => {
     try {
       setIsLoadingAdvertisers(true);
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
-      const response = await fetch(`${apiUrl}/api/advertisers`);
+      const response = await fetch(`${getApiUrl()}/api/advertisers`);
       if (!response.ok) {
         throw new Error('Failed to fetch advertisers');
       }
-      const data = await response.json();
+      const result = await response.json();
+
+      // レスポンス形式を確認して適切にデータをセット
+      let advertisersData = [];
+      if (result.success && result.data) {
+        advertisersData = result.data;
+      } else if (Array.isArray(result)) {
+        // 旧形式（配列）にも対応
+        advertisersData = result;
+      } else {
+        throw new Error(result.error || 'Failed to fetch advertisers');
+      }
 
       // アクティブで訴求が紐付いているAdvertiserのみフィルタ
-      const activeAdvertisers = data.filter(
+      const activeAdvertisers = advertisersData.filter(
         (adv: Advertiser) => adv.status === 'ACTIVE' && adv.appealId
       );
       setAdvertisers(activeAdvertisers);
