@@ -854,6 +854,7 @@ export class TiktokService {
       const params: any = {
         advertiser_id: advertiserId,
         data_level: dataLevel,
+        report_type: 'BASIC',
         dimensions: dimensions,
         metrics: metrics,
         start_date: startDate,
