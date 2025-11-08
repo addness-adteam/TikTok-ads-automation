@@ -395,7 +395,7 @@ export class JobsController {
 
         try {
           // まずAdvertiserレコードを確実に存在させる
-          await this.prisma.advertiser.upsert({
+          const advertiser = await this.prisma.advertiser.upsert({
             where: { tiktokAdvertiserId: token.advertiserId },
             create: {
               tiktokAdvertiserId: token.advertiserId,
@@ -418,7 +418,7 @@ export class JobsController {
               where: { tiktokId: String(campaign.campaign_id) },
               create: {
                 tiktokId: String(campaign.campaign_id),
-                advertiserId: token.advertiserId,
+                advertiserId: advertiser.id,
                 name: campaign.campaign_name,
                 objectiveType: campaign.objective_type,
                 budgetMode: campaign.budget_mode,
@@ -523,7 +523,7 @@ export class JobsController {
                 // Creativeが存在しない場合は作成
                 const newCreative = await this.prisma.creative.create({
                   data: {
-                    advertiserId: token.advertiserId,
+                    advertiserId: advertiser.id,
                     name: `Video ${ad.video_id}`,
                     type: 'VIDEO',
                     tiktokVideoId: ad.video_id,
@@ -544,7 +544,7 @@ export class JobsController {
                 // Creativeが存在しない場合は作成
                 const newCreative = await this.prisma.creative.create({
                   data: {
-                    advertiserId: token.advertiserId,
+                    advertiserId: advertiser.id,
                     name: `Image ${ad.image_ids[0]}`,
                     type: 'IMAGE',
                     tiktokImageId: ad.image_ids[0],
