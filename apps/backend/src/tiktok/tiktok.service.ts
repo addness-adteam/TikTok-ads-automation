@@ -855,8 +855,8 @@ export class TiktokService {
         advertiser_id: advertiserId,
         data_level: dataLevel,
         report_type: 'BASIC',
-        dimensions: dimensions,
-        metrics: metrics,
+        dimensions: JSON.stringify(dimensions),
+        metrics: JSON.stringify(metrics),
         start_date: startDate,
         end_date: endDate,
         page,
@@ -864,7 +864,7 @@ export class TiktokService {
       };
 
       if (filtering) {
-        params.filtering = filtering;
+        params.filtering = JSON.stringify(filtering);
       }
 
       const response = await this.httpClient.get('/v1.3/report/integrated/get/', {
