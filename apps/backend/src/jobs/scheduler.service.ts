@@ -21,12 +21,12 @@ export class SchedulerService implements OnModuleInit {
 
   /**
    * 日次レポート取得バッチジョブ
-   * 自動実行停止中 - 手動実行のみ
+   * 毎日0時5分（日本時間）に実行
    */
-  // @Cron(process.env.REPORTING_BATCH_CRON || '0 6 * * *', {
-  //   name: 'daily-report-fetch',
-  //   timeZone: 'Asia/Tokyo',
-  // })
+  @Cron('5 0 * * *', {
+    name: 'daily-report-fetch',
+    timeZone: 'Asia/Tokyo',
+  })
   async scheduleDailyReportFetch() {
     if (this.isRunning) {
       this.logger.warn('Previous batch job is still running. Skipping...');

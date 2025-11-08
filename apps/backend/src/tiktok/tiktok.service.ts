@@ -946,67 +946,183 @@ export class TiktokService {
     dataLevel: string,
   ) {
     try {
-      this.logger.log(`Saving ${reportData.length} metrics to database`);
+      this.logger.log(`Saving ${reportData.length} ${dataLevel} metrics to database`);
 
       for (const record of reportData) {
         const statDate = new Date(record.dimensions?.stat_time_day || record.stat_time_day);
-        const campaignId = record.dimensions?.campaign_id || record.campaign_id;
-
-        if (!campaignId) {
-          this.logger.warn('Skipping record without campaign_id');
-          continue;
-        }
-
-        // DBのCampaignレコードを検索（tiktokIdで）
-        const campaign = await this.prisma.campaign.findUnique({
-          where: { tiktokId: String(campaignId) },
-        });
-
-        if (!campaign) {
-          this.logger.warn(`Campaign not found in DB: ${campaignId}`);
-          continue;
-        }
-
         const metrics = record.metrics || {};
 
-        // メトリクスをupsert
-        await this.prisma.metric.upsert({
-          where: {
-            metric_campaign_unique: {
+        // データレベルに応じて処理を分岐
+        if (dataLevel === 'AUCTION_AD') {
+          // ADレベルのメトリクス
+          const adId = record.dimensions?.ad_id || record.ad_id;
+
+          if (!adId) {
+            this.logger.warn('Skipping AD record without ad_id');
+            continue;
+          }
+
+          // DBのAdレコードを検索（tiktokIdで）
+          const ad = await this.prisma.ad.findUnique({
+            where: { tiktokId: String(adId) },
+          });
+
+          if (!ad) {
+            this.logger.warn(`Ad not found in DB: ${adId}`);
+            continue;
+          }
+
+          // メトリクスをupsert（ADレベル）
+          await this.prisma.metric.upsert({
+            where: {
+              metric_ad_idx: {
+                entityType: 'AD',
+                adId: ad.id,
+                statDate: statDate,
+              },
+            },
+            create: {
+              entityType: 'AD',
+              adId: ad.id,
+              statDate: statDate,
+              impressions: parseInt(metrics.impressions || '0', 10),
+              clicks: parseInt(metrics.clicks || '0', 10),
+              spend: parseFloat(metrics.spend || '0'),
+              conversions: parseInt(metrics.conversions || '0', 10),
+              ctr: parseFloat(metrics.ctr || '0'),
+              cpc: parseFloat(metrics.cpc || '0'),
+              cpm: parseFloat(metrics.cpm || '0'),
+              cpa: parseFloat(metrics.cost_per_conversion || '0'),
+              videoViews: parseInt(metrics.video_views || '0', 10),
+              videoWatched2s: parseInt(metrics.video_watched_2s || '0', 10),
+              videoWatched6s: parseInt(metrics.video_watched_6s || '0', 10),
+            },
+            update: {
+              impressions: parseInt(metrics.impressions || '0', 10),
+              clicks: parseInt(metrics.clicks || '0', 10),
+              spend: parseFloat(metrics.spend || '0'),
+              conversions: parseInt(metrics.conversions || '0', 10),
+              ctr: parseFloat(metrics.ctr || '0'),
+              cpc: parseFloat(metrics.cpc || '0'),
+              cpm: parseFloat(metrics.cpm || '0'),
+              cpa: parseFloat(metrics.cost_per_conversion || '0'),
+              videoViews: parseInt(metrics.video_views || '0', 10),
+              videoWatched2s: parseInt(metrics.video_watched_2s || '0', 10),
+              videoWatched6s: parseInt(metrics.video_watched_6s || '0', 10),
+            },
+          });
+
+        } else if (dataLevel === 'AUCTION_ADGROUP') {
+          // ADGROUPレベルのメトリクス
+          const adgroupId = record.dimensions?.adgroup_id || record.adgroup_id;
+
+          if (!adgroupId) {
+            this.logger.warn('Skipping ADGROUP record without adgroup_id');
+            continue;
+          }
+
+          // DBのAdGroupレコードを検索（tiktokIdで）
+          const adgroup = await this.prisma.adGroup.findUnique({
+            where: { tiktokId: String(adgroupId) },
+          });
+
+          if (!adgroup) {
+            this.logger.warn(`AdGroup not found in DB: ${adgroupId}`);
+            continue;
+          }
+
+          // メトリクスをupsert（ADGROUPレベル）
+          await this.prisma.metric.upsert({
+            where: {
+              metric_adgroup_idx: {
+                entityType: 'ADGROUP',
+                adgroupId: adgroup.id,
+                statDate: statDate,
+              },
+            },
+            create: {
+              entityType: 'ADGROUP',
+              adgroupId: adgroup.id,
+              statDate: statDate,
+              impressions: parseInt(metrics.impressions || '0', 10),
+              clicks: parseInt(metrics.clicks || '0', 10),
+              spend: parseFloat(metrics.spend || '0'),
+              conversions: parseInt(metrics.conversions || '0', 10),
+              ctr: parseFloat(metrics.ctr || '0'),
+              cpc: parseFloat(metrics.cpc || '0'),
+              cpm: parseFloat(metrics.cpm || '0'),
+              cpa: parseFloat(metrics.cost_per_conversion || '0'),
+            },
+            update: {
+              impressions: parseInt(metrics.impressions || '0', 10),
+              clicks: parseInt(metrics.clicks || '0', 10),
+              spend: parseFloat(metrics.spend || '0'),
+              conversions: parseInt(metrics.conversions || '0', 10),
+              ctr: parseFloat(metrics.ctr || '0'),
+              cpc: parseFloat(metrics.cpc || '0'),
+              cpm: parseFloat(metrics.cpm || '0'),
+              cpa: parseFloat(metrics.cost_per_conversion || '0'),
+            },
+          });
+
+        } else if (dataLevel === 'AUCTION_CAMPAIGN') {
+          // CAMPAIGNレベルのメトリクス（既存の処理）
+          const campaignId = record.dimensions?.campaign_id || record.campaign_id;
+
+          if (!campaignId) {
+            this.logger.warn('Skipping CAMPAIGN record without campaign_id');
+            continue;
+          }
+
+          // DBのCampaignレコードを検索（tiktokIdで）
+          const campaign = await this.prisma.campaign.findUnique({
+            where: { tiktokId: String(campaignId) },
+          });
+
+          if (!campaign) {
+            this.logger.warn(`Campaign not found in DB: ${campaignId}`);
+            continue;
+          }
+
+          // メトリクスをupsert（CAMPAIGNレベル）
+          await this.prisma.metric.upsert({
+            where: {
+              metric_campaign_unique: {
+                entityType: 'CAMPAIGN',
+                campaignId: campaign.id,
+                statDate: statDate,
+              },
+            },
+            create: {
               entityType: 'CAMPAIGN',
               campaignId: campaign.id,
               statDate: statDate,
+              impressions: parseInt(metrics.impressions || '0', 10),
+              clicks: parseInt(metrics.clicks || '0', 10),
+              spend: parseFloat(metrics.spend || '0'),
+              conversions: parseInt(metrics.conversions || '0', 10),
+              ctr: parseFloat(metrics.ctr || '0'),
+              cpc: parseFloat(metrics.cpc || '0'),
+              cpm: parseFloat(metrics.cpm || '0'),
+              cpa: parseFloat(metrics.cost_per_conversion || '0'),
             },
-          },
-          create: {
-            entityType: 'CAMPAIGN',
-            campaignId: campaign.id,
-            statDate: statDate,
-            impressions: parseInt(metrics.impressions || '0', 10),
-            clicks: parseInt(metrics.clicks || '0', 10),
-            spend: parseFloat(metrics.spend || '0'),
-            conversions: parseInt(metrics.conversions || '0', 10),
-            ctr: parseFloat(metrics.ctr || '0'),
-            cpc: parseFloat(metrics.cpc || '0'),
-            cpm: parseFloat(metrics.cpm || '0'),
-            cpa: parseFloat(metrics.cost_per_conversion || '0'),
-          },
-          update: {
-            impressions: parseInt(metrics.impressions || '0', 10),
-            clicks: parseInt(metrics.clicks || '0', 10),
-            spend: parseFloat(metrics.spend || '0'),
-            conversions: parseInt(metrics.conversions || '0', 10),
-            ctr: parseFloat(metrics.ctr || '0'),
-            cpc: parseFloat(metrics.cpc || '0'),
-            cpm: parseFloat(metrics.cpm || '0'),
-            cpa: parseFloat(metrics.cost_per_conversion || '0'),
-          },
-        });
+            update: {
+              impressions: parseInt(metrics.impressions || '0', 10),
+              clicks: parseInt(metrics.clicks || '0', 10),
+              spend: parseFloat(metrics.spend || '0'),
+              conversions: parseInt(metrics.conversions || '0', 10),
+              ctr: parseFloat(metrics.ctr || '0'),
+              cpc: parseFloat(metrics.cpc || '0'),
+              cpm: parseFloat(metrics.cpm || '0'),
+              cpa: parseFloat(metrics.cost_per_conversion || '0'),
+            },
+          });
+        }
       }
 
-      this.logger.log(`Successfully saved ${reportData.length} metrics`);
+      this.logger.log(`Successfully saved ${reportData.length} ${dataLevel} metrics`);
     } catch (error) {
-      this.logger.error('Failed to save metrics to database', error);
+      this.logger.error(`Failed to save ${dataLevel} metrics to database`, error);
       throw error;
     }
   }

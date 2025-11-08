@@ -325,17 +325,35 @@ export class OptimizationService {
 
   /**
    * 広告のメトリクスを取得（過去7日間）
+   * @param tiktokAdId TikTok APIから返される広告ID
    */
-  private async getAdMetrics(adId: string, startDate: Date, endDate: Date) {
+  private async getAdMetrics(tiktokAdId: string, startDate: Date, endDate: Date) {
+    // まずTikTok IDからAdレコードを検索
+    const ad = await this.prisma.ad.findUnique({
+      where: { tiktokId: tiktokAdId },
+    });
+
+    if (!ad) {
+      this.logger.warn(`Ad not found in DB for tiktokId: ${tiktokAdId}`);
+      return {
+        impressions: 0,
+        clicks: 0,
+        spend: 0,
+      };
+    }
+
+    // Adレコードのid（UUID）を使ってメトリクスを検索
     const metrics = await this.prisma.metric.findMany({
       where: {
-        adId,
+        adId: ad.id,
         statDate: {
           gte: startDate,
           lte: endDate,
         },
       },
     });
+
+    this.logger.log(`Found ${metrics.length} metrics for ad ${tiktokAdId} (${ad.id})`);
 
     // 合計を計算
     const totalImpressions = metrics.reduce((sum, m) => sum + m.impressions, 0);
