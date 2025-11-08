@@ -12,6 +12,38 @@ export class JobsController {
   ) {}
 
   /**
+   * 無期限トークンのexpiresAtを更新
+   * POST /jobs/update-token-expiry
+   */
+  @Post('update-token-expiry')
+  async updateTokenExpiry() {
+    try {
+      // 全てのトークンのexpiresAtを2099年12月31日に更新
+      const futureDate = new Date('2099-12-31T23:59:59Z');
+
+      const result = await this.prisma.oAuthToken.updateMany({
+        data: {
+          expiresAt: futureDate,
+        },
+      });
+
+      this.logger.log(`Updated expiresAt for ${result.count} tokens to ${futureDate.toISOString()}`);
+
+      return {
+        success: true,
+        message: `Updated ${result.count} tokens to expire at ${futureDate.toISOString()}`,
+        count: result.count,
+      };
+    } catch (error) {
+      this.logger.error('Failed to update token expiry', error);
+      return {
+        success: false,
+        error: error.message,
+      };
+    }
+  }
+
+  /**
    * データ収集の診断情報
    * GET /jobs/diagnostics
    */
