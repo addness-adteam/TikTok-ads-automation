@@ -394,6 +394,16 @@ export class JobsController {
         this.logger.log(`Syncing entities for advertiser: ${token.advertiserId}`);
 
         try {
+          // まずAdvertiserレコードを確実に存在させる
+          await this.prisma.advertiser.upsert({
+            where: { tiktokAdvertiserId: token.advertiserId },
+            create: {
+              tiktokAdvertiserId: token.advertiserId,
+              name: `Advertiser ${token.advertiserId}`,
+            },
+            update: {},
+          });
+
           // Campaignを取得してDBに保存
           const campaignsResult = await this.tiktokService.getCampaigns(
             token.advertiserId,
