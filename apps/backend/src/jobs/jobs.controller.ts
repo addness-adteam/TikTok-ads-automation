@@ -172,7 +172,7 @@ export class JobsController {
       }
 
       // scopeをパース
-      let parsedScope = null;
+      let parsedScope: any = null;
       if (token.scope) {
         try {
           parsedScope = JSON.parse(token.scope);
