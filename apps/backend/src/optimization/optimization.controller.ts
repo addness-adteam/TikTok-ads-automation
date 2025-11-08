@@ -113,7 +113,7 @@ export class OptimizationController {
       }
 
       // 各Advertiserに対して順番に最適化を実行
-      const results = [];
+      const results: any[] = [];
       for (const advertiserId of advertiserIds) {
         try {
           this.logger.log(`Executing optimization for advertiser: ${advertiserId}`);

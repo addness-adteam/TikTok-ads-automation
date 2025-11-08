@@ -12,6 +12,7 @@ interface AdPerformance {
   advertiserId: string;
   status: string;
   impressions: number;
+  clicks: number;
   spend: number;
   cvCount: number;
   frontSalesCount: number;
@@ -152,7 +153,7 @@ export class OptimizationService {
       newBudget: decision.newBudget,
       metrics: {
         cpa: decision.performance?.cpa,
-        frontCpo: decision.performance?.frontCpo,
+        frontCpo: decision.performance?.frontCPO,
         cvCount: decision.performance?.cvCount,
         frontSalesCount: decision.performance?.frontSalesCount,
         spend: decision.performance?.spend,
@@ -254,6 +255,7 @@ export class OptimizationService {
       advertiserId: ad.advertiser_id,
       status: ad.operation_status,
       impressions: metrics.impressions,
+      clicks: metrics.clicks,
       spend: metrics.spend,
       cvCount,
       frontSalesCount,
@@ -322,10 +324,12 @@ export class OptimizationService {
 
     // 合計を計算
     const totalImpressions = metrics.reduce((sum, m) => sum + m.impressions, 0);
+    const totalClicks = metrics.reduce((sum, m) => sum + (m.clicks || 0), 0);
     const totalSpend = metrics.reduce((sum, m) => sum + m.spend, 0);
 
     return {
       impressions: totalImpressions,
+      clicks: totalClicks,
       spend: totalSpend,
     };
   }
