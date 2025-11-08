@@ -1,4 +1,4 @@
-import { Controller, Post, Get, Logger } from '@nestjs/common';
+import { Controller, Post, Get, Logger, Query } from '@nestjs/common';
 import { SchedulerService } from './scheduler.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { TiktokService } from '../tiktok/tiktok.service';
@@ -131,25 +131,111 @@ export class JobsController {
   }
 
   /**
-   * TikTok APIから実際のCampaign/AdGroup/Ad数を確認
-   * GET /jobs/check-entities
+   * 特定のAdvertiserでレポートデータを取得テスト
+   * GET /jobs/test-report?advertiserId=xxx
    */
-  @Get('check-entities')
-  async checkEntities() {
+  @Get('test-report')
+  async testReport(@Query('advertiserId') advertiserId?: string) {
     try {
-      // 有効なトークンを1つ取得
-      const token = await this.prisma.oAuthToken.findFirst({
-        where: {
-          expiresAt: {
-            gt: new Date(),
-          },
-        },
-      });
+      // 指定されたAdvertiserIDまたは最初の有効なトークンを取得
+      const token = advertiserId
+        ? await this.prisma.oAuthToken.findFirst({
+            where: {
+              advertiserId: advertiserId,
+              expiresAt: {
+                gt: new Date(),
+              },
+            },
+          })
+        : await this.prisma.oAuthToken.findFirst({
+            where: {
+              expiresAt: {
+                gt: new Date(),
+              },
+            },
+          });
 
       if (!token) {
         return {
           success: false,
-          error: 'No active token found',
+          error: advertiserId
+            ? `No active token found for advertiser: ${advertiserId}`
+            : 'No active token found',
+        };
+      }
+
+      this.logger.log(`Testing report API for advertiser: ${token.advertiserId}`);
+
+      // 過去7日間のレポートデータを取得
+      const endDate = new Date();
+      endDate.setDate(endDate.getDate() - 1);
+      const startDate = new Date();
+      startDate.setDate(startDate.getDate() - 7);
+
+      const startDateStr = startDate.toISOString().split('T')[0];
+      const endDateStr = endDate.toISOString().split('T')[0];
+
+      const reportData = await this.tiktokService.getAllReportData(
+        token.advertiserId,
+        token.accessToken,
+        {
+          dataLevel: 'AUCTION_CAMPAIGN',
+          startDate: startDateStr,
+          endDate: endDateStr,
+        },
+      );
+
+      return {
+        success: true,
+        advertiserId: token.advertiserId,
+        dateRange: {
+          start: startDateStr,
+          end: endDateStr,
+        },
+        recordCount: reportData.length,
+        data: reportData,
+      };
+    } catch (error) {
+      this.logger.error('Failed to test report', error);
+      return {
+        success: false,
+        error: error.message,
+        details: error.response?.data || null,
+      };
+    }
+  }
+
+  /**
+   * TikTok APIから実際のCampaign/AdGroup/Ad数を確認
+   * GET /jobs/check-entities?advertiserId=xxx
+   */
+  @Get('check-entities')
+  async checkEntities(@Query('advertiserId') advertiserId?: string) {
+    try {
+      // 指定されたAdvertiserIDまたは最初の有効なトークンを取得
+      const token = advertiserId
+        ? await this.prisma.oAuthToken.findFirst({
+            where: {
+              advertiserId: advertiserId,
+              expiresAt: {
+                gt: new Date(),
+              },
+            },
+          })
+        : await this.prisma.oAuthToken.findFirst({
+            where: {
+              expiresAt: {
+                gt: new Date(),
+              },
+            },
+          });
+
+      if (!token) {
+        return {
+          success: false,
+          error: advertiserId
+            ? `No active token found for advertiser: ${advertiserId}`
+            : 'No active token found',
         };
       }
 
