@@ -460,7 +460,7 @@ export class JobsController {
               where: { tiktokId: String(adgroup.adgroup_id) },
               create: {
                 tiktokId: String(adgroup.adgroup_id),
-                campaignId: String(adgroup.campaign_id),
+                campaignId: campaign.id,
                 name: adgroup.adgroup_name,
                 placementType: adgroup.placement_type,
                 budgetMode: adgroup.budget_mode,
@@ -567,7 +567,7 @@ export class JobsController {
               where: { tiktokId: String(ad.ad_id) },
               create: {
                 tiktokId: String(ad.ad_id),
-                adgroupId: String(ad.adgroup_id),
+                adgroupId: adgroup.id,
                 name: ad.ad_name,
                 creativeId,
                 adText: ad.ad_text,
