@@ -874,6 +874,7 @@ export class TiktokService {
       });
 
       this.logger.log(`Retrieved report data: ${response.data.data?.list?.length || 0} records`);
+      this.logger.log(`Full API response: ${JSON.stringify(response.data, null, 2)}`);
       return response.data;
     } catch (error) {
       this.logger.error('Failed to get report');
