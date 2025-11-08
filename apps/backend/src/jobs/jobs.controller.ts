@@ -57,6 +57,7 @@ export class JobsController {
         select: {
           advertiserId: true,
           expiresAt: true,
+          scope: true,
         },
       });
 
@@ -69,6 +70,7 @@ export class JobsController {
         select: {
           advertiserId: true,
           expiresAt: true,
+          scope: true,
         },
       });
 
@@ -123,6 +125,73 @@ export class JobsController {
       };
     } catch (error) {
       this.logger.error('Manual batch job failed', error);
+      return {
+        success: false,
+        error: error.message,
+      };
+    }
+  }
+
+  /**
+   * 特定のAdvertiserのトークン情報を確認
+   * GET /jobs/check-token?advertiserId=xxx
+   */
+  @Get('check-token')
+  async checkToken(@Query('advertiserId') advertiserId?: string) {
+    try {
+      const token = advertiserId
+        ? await this.prisma.oAuthToken.findFirst({
+            where: {
+              advertiserId: advertiserId,
+            },
+            select: {
+              advertiserId: true,
+              expiresAt: true,
+              scope: true,
+              createdAt: true,
+              updatedAt: true,
+            },
+          })
+        : await this.prisma.oAuthToken.findFirst({
+            select: {
+              advertiserId: true,
+              expiresAt: true,
+              scope: true,
+              createdAt: true,
+              updatedAt: true,
+            },
+          });
+
+      if (!token) {
+        return {
+          success: false,
+          error: advertiserId
+            ? `Token not found for advertiser: ${advertiserId}`
+            : 'No token found',
+        };
+      }
+
+      // scopeをパース
+      let parsedScope = null;
+      if (token.scope) {
+        try {
+          parsedScope = JSON.parse(token.scope);
+        } catch (e) {
+          parsedScope = token.scope;
+        }
+      }
+
+      return {
+        success: true,
+        advertiserId: token.advertiserId,
+        expiresAt: token.expiresAt,
+        isExpired: token.expiresAt < new Date(),
+        scope: parsedScope,
+        createdAt: token.createdAt,
+        updatedAt: token.updatedAt,
+      };
+    } catch (error) {
+      this.logger.error('Failed to check token', error);
       return {
         success: false,
         error: error.message,
