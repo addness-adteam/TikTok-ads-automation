@@ -1,0 +1,32 @@
+name: Daily TikTok Metrics Collection
+
+on:
+  schedule:
+    # 毎日0時5分（日本時間）= 15時5分（UTC前日）
+    - cron: '5 15 * * *'
+  workflow_dispatch: # 手動実行も可能
+
+jobs:
+  collect-metrics:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Call Daily Report Endpoint
+        run: |
+          echo "Triggering daily metrics collection..."
+
+          response=$(curl -s -w "\n%{http_code}" -X POST \
+            https://tik-tok-ads-automation-backend.vercel.app/jobs/run-daily-report)
+
+          http_code=$(echo "$response" | tail -n1)
+          body=$(echo "$response" | sed '$d')
+
+          echo "Response: $body"
+          echo "HTTP Status: $http_code"
+
+          if [ "$http_code" -ne 200 ]; then
+            echo "Error: API returned status $http_code"
+            exit 1
+          fi
+
+          echo "Daily metrics collection completed successfully"
