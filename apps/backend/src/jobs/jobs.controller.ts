@@ -388,7 +388,7 @@ export class JobsController {
         };
       }
 
-      const results = [];
+      const results: any[] = [];
 
       for (const token of tokens) {
         this.logger.log(`Syncing entities for advertiser: ${token.advertiserId}`);
@@ -503,7 +503,7 @@ export class JobsController {
             }
 
             // Creativeを処理（既存のCreativeがあればそれを使用、なければダミーを作成）
-            let creativeId = null;
+            let creativeId: string | null = null;
             if (ad.video_id) {
               const creative = await this.prisma.creative.findFirst({
                 where: { tiktokVideoId: ad.video_id },
@@ -513,9 +513,12 @@ export class JobsController {
                 // Creativeが存在しない場合は作成
                 const newCreative = await this.prisma.creative.create({
                   data: {
+                    advertiserId: token.advertiserId,
                     name: `Video ${ad.video_id}`,
                     type: 'VIDEO',
                     tiktokVideoId: ad.video_id,
+                    url: ad.video_id || '',
+                    filename: `video_${ad.video_id}`,
                   },
                 });
                 creativeId = newCreative.id;
@@ -531,9 +534,12 @@ export class JobsController {
                 // Creativeが存在しない場合は作成
                 const newCreative = await this.prisma.creative.create({
                   data: {
+                    advertiserId: token.advertiserId,
                     name: `Image ${ad.image_ids[0]}`,
                     type: 'IMAGE',
                     tiktokImageId: ad.image_ids[0],
+                    url: ad.image_ids[0] || '',
+                    filename: `image_${ad.image_ids[0]}`,
                   },
                 });
                 creativeId = newCreative.id;
