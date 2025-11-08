@@ -975,7 +975,7 @@ export class TiktokService {
           // メトリクスをupsert（ADレベル）
           await this.prisma.metric.upsert({
             where: {
-              metric_ad_idx: {
+              metric_ad_unique: {
                 entityType: 'AD',
                 adId: ad.id,
                 statDate: statDate,
@@ -1034,7 +1034,7 @@ export class TiktokService {
           // メトリクスをupsert（ADGROUPレベル）
           await this.prisma.metric.upsert({
             where: {
-              metric_adgroup_idx: {
+              metric_adgroup_unique: {
                 entityType: 'ADGROUP',
                 adgroupId: adgroup.id,
                 statDate: statDate,

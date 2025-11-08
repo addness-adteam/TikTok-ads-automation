@@ -210,8 +210,8 @@ model Metric {
   ad              Ad?         @relation(fields: [adId], references: [id], onDelete: Cascade)
 
   @@unique([entityType, campaignId, statDate], name: "metric_campaign_unique")
-  @@index([entityType, adgroupId, statDate], name: "metric_adgroup_idx")
-  @@index([entityType, adId, statDate], name: "metric_ad_idx")
+  @@unique([entityType, adgroupId, statDate], name: "metric_adgroup_unique")
+  @@unique([entityType, adId, statDate], name: "metric_ad_unique")
   @@index([statDate], name: "metric_statdate_idx")
   @@map("metrics")
 }
