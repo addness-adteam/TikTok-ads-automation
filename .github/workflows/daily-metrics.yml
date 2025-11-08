@@ -24,7 +24,7 @@ jobs:
           echo "Response: $body"
           echo "HTTP Status: $http_code"
 
-          if [ "$http_code" -ne 200 ]; then
+          if [ "$http_code" -lt 200 ] || [ "$http_code" -ge 300 ]; then
             echo "Error: API returned status $http_code"
             exit 1
           fi
