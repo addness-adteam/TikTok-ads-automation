@@ -268,19 +268,34 @@ export class OptimizationService {
 
   /**
    * 広告名をパース
-   * 形式: 出稿日/制作者名/クリエイティブ名/LP名-番号
+   * 形式: 出稿日/制作者名/CR名/LP名-番号
+   * CR名は複数パートに分かれることがある（例: 問題ないです/ひったくりVer_リール投稿）
    */
   private parseAdName(adName: string): { date: string; creator: string; creativeName: string; lpName: string } | null {
     const parts = adName.split('/');
-    if (parts.length !== 4) {
+
+    // 最低4パート必要（出稿日/制作者名/CR名/LP名）
+    if (parts.length < 4) {
       return null;
     }
 
+    // 最初のパート: 出稿日
+    const date = parts[0];
+
+    // 2番目のパート: 制作者名
+    const creator = parts[1];
+
+    // 最後のパート: LP名-番号
+    const lpName = parts[parts.length - 1];
+
+    // 3番目から最後の手前まで: CR名（複数パートの場合は "/" で結合）
+    const creativeName = parts.slice(2, parts.length - 1).join('/');
+
     return {
-      date: parts[0],
-      creator: parts[1],
-      creativeName: parts[2],
-      lpName: parts[3],
+      date,
+      creator,
+      creativeName,
+      lpName,
     };
   }
 

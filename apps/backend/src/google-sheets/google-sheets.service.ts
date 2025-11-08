@@ -90,11 +90,21 @@ export class GoogleSheetsService {
         `Found ${count} matches for path: ${registrationPath} in period: ${startDate.toISOString()} - ${endDate.toISOString()}`,
       );
 
+      // Google Sheets APIのクォータ制限（60リクエスト/分）を避けるため、リクエスト間に遅延を入れる
+      await this.sleep(1100); // 1.1秒待機（余裕を持って）
+
       return count;
     } catch (error) {
       this.logger.error(`Failed to fetch data from Google Sheets: ${error.message}`, error);
       throw error;
     }
+  }
+
+  /**
+   * 指定ミリ秒待機する
+   */
+  private sleep(ms: number): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, ms));
   }
 
   /**
