@@ -830,7 +830,7 @@ export class TiktokService {
         dataLevel,
         startDate,
         endDate,
-        dimensions = ['stat_time_day'],
+        dimensions,
         metrics = [
           'impressions',
           'clicks',
@@ -844,13 +844,25 @@ export class TiktokService {
         pageSize = 1000,
       } = options;
 
+      // データレベルに応じて必要なdimensionsを設定
+      let reportDimensions = dimensions || ['stat_time_day'];
+      if (!dimensions) {
+        if (dataLevel === 'AUCTION_CAMPAIGN') {
+          reportDimensions = ['stat_time_day', 'campaign_id'];
+        } else if (dataLevel === 'AUCTION_ADGROUP') {
+          reportDimensions = ['stat_time_day', 'adgroup_id'];
+        } else if (dataLevel === 'AUCTION_AD') {
+          reportDimensions = ['stat_time_day', 'ad_id'];
+        }
+      }
+
       this.logger.log(`Fetching report for advertiser: ${advertiserId}, level: ${dataLevel}, period: ${startDate} ~ ${endDate}`);
 
       const params: any = {
         advertiser_id: advertiserId,
         data_level: dataLevel,
         report_type: 'BASIC',
-        dimensions: JSON.stringify(dimensions),
+        dimensions: JSON.stringify(reportDimensions),
         metrics: JSON.stringify(metrics),
         start_date: startDate,
         end_date: endDate,
