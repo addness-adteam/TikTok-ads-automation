@@ -74,9 +74,8 @@ export class TiktokService {
     scope?: number[],
   ) {
     try {
-      // 24時間後に有効期限を設定
-      const expiresAt = new Date();
-      expiresAt.setHours(expiresAt.getHours() + 24);
+      // 無期限トークンのため、遠い未来の日付に設定
+      const expiresAt = new Date('2099-12-31T23:59:59Z');
 
       const scopeStr = scope ? JSON.stringify(scope) : null;
 
