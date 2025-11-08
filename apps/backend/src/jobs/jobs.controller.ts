@@ -1,6 +1,7 @@
 import { Controller, Post, Get, Logger } from '@nestjs/common';
 import { SchedulerService } from './scheduler.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { TiktokService } from '../tiktok/tiktok.service';
 
 @Controller('jobs')
 export class JobsController {
@@ -9,6 +10,7 @@ export class JobsController {
   constructor(
     private readonly schedulerService: SchedulerService,
     private readonly prisma: PrismaService,
+    private readonly tiktokService: TiktokService,
   ) {}
 
   /**
@@ -124,6 +126,75 @@ export class JobsController {
       return {
         success: false,
         error: error.message,
+      };
+    }
+  }
+
+  /**
+   * TikTok APIから実際のCampaign/AdGroup/Ad数を確認
+   * GET /jobs/check-entities
+   */
+  @Get('check-entities')
+  async checkEntities() {
+    try {
+      // 有効なトークンを1つ取得
+      const token = await this.prisma.oAuthToken.findFirst({
+        where: {
+          expiresAt: {
+            gt: new Date(),
+          },
+        },
+      });
+
+      if (!token) {
+        return {
+          success: false,
+          error: 'No active token found',
+        };
+      }
+
+      this.logger.log(`Checking entities for advertiser: ${token.advertiserId}`);
+
+      // Campaign一覧を取得
+      const campaignsResult = await this.tiktokService.getCampaigns(
+        token.advertiserId,
+        token.accessToken,
+      );
+
+      // AdGroup一覧を取得
+      const adgroupsResult = await this.tiktokService.getAdGroups(
+        token.advertiserId,
+        token.accessToken,
+      );
+
+      // Ad一覧を取得
+      const adsResult = await this.tiktokService.getAds(
+        token.advertiserId,
+        token.accessToken,
+      );
+
+      return {
+        success: true,
+        advertiserId: token.advertiserId,
+        campaigns: {
+          count: campaignsResult.data?.list?.length || 0,
+          data: campaignsResult.data?.list || [],
+        },
+        adgroups: {
+          count: adgroupsResult.data?.list?.length || 0,
+          data: adgroupsResult.data?.list || [],
+        },
+        ads: {
+          count: adsResult.data?.list?.length || 0,
+          data: adsResult.data?.list || [],
+        },
+      };
+    } catch (error) {
+      this.logger.error('Failed to check entities', error);
+      return {
+        success: false,
+        error: error.message,
+        details: error.response?.data || null,
       };
     }
   }
