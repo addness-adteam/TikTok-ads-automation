@@ -55,10 +55,14 @@ export class SchedulerService implements OnModuleInit {
         return;
       }
 
-      // 前日のデータを取得
-      const yesterday = new Date();
-      yesterday.setDate(yesterday.getDate() - 1);
-      const dateStr = yesterday.toISOString().split('T')[0];
+      // 過去7日間のデータを取得
+      const endDate = new Date();
+      endDate.setDate(endDate.getDate() - 1); // 前日まで
+      const startDate = new Date();
+      startDate.setDate(startDate.getDate() - 7); // 7日前から
+
+      const startDateStr = startDate.toISOString().split('T')[0];
+      const endDateStr = endDate.toISOString().split('T')[0];
 
       const dataLevels: Array<'AUCTION_CAMPAIGN' | 'AUCTION_ADGROUP' | 'AUCTION_AD'> = [
         'AUCTION_CAMPAIGN',
@@ -74,7 +78,7 @@ export class SchedulerService implements OnModuleInit {
         for (const dataLevel of dataLevels) {
           try {
             this.logger.log(
-              `Fetching ${dataLevel} report for advertiser ${token.advertiserId} (${dateStr})`,
+              `Fetching ${dataLevel} report for advertiser ${token.advertiserId} (${startDateStr} ~ ${endDateStr})`,
             );
 
             // レポートデータを取得
@@ -83,8 +87,8 @@ export class SchedulerService implements OnModuleInit {
               token.accessToken,
               {
                 dataLevel,
-                startDate: dateStr,
-                endDate: dateStr,
+                startDate: startDateStr,
+                endDate: endDateStr,
               },
             );
 
