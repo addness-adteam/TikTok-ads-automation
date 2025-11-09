@@ -209,9 +209,9 @@ model Metric {
   adGroup         AdGroup?    @relation(fields: [adgroupId], references: [id], onDelete: Cascade)
   ad              Ad?         @relation(fields: [adId], references: [id], onDelete: Cascade)
 
-  @@unique([entityType, campaignId, statDate], name: "metric_campaign_unique", map: "metric_campaign_unique")
-  @@unique([entityType, adgroupId, statDate], name: "metric_adgroup_unique", map: "metric_adgroup_unique")
-  @@unique([entityType, adId, statDate], name: "metric_ad_unique", map: "metric_ad_unique")
+  @@index([campaignId, statDate], name: "metric_campaign_idx")
+  @@index([adgroupId, statDate], name: "metric_adgroup_idx")
+  @@index([adId, statDate], name: "metric_ad_idx")
   @@index([statDate], name: "metric_statdate_idx")
   @@map("metrics")
 }

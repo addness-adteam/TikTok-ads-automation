@@ -980,45 +980,42 @@ export class TiktokService {
             continue;
           }
 
-          // メトリクスをupsert（ADレベル）
-          await this.prisma.metric.upsert({
+          // メトリクスを保存（ADレベル）- 既存レコードを検索してupdate or create
+          const existingMetric = await this.prisma.metric.findFirst({
             where: {
-              metric_ad_unique: {
-                entityType: 'AD',
-                adId: ad.id,
-                statDate: statDate,
-              },
-            },
-            create: {
               entityType: 'AD',
               adId: ad.id,
               statDate: statDate,
-              impressions: parseInt(metrics.impressions || '0', 10),
-              clicks: parseInt(metrics.clicks || '0', 10),
-              spend: parseFloat(metrics.spend || '0'),
-              conversions: parseInt(metrics.conversions || '0', 10),
-              ctr: parseFloat(metrics.ctr || '0'),
-              cpc: parseFloat(metrics.cpc || '0'),
-              cpm: parseFloat(metrics.cpm || '0'),
-              cpa: parseFloat(metrics.cost_per_conversion || '0'),
-              videoViews: parseInt(metrics.video_views || '0', 10),
-              videoWatched2s: parseInt(metrics.video_watched_2s || '0', 10),
-              videoWatched6s: parseInt(metrics.video_watched_6s || '0', 10),
-            },
-            update: {
-              impressions: parseInt(metrics.impressions || '0', 10),
-              clicks: parseInt(metrics.clicks || '0', 10),
-              spend: parseFloat(metrics.spend || '0'),
-              conversions: parseInt(metrics.conversions || '0', 10),
-              ctr: parseFloat(metrics.ctr || '0'),
-              cpc: parseFloat(metrics.cpc || '0'),
-              cpm: parseFloat(metrics.cpm || '0'),
-              cpa: parseFloat(metrics.cost_per_conversion || '0'),
-              videoViews: parseInt(metrics.video_views || '0', 10),
-              videoWatched2s: parseInt(metrics.video_watched_2s || '0', 10),
-              videoWatched6s: parseInt(metrics.video_watched_6s || '0', 10),
             },
           });
+
+          const metricData = {
+            entityType: 'AD',
+            adId: ad.id,
+            statDate: statDate,
+            impressions: parseInt(metrics.impressions || '0', 10),
+            clicks: parseInt(metrics.clicks || '0', 10),
+            spend: parseFloat(metrics.spend || '0'),
+            conversions: parseInt(metrics.conversions || '0', 10),
+            ctr: parseFloat(metrics.ctr || '0'),
+            cpc: parseFloat(metrics.cpc || '0'),
+            cpm: parseFloat(metrics.cpm || '0'),
+            cpa: parseFloat(metrics.cost_per_conversion || '0'),
+            videoViews: parseInt(metrics.video_views || '0', 10),
+            videoWatched2s: parseInt(metrics.video_watched_2s || '0', 10),
+            videoWatched6s: parseInt(metrics.video_watched_6s || '0', 10),
+          };
+
+          if (existingMetric) {
+            await this.prisma.metric.update({
+              where: { id: existingMetric.id },
+              data: metricData,
+            });
+          } else {
+            await this.prisma.metric.create({
+              data: metricData,
+            });
+          }
 
         } else if (dataLevel === 'AUCTION_ADGROUP') {
           // ADGROUPレベルのメトリクス
@@ -1039,39 +1036,39 @@ export class TiktokService {
             continue;
           }
 
-          // メトリクスをupsert（ADGROUPレベル）
-          await this.prisma.metric.upsert({
+          // メトリクスを保存（ADGROUPレベル）- 既存レコードを検索してupdate or create
+          const existingMetric = await this.prisma.metric.findFirst({
             where: {
-              metric_adgroup_unique: {
-                entityType: 'ADGROUP',
-                adgroupId: adgroup.id,
-                statDate: statDate,
-              },
-            },
-            create: {
               entityType: 'ADGROUP',
               adgroupId: adgroup.id,
               statDate: statDate,
-              impressions: parseInt(metrics.impressions || '0', 10),
-              clicks: parseInt(metrics.clicks || '0', 10),
-              spend: parseFloat(metrics.spend || '0'),
-              conversions: parseInt(metrics.conversions || '0', 10),
-              ctr: parseFloat(metrics.ctr || '0'),
-              cpc: parseFloat(metrics.cpc || '0'),
-              cpm: parseFloat(metrics.cpm || '0'),
-              cpa: parseFloat(metrics.cost_per_conversion || '0'),
-            },
-            update: {
-              impressions: parseInt(metrics.impressions || '0', 10),
-              clicks: parseInt(metrics.clicks || '0', 10),
-              spend: parseFloat(metrics.spend || '0'),
-              conversions: parseInt(metrics.conversions || '0', 10),
-              ctr: parseFloat(metrics.ctr || '0'),
-              cpc: parseFloat(metrics.cpc || '0'),
-              cpm: parseFloat(metrics.cpm || '0'),
-              cpa: parseFloat(metrics.cost_per_conversion || '0'),
             },
           });
+
+          const metricData = {
+            entityType: 'ADGROUP',
+            adgroupId: adgroup.id,
+            statDate: statDate,
+            impressions: parseInt(metrics.impressions || '0', 10),
+            clicks: parseInt(metrics.clicks || '0', 10),
+            spend: parseFloat(metrics.spend || '0'),
+            conversions: parseInt(metrics.conversions || '0', 10),
+            ctr: parseFloat(metrics.ctr || '0'),
+            cpc: parseFloat(metrics.cpc || '0'),
+            cpm: parseFloat(metrics.cpm || '0'),
+            cpa: parseFloat(metrics.cost_per_conversion || '0'),
+          };
+
+          if (existingMetric) {
+            await this.prisma.metric.update({
+              where: { id: existingMetric.id },
+              data: metricData,
+            });
+          } else {
+            await this.prisma.metric.create({
+              data: metricData,
+            });
+          }
 
         } else if (dataLevel === 'AUCTION_CAMPAIGN') {
           // CAMPAIGNレベルのメトリクス（既存の処理）
@@ -1092,39 +1089,39 @@ export class TiktokService {
             continue;
           }
 
-          // メトリクスをupsert（CAMPAIGNレベル）
-          await this.prisma.metric.upsert({
+          // メトリクスを保存（CAMPAIGNレベル）- 既存レコードを検索してupdate or create
+          const existingMetric = await this.prisma.metric.findFirst({
             where: {
-              metric_campaign_unique: {
-                entityType: 'CAMPAIGN',
-                campaignId: campaign.id,
-                statDate: statDate,
-              },
-            },
-            create: {
               entityType: 'CAMPAIGN',
               campaignId: campaign.id,
               statDate: statDate,
-              impressions: parseInt(metrics.impressions || '0', 10),
-              clicks: parseInt(metrics.clicks || '0', 10),
-              spend: parseFloat(metrics.spend || '0'),
-              conversions: parseInt(metrics.conversions || '0', 10),
-              ctr: parseFloat(metrics.ctr || '0'),
-              cpc: parseFloat(metrics.cpc || '0'),
-              cpm: parseFloat(metrics.cpm || '0'),
-              cpa: parseFloat(metrics.cost_per_conversion || '0'),
-            },
-            update: {
-              impressions: parseInt(metrics.impressions || '0', 10),
-              clicks: parseInt(metrics.clicks || '0', 10),
-              spend: parseFloat(metrics.spend || '0'),
-              conversions: parseInt(metrics.conversions || '0', 10),
-              ctr: parseFloat(metrics.ctr || '0'),
-              cpc: parseFloat(metrics.cpc || '0'),
-              cpm: parseFloat(metrics.cpm || '0'),
-              cpa: parseFloat(metrics.cost_per_conversion || '0'),
             },
           });
+
+          const metricData = {
+            entityType: 'CAMPAIGN',
+            campaignId: campaign.id,
+            statDate: statDate,
+            impressions: parseInt(metrics.impressions || '0', 10),
+            clicks: parseInt(metrics.clicks || '0', 10),
+            spend: parseFloat(metrics.spend || '0'),
+            conversions: parseInt(metrics.conversions || '0', 10),
+            ctr: parseFloat(metrics.ctr || '0'),
+            cpc: parseFloat(metrics.cpc || '0'),
+            cpm: parseFloat(metrics.cpm || '0'),
+            cpa: parseFloat(metrics.cost_per_conversion || '0'),
+          };
+
+          if (existingMetric) {
+            await this.prisma.metric.update({
+              where: { id: existingMetric.id },
+              data: metricData,
+            });
+          } else {
+            await this.prisma.metric.create({
+              data: metricData,
+            });
+          }
         }
       }
 
