@@ -297,9 +297,9 @@ export class TiktokService {
         },
         params: {
           advertiser_id: advertiserId,
-          filtering: {
+          filtering: JSON.stringify({
             adgroup_ids: [adgroupId],
-          },
+          }),
         },
       });
 
@@ -349,6 +349,15 @@ export class TiktokService {
           'Access-Token': accessToken,
         },
       });
+
+      this.logger.log(`AdGroup update response: ${JSON.stringify(response.data)}`);
+
+      // TikTok APIのレスポンスコードをチェック
+      if (response.data.code !== 0) {
+        const error = new Error(`TikTok API error: ${response.data.message}`);
+        this.logger.error('Failed to update adgroup', response.data);
+        throw error;
+      }
 
       this.logger.log('AdGroup updated successfully');
       return response.data;
@@ -402,13 +411,50 @@ export class TiktokService {
   }
 
   /**
+   * 単一Ad取得
+   * GET /v1.3/ad/get/
+   */
+  async getAd(advertiserId: string, accessToken: string, adId: string) {
+    try {
+      this.logger.log(`Fetching ad: ${adId}`);
+
+      const response = await this.httpClient.get('/v1.3/ad/get/', {
+        headers: {
+          'Access-Token': accessToken,
+        },
+        params: {
+          advertiser_id: advertiserId,
+          filtering: JSON.stringify({
+            ad_ids: [adId],
+          }),
+        },
+      });
+
+      const ads = response.data.data?.list || [];
+      if (ads.length === 0) {
+        throw new Error(`Ad not found: ${adId}`);
+      }
+
+      this.logger.log(`Ad fetched successfully: ${JSON.stringify(ads[0])}`);
+      return ads[0];
+    } catch (error) {
+      this.logger.error('Failed to get ad', error.response?.data || error.message);
+      throw error;
+    }
+  }
+
+  /**
    * Ad更新
    * POST /v1.2/ad/update/
+   *
+   * 注意: TikTok APIの仕様により、広告更新時にはcreativesフィールドが必要です。
+   * そのため、まず広告情報を取得してから更新します。
    */
   async updateAd(
     advertiserId: string,
     accessToken: string,
     adId: string,
+    adgroupId: string,
     updates: {
       status?: string;
     },
@@ -416,20 +462,74 @@ export class TiktokService {
     try {
       this.logger.log(`Updating ad: ${adId}`);
 
+      // まず現在の広告情報を取得
+      const currentAd = await this.getAd(advertiserId, accessToken, adId);
+      this.logger.log(`Current ad data retrieved for update`);
+
       const requestBody: any = {
         advertiser_id: advertiserId,
         ad_id: adId,
+        adgroup_id: adgroupId,
       };
 
+      // 広告名（必須）
+      if (currentAd.ad_name) {
+        requestBody.ad_name = currentAd.ad_name;
+      }
+
+      // 広告テキスト（必須）
+      if (currentAd.ad_text) {
+        requestBody.ad_text = currentAd.ad_text;
+      }
+
+      // クリエイティブ情報を構築
+      // TikTok v1.3 APIは creatives フィールドを必須とする
+      // creatives配列内に identity_id, identity_type, call_to_action_id が必要
+      if (currentAd.creatives && currentAd.creatives.length > 0) {
+        requestBody.creatives = currentAd.creatives;
+      } else if (currentAd.video_id || (currentAd.image_ids && currentAd.image_ids.length > 0)) {
+        // creatives配列が取得できなかった場合は、広告データから構築
+        const creative: any = {
+          ad_id: currentAd.ad_id,
+          ad_name: currentAd.ad_name,
+          ad_text: currentAd.ad_text,
+          ad_format: currentAd.ad_format,
+          video_id: currentAd.video_id,
+          image_ids: currentAd.image_ids || [],
+          landing_page_url: currentAd.landing_page_url,
+          identity_id: currentAd.identity_id,
+          identity_type: currentAd.identity_type,
+        };
+
+        // call_to_action_id がある場合のみ追加（v1.3 では call_to_action ではなく call_to_action_id を使用）
+        if (currentAd.call_to_action_id) {
+          creative.call_to_action_id = currentAd.call_to_action_id;
+        }
+
+        requestBody.creatives = [creative];
+      }
+
+      // ステータス更新
       if (updates.status) {
         requestBody.operation_status = updates.status;
       }
 
-      const response = await this.httpClient.post('/v1.2/ad/update/', requestBody, {
+      this.logger.log(`Request body for ad update: ${JSON.stringify(requestBody)}`);
+
+      const response = await this.httpClient.post('/v1.3/ad/update/', requestBody, {
         headers: {
           'Access-Token': accessToken,
         },
       });
+
+      this.logger.log(`Update response: ${JSON.stringify(response.data)}`);
+
+      // TikTok APIのレスポンスコードをチェック
+      if (response.data.code !== 0) {
+        const error = new Error(`TikTok API error: ${response.data.message}`);
+        this.logger.error('Failed to update ad', response.data);
+        throw error;
+      }
 
       this.logger.log('Ad updated successfully');
       return response.data;

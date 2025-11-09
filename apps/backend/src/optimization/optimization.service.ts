@@ -480,7 +480,7 @@ export class OptimizationService {
     // まず配信停止の広告を処理
     const pauseDecisions = decisions.filter((d) => d.action === 'PAUSE');
     for (const decision of pauseDecisions) {
-      await this.pauseAd(decision.adId, advertiserId, accessToken, decision.reason);
+      await this.pauseAd(decision.adId, decision.adgroupId, advertiserId, accessToken, decision.reason);
     }
 
     // 残りの判断を確認
@@ -517,12 +517,12 @@ export class OptimizationService {
   /**
    * 広告を停止
    */
-  private async pauseAd(adId: string, advertiserId: string, accessToken: string, reason: string) {
+  private async pauseAd(adId: string, adgroupId: string, advertiserId: string, accessToken: string, reason: string) {
     try {
       this.logger.log(`Pausing ad: ${adId}, reason: ${reason}`);
 
       // TikTok APIで広告を停止
-      const response = await this.tiktokService.updateAd(advertiserId, accessToken, adId, { status: 'DISABLE' });
+      const response = await this.tiktokService.updateAd(advertiserId, accessToken, adId, adgroupId, { status: 'DISABLE' });
 
       this.logger.log(`Ad pause response: ${JSON.stringify(response)}`);
 
@@ -553,7 +553,8 @@ export class OptimizationService {
       this.logger.log(`AdGroup fetched: budget=${adgroup.budget}, budget_mode=${adgroup.budget_mode}`);
 
       const currentBudget = adgroup.budget;
-      const newBudget = currentBudget * (1 + increaseRate);
+      // 小数点以下を切り捨て（TikTok APIは整数のみ受け付けるため）
+      const newBudget = Math.floor(currentBudget * (1 + increaseRate));
 
       // 予算が広告セットに設定されている場合
       if (adgroup.budget_mode && adgroup.budget) {
@@ -580,7 +581,8 @@ export class OptimizationService {
         this.logger.log(`Campaign fetched: budget=${campaign.budget}`);
 
         const currentCampaignBudget = campaign.budget;
-        const newCampaignBudget = currentCampaignBudget * (1 + increaseRate);
+        // 小数点以下を切り捨て（TikTok APIは整数のみ受け付けるため）
+        const newCampaignBudget = Math.floor(currentCampaignBudget * (1 + increaseRate));
 
         const response = await this.tiktokService.updateCampaign(advertiserId, accessToken, adgroup.campaign_id, {
           budget: newCampaignBudget,
