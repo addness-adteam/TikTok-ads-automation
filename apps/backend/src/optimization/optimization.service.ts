@@ -142,6 +142,12 @@ export class OptimizationService {
         executionResults.push(result);
       } catch (error) {
         this.logger.error(`Failed to optimize adgroup ${adgroupId}:`, error);
+        executionResults.push({
+          adgroupId,
+          action: 'ERROR',
+          reason: `実行エラー: ${error.message}`,
+          error: error.message,
+        });
       }
     }
 
@@ -512,13 +518,22 @@ export class OptimizationService {
    * 広告を停止
    */
   private async pauseAd(adId: string, advertiserId: string, accessToken: string, reason: string) {
-    this.logger.log(`Pausing ad: ${adId}, reason: ${reason}`);
+    try {
+      this.logger.log(`Pausing ad: ${adId}, reason: ${reason}`);
 
-    // TikTok APIで広告を停止
-    await this.tiktokService.updateAd(advertiserId, accessToken, adId, { status: 'DISABLE' });
+      // TikTok APIで広告を停止
+      const response = await this.tiktokService.updateAd(advertiserId, accessToken, adId, { status: 'DISABLE' });
 
-    // ChangeLogに記録
-    await this.logChange('AD', adId, 'PAUSE', 'OPTIMIZATION', null, { status: 'DISABLE' }, reason);
+      this.logger.log(`Ad pause response: ${JSON.stringify(response)}`);
+
+      // ChangeLogに記録
+      await this.logChange('AD', adId, 'PAUSE', 'OPTIMIZATION', null, { status: 'DISABLE' }, reason);
+
+      return { success: true, adId, action: 'PAUSED' };
+    } catch (error) {
+      this.logger.error(`Failed to pause ad ${adId}:`, error);
+      throw new Error(`広告停止に失敗: ${error.message}`);
+    }
   }
 
   /**
@@ -530,47 +545,64 @@ export class OptimizationService {
     accessToken: string,
     increaseRate: number,
   ) {
-    this.logger.log(`Increasing budget for adgroup: ${adgroupId} by ${increaseRate * 100}%`);
+    try {
+      this.logger.log(`Increasing budget for adgroup: ${adgroupId} by ${increaseRate * 100}%`);
 
-    // 広告セット情報を取得
-    const adgroup = await this.tiktokService.getAdGroup(advertiserId, accessToken, adgroupId);
-    const currentBudget = adgroup.budget;
-    const newBudget = currentBudget * (1 + increaseRate);
+      // 広告セット情報を取得
+      const adgroup = await this.tiktokService.getAdGroup(advertiserId, accessToken, adgroupId);
+      this.logger.log(`AdGroup fetched: budget=${adgroup.budget}, budget_mode=${adgroup.budget_mode}`);
 
-    // 予算が広告セットに設定されている場合
-    if (adgroup.budget_mode && adgroup.budget) {
-      await this.tiktokService.updateAdGroup(advertiserId, accessToken, adgroupId, {
-        budget: newBudget,
-      });
+      const currentBudget = adgroup.budget;
+      const newBudget = currentBudget * (1 + increaseRate);
 
-      await this.logChange(
-        'ADGROUP',
-        adgroupId,
-        'UPDATE_BUDGET',
-        'OPTIMIZATION',
-        { budget: currentBudget },
-        { budget: newBudget },
-        `予算を${increaseRate * 100}%増額（${currentBudget} → ${newBudget}）`,
-      );
-    } else {
-      // 予算がキャンペーンに設定されている場合
-      const campaign = await this.tiktokService.getCampaign(advertiserId, accessToken, adgroup.campaign_id);
-      const currentCampaignBudget = campaign.budget;
-      const newCampaignBudget = currentCampaignBudget * (1 + increaseRate);
+      // 予算が広告セットに設定されている場合
+      if (adgroup.budget_mode && adgroup.budget) {
+        const response = await this.tiktokService.updateAdGroup(advertiserId, accessToken, adgroupId, {
+          budget: newBudget,
+        });
 
-      await this.tiktokService.updateCampaign(advertiserId, accessToken, adgroup.campaign_id, {
-        budget: newCampaignBudget,
-      });
+        this.logger.log(`AdGroup budget update response: ${JSON.stringify(response)}`);
 
-      await this.logChange(
-        'CAMPAIGN',
-        adgroup.campaign_id,
-        'UPDATE_BUDGET',
-        'OPTIMIZATION',
-        { budget: currentCampaignBudget },
-        { budget: newCampaignBudget },
-        `予算を${increaseRate * 100}%増額（${currentCampaignBudget} → ${newCampaignBudget}）`,
-      );
+        await this.logChange(
+          'ADGROUP',
+          adgroupId,
+          'UPDATE_BUDGET',
+          'OPTIMIZATION',
+          { budget: currentBudget },
+          { budget: newBudget },
+          `予算を${increaseRate * 100}%増額（${currentBudget} → ${newBudget}）`,
+        );
+
+        return { success: true, adgroupId, action: 'BUDGET_INCREASED', oldBudget: currentBudget, newBudget };
+      } else {
+        // 予算がキャンペーンに設定されている場合
+        const campaign = await this.tiktokService.getCampaign(advertiserId, accessToken, adgroup.campaign_id);
+        this.logger.log(`Campaign fetched: budget=${campaign.budget}`);
+
+        const currentCampaignBudget = campaign.budget;
+        const newCampaignBudget = currentCampaignBudget * (1 + increaseRate);
+
+        const response = await this.tiktokService.updateCampaign(advertiserId, accessToken, adgroup.campaign_id, {
+          budget: newCampaignBudget,
+        });
+
+        this.logger.log(`Campaign budget update response: ${JSON.stringify(response)}`);
+
+        await this.logChange(
+          'CAMPAIGN',
+          adgroup.campaign_id,
+          'UPDATE_BUDGET',
+          'OPTIMIZATION',
+          { budget: currentCampaignBudget },
+          { budget: newCampaignBudget },
+          `予算を${increaseRate * 100}%増額（${currentCampaignBudget} → ${newCampaignBudget}）`,
+        );
+
+        return { success: true, campaignId: adgroup.campaign_id, action: 'BUDGET_INCREASED', oldBudget: currentCampaignBudget, newBudget: newCampaignBudget };
+      }
+    } catch (error) {
+      this.logger.error(`Failed to increase budget for adgroup ${adgroupId}:`, error);
+      throw new Error(`予算増額に失敗: ${error.message}`);
     }
   }
 
