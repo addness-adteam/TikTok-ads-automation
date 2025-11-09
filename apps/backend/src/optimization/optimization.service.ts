@@ -413,6 +413,11 @@ export class OptimizationService {
       // 全期間の広告費を取得
       const totalSpend = await this.getTotalAdSpend(performance.adId);
 
+      // CPA = 0の場合はCV数が0なので停止
+      if (cpa === 0) {
+        return createDecision('PAUSE', `CV数が0（CPA=0）のため、停止`);
+      }
+
       if (cpa <= allowableCPA && totalSpend <= allowableFrontCPO) {
         return createDecision('CONTINUE', `CPA（¥${cpa.toFixed(0)}）が許容値以下かつ累積広告費（¥${totalSpend.toFixed(0)}）が許容フロントCPO以下のため、継続配信`);
       } else {
