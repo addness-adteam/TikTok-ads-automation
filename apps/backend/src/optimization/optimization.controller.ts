@@ -155,4 +155,13 @@ export class OptimizationController {
       };
     }
   }
+
+  /**
+   * 評価期間をデバッグ用に確認
+   * POST /api/optimization/debug-period
+   */
+  @Post('debug-period')
+  async debugEvaluationPeriod() {
+    return this.optimizationService.debugEvaluationPeriod();
+  }
 }

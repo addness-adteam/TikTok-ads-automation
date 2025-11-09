@@ -615,4 +615,20 @@ export class OptimizationService {
 
     return advertisers.map((a) => a.tiktokAdvertiserId);
   }
+
+  /**
+   * デバッグ用：評価期間を確認
+   */
+  async debugEvaluationPeriod() {
+    const { startDate, endDate } = this.calculateEvaluationPeriod();
+
+    return {
+      today: new Date().toISOString(),
+      startDate: startDate.toISOString(),
+      endDate: endDate.toISOString(),
+      startDateFormatted: `${startDate.getFullYear()}/${String(startDate.getMonth() + 1).padStart(2, '0')}/${String(startDate.getDate()).padStart(2, '0')}`,
+      endDateFormatted: `${endDate.getFullYear()}/${String(endDate.getMonth() + 1).padStart(2, '0')}/${String(endDate.getDate()).padStart(2, '0')}`,
+      periodDescription: `${startDate.getMonth() + 1}/${startDate.getDate()} ～ ${endDate.getMonth() + 1}/${endDate.getDate()}`,
+    };
+  }
 }
