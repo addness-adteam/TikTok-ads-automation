@@ -521,8 +521,8 @@ export class OptimizationService {
     try {
       this.logger.log(`Pausing ad: ${adId}, reason: ${reason}`);
 
-      // TikTok APIで広告を停止
-      const response = await this.tiktokService.updateAd(advertiserId, accessToken, adId, adgroupId, { status: 'DISABLE' });
+      // TikTok APIで広告を停止（専用のステータス更新エンドポイントを使用）
+      const response = await this.tiktokService.updateAdStatus(advertiserId, accessToken, [adId], 'DISABLE');
 
       this.logger.log(`Ad pause response: ${JSON.stringify(response)}`);
 

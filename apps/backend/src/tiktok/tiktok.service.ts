@@ -444,8 +444,54 @@ export class TiktokService {
   }
 
   /**
-   * Ad更新
-   * POST /v1.2/ad/update/
+   * 広告ステータス更新（専用エンドポイント）
+   * POST /v1.3/ad/status/update/
+   *
+   * 広告のステータス（ENABLE/DISABLE/DELETE）を変更する専用API
+   */
+  async updateAdStatus(
+    advertiserId: string,
+    accessToken: string,
+    adIds: string[],
+    operationStatus: 'ENABLE' | 'DISABLE' | 'DELETE',
+  ) {
+    try {
+      this.logger.log(`Updating ad status: ${adIds.join(', ')} to ${operationStatus}`);
+
+      const requestBody = {
+        advertiser_id: advertiserId,
+        ad_ids: adIds,
+        operation_status: operationStatus,
+      };
+
+      this.logger.log(`Request body for ad status update: ${JSON.stringify(requestBody)}`);
+
+      const response = await this.httpClient.post('/v1.3/ad/status/update/', requestBody, {
+        headers: {
+          'Access-Token': accessToken,
+        },
+      });
+
+      this.logger.log(`Ad status update response: ${JSON.stringify(response.data)}`);
+
+      // TikTok APIのレスポンスコードをチェック
+      if (response.data.code !== 0) {
+        const error = new Error(`TikTok API error: ${response.data.message}`);
+        this.logger.error('Failed to update ad status', response.data);
+        throw error;
+      }
+
+      this.logger.log('Ad status updated successfully');
+      return response.data;
+    } catch (error) {
+      this.logger.error('Failed to update ad status', error.response?.data || error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * Ad更新（コンテンツ更新用）
+   * POST /v1.3/ad/update/
    *
    * 注意: TikTok APIの仕様により、広告更新時にはcreativesフィールドが必要です。
    * そのため、まず広告情報を取得してから更新します。
