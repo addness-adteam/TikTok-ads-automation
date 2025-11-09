@@ -2,11 +2,18 @@ import { Injectable, Logger } from '@nestjs/common';
 import { google } from 'googleapis';
 import { ConfigService } from '@nestjs/config';
 
+interface SheetCacheEntry {
+  data: any[][];
+  timestamp: number;
+}
+
 @Injectable()
 export class GoogleSheetsService {
   private readonly logger = new Logger(GoogleSheetsService.name);
   private readonly sheets;
   private readonly auth;
+  private readonly sheetCache: Map<string, SheetCacheEntry> = new Map();
+  private readonly CACHE_TTL_MS = 5 * 60 * 1000; // 5分間キャッシュ
 
   constructor(private configService: ConfigService) {
     // サービスアカウント認証
@@ -20,6 +27,56 @@ export class GoogleSheetsService {
     });
 
     this.sheets = google.sheets({ version: 'v4', auth: this.auth });
+  }
+
+  /**
+   * シートデータをキャッシュを考慮して取得
+   * @param spreadsheetId スプレッドシートID
+   * @param sheetName シート名
+   * @param range 取得範囲（例：E:F）
+   * @returns シートデータ
+   */
+  private async getSheetDataWithCache(
+    spreadsheetId: string,
+    sheetName: string,
+    range: string,
+  ): Promise<any[][]> {
+    const cacheKey = `${spreadsheetId}:${sheetName}:${range}`;
+    const now = Date.now();
+
+    // キャッシュをチェック
+    const cached = this.sheetCache.get(cacheKey);
+    if (cached && now - cached.timestamp < this.CACHE_TTL_MS) {
+      this.logger.log(`Using cached data for ${spreadsheetId}/${sheetName}`);
+      return cached.data;
+    }
+
+    // キャッシュがない、または期限切れの場合は新規取得
+    this.logger.log(`Fetching fresh data from spreadsheet: ${spreadsheetId}, sheet: ${sheetName}`);
+
+    const fullRange = `${sheetName}!${range}`;
+    const response = await this.sheets.spreadsheets.values.get({
+      spreadsheetId,
+      range: fullRange,
+    });
+
+    const data = response.data.values || [];
+
+    // キャッシュに保存
+    this.sheetCache.set(cacheKey, {
+      data,
+      timestamp: now,
+    });
+
+    return data;
+  }
+
+  /**
+   * キャッシュをクリア（主にテスト用）
+   */
+  clearCache(): void {
+    this.sheetCache.clear();
+    this.logger.log('Sheet cache cleared');
   }
 
   /**
@@ -43,17 +100,12 @@ export class GoogleSheetsService {
       const spreadsheetId = this.extractSpreadsheetId(spreadsheetUrl);
 
       this.logger.log(
-        `Fetching data from spreadsheet: ${spreadsheetId}, sheet: ${sheetName}, path: ${registrationPath}`,
+        `Counting registrations for path: ${registrationPath} in ${sheetName}`,
       );
 
-      // シート全体のデータを取得（E列とF列）
-      const range = `${sheetName}!E:F`; // E列: 登録経路, F列: 登録日時
-      const response = await this.sheets.spreadsheets.values.get({
-        spreadsheetId,
-        range,
-      });
+      // シート全体のデータをキャッシュ経由で取得（E列とF列）
+      const rows = await this.getSheetDataWithCache(spreadsheetId, sheetName, 'E:F');
 
-      const rows = response.data.values;
       if (!rows || rows.length === 0) {
         this.logger.warn(`No data found in sheet: ${sheetName}`);
         return 0;
@@ -90,21 +142,11 @@ export class GoogleSheetsService {
         `Found ${count} matches for path: ${registrationPath} in period: ${startDate.toISOString()} - ${endDate.toISOString()}`,
       );
 
-      // Google Sheets APIのクォータ制限（60リクエスト/分）を避けるため、リクエスト間に遅延を入れる
-      await this.sleep(1100); // 1.1秒待機（余裕を持って）
-
       return count;
     } catch (error) {
       this.logger.error(`Failed to fetch data from Google Sheets: ${error.message}`, error);
       throw error;
     }
-  }
-
-  /**
-   * 指定ミリ秒待機する
-   */
-  private sleep(ms: number): Promise<void> {
-    return new Promise(resolve => setTimeout(resolve, ms));
   }
 
   /**

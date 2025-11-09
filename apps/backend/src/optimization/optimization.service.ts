@@ -79,6 +79,9 @@ export class OptimizationService {
   async optimizeAdvertiser(advertiserId: string, accessToken: string) {
     this.logger.log(`Optimizing advertiser: ${advertiserId}`);
 
+    // Google Sheetsのキャッシュをクリアして最新データを取得
+    this.googleSheetsService.clearCache();
+
     // 訴求情報を取得
     const advertiser = await this.prisma.advertiser.findUnique({
       where: { tiktokAdvertiserId: advertiserId },
