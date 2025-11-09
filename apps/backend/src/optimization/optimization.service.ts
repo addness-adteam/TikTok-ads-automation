@@ -319,9 +319,11 @@ export class OptimizationService {
 
     const endDate = new Date(today);
     endDate.setDate(endDate.getDate() - 1); // 昨日
+    endDate.setHours(23, 59, 59, 999); // その日の終わりまで含める
 
     const startDate = new Date(endDate);
     startDate.setDate(startDate.getDate() - 6); // 7日前
+    startDate.setHours(0, 0, 0, 0); // その日の始まりから
 
     return { startDate, endDate };
   }
