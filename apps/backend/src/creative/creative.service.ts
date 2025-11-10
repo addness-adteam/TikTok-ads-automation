@@ -3,6 +3,8 @@ import { PrismaService } from '../prisma/prisma.service';
 import { put } from '@vercel/blob';
 import { ConfigService } from '@nestjs/config';
 import axios from 'axios';
+import FormData from 'form-data';
+import * as crypto from 'crypto';
 
 @Injectable()
 export class CreativeService {
@@ -28,6 +30,17 @@ export class CreativeService {
     this.logger.log(`Uploading creative for advertiser: ${advertiserId}`);
 
     try {
+      // Advertiserテーブルから TikTok Advertiser ID を取得
+      const advertiser = await this.prisma.advertiser.findUnique({
+        where: { id: advertiserId },
+      });
+
+      if (!advertiser) {
+        throw new BadRequestException('Advertiser not found');
+      }
+
+      const tiktokAdvertiserId = advertiser.tiktokAdvertiserId;
+
       // ファイルタイプを判定
       const isVideo = file.mimetype.startsWith('video/');
       const isImage = file.mimetype.startsWith('image/');
@@ -40,6 +53,7 @@ export class CreativeService {
       const blob = await put(file.originalname, file.buffer, {
         access: 'public',
         token: this.configService.get<string>('BLOB_READ_WRITE_TOKEN'),
+        addRandomSuffix: true,
       });
 
       this.logger.log(`File uploaded to Blob Storage: ${blob.url}`);
@@ -47,9 +61,9 @@ export class CreativeService {
       // TikTok APIにアップロード
       let tiktokId: string | null = null;
       if (isVideo) {
-        tiktokId = await this.uploadVideoToTikTok(advertiserId, blob.url, accessToken);
+        tiktokId = await this.uploadVideoToTikTok(tiktokAdvertiserId, file, accessToken);
       } else {
-        tiktokId = await this.uploadImageToTikTok(advertiserId, blob.url, accessToken);
+        tiktokId = await this.uploadImageToTikTok(tiktokAdvertiserId, blob.url, accessToken);
       }
 
       // DBに保存
@@ -84,29 +98,47 @@ export class CreativeService {
    */
   private async uploadVideoToTikTok(
     advertiserId: string,
-    videoUrl: string,
+    file: Express.Multer.File,
     accessToken: string,
   ): Promise<string> {
-    this.logger.log(`Uploading video to TikTok: ${videoUrl}`);
+    this.logger.log(`Uploading video to TikTok: ${file.originalname} (${file.size} bytes)`);
 
     try {
+      // Calculate MD5 hash of the video file
+      const md5Hash = crypto.createHash('md5').update(file.buffer).digest('hex');
+      this.logger.log(`Video MD5 signature: ${md5Hash}`);
+
+      const formData = new FormData();
+      formData.append('advertiser_id', advertiserId);
+      formData.append('upload_type', 'UPLOAD_BY_FILE');
+      formData.append('video_signature', md5Hash);
+      formData.append('video_file', file.buffer, {
+        filename: file.originalname,
+        contentType: file.mimetype,
+      });
+
       const response = await axios.post(
         `${this.tiktokApiBaseUrl}/v1.3/file/video/ad/upload/`,
-        {
-          advertiser_id: advertiserId,
-          video_url: videoUrl,
-          upload_type: 'UPLOAD_BY_URL',
-        },
+        formData,
         {
           headers: {
             'Access-Token': accessToken,
-            'Content-Type': 'application/json',
+            ...formData.getHeaders(),
           },
+          maxContentLength: Infinity,
+          maxBodyLength: Infinity,
         },
       );
 
-      const videoId = response.data.data?.video_id;
+      this.logger.log(`TikTok API Response: ${JSON.stringify(response.data)}`);
+
+      // TikTok API v1.3 returns data as an array
+      const videoId = Array.isArray(response.data.data)
+        ? response.data.data[0]?.video_id
+        : response.data.data?.video_id;
+
       if (!videoId) {
+        this.logger.error(`Response data structure: ${JSON.stringify(response.data)}`);
         throw new Error('Failed to get video_id from TikTok API');
       }
 
@@ -144,8 +176,11 @@ export class CreativeService {
         },
       );
 
+      this.logger.log(`TikTok API Response: ${JSON.stringify(response.data)}`);
+
       const imageId = response.data.data?.image_id;
       if (!imageId) {
+        this.logger.error(`Response data structure: ${JSON.stringify(response.data)}`);
         throw new Error('Failed to get image_id from TikTok API');
       }
 
