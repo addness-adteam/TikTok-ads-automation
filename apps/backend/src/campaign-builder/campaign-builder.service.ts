@@ -23,6 +23,7 @@ export interface CampaignBuilderInput {
     adName: string;
     creativeId: string; // DBのCreative ID
     landingPageUrl: string;
+    thumbnailImageId?: string; // 動画広告の場合のサムネイル画像ID
   }[];
 }
 
@@ -66,7 +67,7 @@ export class CampaignBuilderService {
       // 3. AdGroup作成
       const adGroup = await this.createAdGroup(
         input.advertiserId,
-        campaign.data.campaign_id,
+        String(campaign.data.campaign_id), // Convert to string for API v1.3
         input.pattern,
         input.dailyBudget,
         input.pixelId,
@@ -86,6 +87,7 @@ export class CampaignBuilderService {
           adInput.creativeId,
           adInput.landingPageUrl,
           appealName,
+          adInput.thumbnailImageId,
           accessToken,
         );
         ads.push(ad);
@@ -151,10 +153,11 @@ export class CampaignBuilderService {
     const adgroupName = `${dateStr} ${patternName}`;
 
     // スケジュール設定（15時判定）
+    // API v1.3: Use 'YYYY-MM-DD HH:mm:ss' format for SCHEDULE_FROM_NOW
     const currentHour = today.getHours();
     const startTime = currentHour < 15
-      ? today.toISOString()
-      : new Date(today.setDate(today.getDate() + 1)).toISOString().split('T')[0] + 'T00:00:00Z';
+      ? today.toISOString().replace('T', ' ').split('.')[0]
+      : new Date(today.setDate(today.getDate() + 1)).toISOString().split('T')[0] + ' 00:00:00';
 
     // ターゲティング設定
     const targeting = {
@@ -162,7 +165,7 @@ export class CampaignBuilderService {
       age_groups: ['AGE_18_24', 'AGE_25_34', 'AGE_35_44', 'AGE_45_54', 'AGE_55_100'],
       gender: 'GENDER_UNLIMITED',
       languages: ['ja'], // 日本語
-      spending_power: 'UNLIMITED',
+      spending_power: 'ALL', // API v1.3: 'ALL' or 'HIGH' (was 'UNLIMITED' in v1.2)
       ...(pattern === 'LOOKALIKE' && {
         included_custom_audiences: includedAudiences,
         excluded_custom_audiences: excludedAudiences,
@@ -179,7 +182,7 @@ export class CampaignBuilderService {
         budgetMode: 'BUDGET_MODE_DAY',
         budget: dailyBudget,
         bidType: 'BID_TYPE_NO_BID', // 自動入札
-        optimizationGoal: 'COMPLETE_PAYMENT', // またはoptimizationEventに応じて変更
+        optimizationGoal: 'CONVERT', // API v1.3: CONVERT for LEAD_GENERATION campaigns
         pixelId,
         optimizationEvent,
         targeting,
@@ -200,6 +203,7 @@ export class CampaignBuilderService {
     creativeId: string,
     landingPageUrl: string,
     appealName: string,
+    thumbnailImageId: string | undefined,
     accessToken: string,
   ) {
     this.logger.log(`Creating ad: ${adName}`);
@@ -218,21 +222,49 @@ export class CampaignBuilderService {
       ? 'SNSで独立するなら学んでおきたい本質のSNSマーケ特商法（https://skill.addness.co.jp/tokushoho）'
       : 'AIで独立するなら学んでおきたい本質のAI活用術特商法（https://skill.addness.co.jp/tokushoho）';
 
-    return this.tiktokService.createAd(
-      advertiserId,
-      adgroupId,
-      adName,
-      {
-        identity: 'addness08', // TikTok Identity
-        videoId: creative.tiktokVideoId || undefined,
-        imageIds: creative.tiktokImageId ? [creative.tiktokImageId] : undefined,
-        adText,
-        callToAction: 'LEARN_MORE', // 続きを見る
-        landingPageUrl,
-        displayMode: 'AD_ONLY', // 広告のみで表示
-        creativeAuthorized: false, // クリエイティブ自動化オフ
-      },
-      accessToken,
-    );
+    // Creative typeに基づいて適切なパラメータを設定
+    if (creative.type === 'VIDEO') {
+      // 動画広告: video_id + サムネイル画像ID
+      // DBに保存されているtiktokImageIdは動画のサムネイル画像ID
+      if (!creative.tiktokImageId) {
+        throw new Error(`Video creative ${creativeId} missing thumbnail image ID`);
+      }
+
+      return this.tiktokService.createAd(
+        advertiserId,
+        adgroupId,
+        adName,
+        {
+          identity: 'a356c51a-18f2-5f1e-b784-ccb3b107099e',
+          videoId: creative.tiktokVideoId ?? undefined,
+          imageIds: [creative.tiktokImageId], // サムネイル画像ID（動画アップロード時に自動生成）
+          adText,
+          callToAction: 'LEARN_MORE',
+          landingPageUrl,
+          displayMode: 'AD_ONLY',
+          creativeAuthorized: false,
+        },
+        accessToken,
+      );
+    } else if (creative.type === 'IMAGE') {
+      // 画像広告: image_idsのみ使用
+      return this.tiktokService.createAd(
+        advertiserId,
+        adgroupId,
+        adName,
+        {
+          identity: 'a356c51a-18f2-5f1e-b784-ccb3b107099e',
+          imageIds: [creative.tiktokImageId!],
+          adText,
+          callToAction: 'LEARN_MORE',
+          landingPageUrl,
+          displayMode: 'AD_ONLY',
+          creativeAuthorized: false,
+        },
+        accessToken,
+      );
+    } else {
+      throw new Error(`Unknown creative type: ${creative.type}`);
+    }
   }
 }

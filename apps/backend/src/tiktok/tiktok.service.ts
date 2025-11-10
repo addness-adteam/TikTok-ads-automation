@@ -709,27 +709,31 @@ export class TiktokService {
         advertiser_id: advertiserId,
         campaign_id: campaignId,
         adgroup_name: adgroupName,
+        promotion_type: 'LEAD_GENERATION', // API v1.3: LEAD_GENERATION for lead gen campaigns
+        promotion_target_type: 'EXTERNAL_WEBSITE', // Required for website-based lead generation
         placement_type: options.placementType || 'PLACEMENT_TYPE_NORMAL',
         placements: options.placements || ['PLACEMENT_TIKTOK'],
         location_ids: options.targeting?.location_ids || ['6252001'],
         languages: options.targeting?.languages || ['ja'],
         age_groups: options.targeting?.age_groups || ['AGE_18_24', 'AGE_25_34', 'AGE_35_44', 'AGE_45_54', 'AGE_55_100'],
         gender: options.targeting?.gender || 'GENDER_UNLIMITED',
-        budget_mode: options.budgetMode || 'BUDGET_MODE_DAY',
+        budget_mode: 'BUDGET_MODE_DYNAMIC_DAILY_BUDGET', // API v1.3: Dynamic daily budget for LEAD_GENERATION
         budget: options.budget,
         bid_type: options.bidType || 'BID_TYPE_NO_BID',
         billing_event: 'OCPM', // Optimized Cost per Mille for automatic bidding
-        optimization_goal: options.optimizationGoal || 'COMPLETE_PAYMENT',
-        schedule_type: 'SCHEDULE_START_END',
+        optimization_goal: options.optimizationGoal || 'CONVERT', // API v1.3: CONVERT for LEAD_GENERATION campaigns
+        schedule_type: 'SCHEDULE_FROM_NOW', // API v1.3: SCHEDULE_FROM_NOW for continuous campaigns
         schedule_start_time: options.scheduleStartTime,
+        pacing: 'PACING_MODE_SMOOTH', // Smooth pacing for better delivery
+        skip_learning_phase: true, // Skip learning phase
+        video_download_disabled: true, // Disable video downloads
+        click_attribution_window: 'SEVEN_DAYS', // 7-day click attribution
+        view_attribution_window: 'ONE_DAY', // 1-day view attribution
+        brand_safety_type: 'STANDARD_INVENTORY', // Standard brand safety
       };
 
       if (options.bidPrice) {
         requestBody.bid_price = options.bidPrice;
-      }
-
-      if (options.scheduleEndTime) {
-        requestBody.schedule_end_time = options.scheduleEndTime;
       }
 
       if (options.pixelId) {
@@ -737,7 +741,9 @@ export class TiktokService {
       }
 
       if (options.optimizationEvent) {
-        requestBody.conversion_id = options.optimizationEvent;
+        // API v1.3: Use optimization_event string constant instead of conversion_id
+        // For ON_WEB_REGISTER event, use the string constant directly
+        requestBody.optimization_event = 'ON_WEB_REGISTER';
       }
 
       if (options.targeting?.included_custom_audiences) {
@@ -752,7 +758,10 @@ export class TiktokService {
         requestBody.spending_power = options.targeting.spending_power;
       }
 
-      const response = await this.httpClient.post('/v1.2/adgroup/create/', requestBody, {
+      // Log request body for debugging
+      this.logger.log('AdGroup create request body:', JSON.stringify(requestBody, null, 2));
+
+      const response = await this.httpClient.post('/v1.3/adgroup/create/', requestBody, {
         headers: {
           'Access-Token': accessToken,
         },
@@ -763,10 +772,20 @@ export class TiktokService {
 
       // DBに保存
       if (response.data.data?.adgroup_id) {
+        // Find Campaign UUID from TikTok Campaign ID
+        const campaign = await this.prisma.campaign.findUnique({
+          where: { tiktokId: campaignId },
+        });
+
+        if (!campaign) {
+          this.logger.error(`Campaign not found in DB: ${campaignId}`);
+          throw new Error(`Campaign not found in database: ${campaignId}`);
+        }
+
         await this.prisma.adGroup.create({
           data: {
             tiktokId: String(response.data.data.adgroup_id),
-            campaignId,
+            campaignId: campaign.id, // Use Campaign UUID instead of TikTok Campaign ID
             name: adgroupName,
             placementType: options.placementType,
             budgetMode: options.budgetMode,
@@ -814,31 +833,43 @@ export class TiktokService {
     try {
       this.logger.log(`Creating ad: ${adName} for adgroup: ${adgroupId}`);
 
+      // API v1.3: Use creatives array format
+      const creative: any = {
+        ad_name: adName,
+        ad_text: options.adText,
+        // API v1.3: Use call_to_action_id instead of call_to_action string
+        call_to_action_id: '7569153453977603079', // LEARN_MORE CTA ID
+        landing_page_url: options.landingPageUrl,
+        display_name: options.identity || 'a356c51a-18f2-5f1e-b784-ccb3b107099e',
+        identity_id: options.identity || 'a356c51a-18f2-5f1e-b784-ccb3b107099e', // API v1.3: Required in creatives array (スキルプラス - AVAILABLE)
+        identity_type: 'TT_USER',
+      };
+
+      // Set ad_format based on creative type
+      if (options.videoId) {
+        creative.video_id = options.videoId;
+        creative.ad_format = 'SINGLE_VIDEO';
+        // SINGLE_VIDEOの場合もサムネイル画像が必要
+        if (options.imageIds && options.imageIds.length > 0) {
+          creative.image_ids = options.imageIds;
+        }
+      } else if (options.imageIds && options.imageIds.length > 0) {
+        creative.image_ids = options.imageIds;
+        creative.ad_format = 'SINGLE_IMAGE';
+      }
+
       const requestBody: any = {
         advertiser_id: advertiserId,
         adgroup_id: adgroupId,
-        ad_name: adName,
-        ad_text: options.adText,
-        call_to_action: options.callToAction || 'LEARN_MORE',
-        landing_page_url: options.landingPageUrl,
-        identity_id: options.identity || 'addness08',
-        identity_type: 'TT_USER',
         is_smart_creative: options.creativeAuthorized || false,
+        creatives: [creative], // API v1.3: creatives array
       };
 
-      if (options.videoId) {
-        requestBody.video_id = options.videoId;
-      }
+      // Log request body for debugging
+      this.logger.log('Ad create request body:');
+      this.logger.log(JSON.stringify(requestBody, null, 2));
 
-      if (options.imageIds && options.imageIds.length > 0) {
-        requestBody.image_ids = options.imageIds;
-      }
-
-      if (options.displayMode) {
-        requestBody.display_mode = options.displayMode;
-      }
-
-      const response = await this.httpClient.post('/v1.2/ad/create/', requestBody, {
+      const response = await this.httpClient.post('/v1.3/ad/create/', requestBody, {
         headers: {
           'Access-Token': accessToken,
         },

@@ -59,11 +59,28 @@ export class CreativeService {
       this.logger.log(`File uploaded to Blob Storage: ${blob.url}`);
 
       // TikTok APIにアップロード
-      let tiktokId: string | null = null;
+      let tiktokVideoId: string | null = null;
+      let tiktokImageId: string | null = null;
+      let thumbnailImageId: string | null = null;
+
       if (isVideo) {
-        tiktokId = await this.uploadVideoToTikTok(tiktokAdvertiserId, file, accessToken);
+        // 動画アップロード
+        const videoResult = await this.uploadVideoToTikTok(tiktokAdvertiserId, file, accessToken);
+        tiktokVideoId = videoResult.videoId;
+
+        // 動画のカバー画像を取得してサムネイル用の画像IDを作成
+        if (videoResult.videoCoverUrl) {
+          this.logger.log(`Uploading video thumbnail from cover URL: ${videoResult.videoCoverUrl}`);
+          thumbnailImageId = await this.uploadImageToTikTok(
+            tiktokAdvertiserId,
+            videoResult.videoCoverUrl,
+            accessToken
+          );
+          this.logger.log(`Thumbnail image uploaded: ${thumbnailImageId}`);
+        }
       } else {
-        tiktokId = await this.uploadImageToTikTok(tiktokAdvertiserId, blob.url, accessToken);
+        // 画像アップロード
+        tiktokImageId = await this.uploadImageToTikTok(tiktokAdvertiserId, blob.url, accessToken);
       }
 
       // DBに保存
@@ -71,8 +88,8 @@ export class CreativeService {
         data: {
           advertiserId,
           name,
-          tiktokVideoId: isVideo ? tiktokId : null,
-          tiktokImageId: isImage ? tiktokId : null,
+          tiktokVideoId: isVideo ? tiktokVideoId : null,
+          tiktokImageId: isImage ? tiktokImageId : thumbnailImageId, // 動画の場合はサムネイル画像IDを保存
           type: isVideo ? 'VIDEO' : 'IMAGE',
           url: blob.url,
           filename: file.originalname,
@@ -100,7 +117,7 @@ export class CreativeService {
     advertiserId: string,
     file: Express.Multer.File,
     accessToken: string,
-  ): Promise<string> {
+  ): Promise<{ videoId: string; videoCoverUrl?: string }> {
     this.logger.log(`Uploading video to TikTok: ${file.originalname} (${file.size} bytes)`);
 
     try {
@@ -137,17 +154,44 @@ export class CreativeService {
       this.logger.log(`TikTok API Response: ${JSON.stringify(response.data)}`);
 
       // TikTok API v1.3 returns data as an array
-      const videoId = Array.isArray(response.data.data)
-        ? response.data.data[0]?.video_id
-        : response.data.data?.video_id;
+      const videoData = Array.isArray(response.data.data)
+        ? response.data.data[0]
+        : response.data.data;
 
-      if (!videoId) {
+      if (!videoData?.video_id) {
         this.logger.error(`Response data structure: ${JSON.stringify(response.data)}`);
         throw new Error('Failed to get video_id from TikTok API');
       }
 
-      this.logger.log(`Video uploaded to TikTok: ${videoId}`);
-      return videoId;
+      this.logger.log(`Video uploaded to TikTok: ${videoData.video_id}`);
+
+      // 動画のカバー画像URLを取得するため、動画情報をクエリ
+      let videoCoverUrl: string | undefined;
+      try {
+        const videoInfoResponse = await axios.get(
+          `${this.tiktokApiBaseUrl}/v1.3/file/video/ad/info/`,
+          {
+            params: {
+              advertiser_id: advertiserId,
+              video_ids: JSON.stringify([videoData.video_id]),
+            },
+            headers: {
+              'Access-Token': accessToken,
+            },
+          },
+        );
+
+        const videoInfo = videoInfoResponse.data.data?.list?.[0];
+        videoCoverUrl = videoInfo?.video_cover_url;
+        this.logger.log(`Video cover URL retrieved: ${videoCoverUrl || 'Not available'}`);
+      } catch (infoError) {
+        this.logger.warn('Failed to get video cover URL, will proceed without thumbnail', infoError.message);
+      }
+
+      return {
+        videoId: videoData.video_id,
+        videoCoverUrl,
+      };
     } catch (error) {
       this.logger.error('Failed to upload video to TikTok', error.response?.data || error.message);
       throw error;
