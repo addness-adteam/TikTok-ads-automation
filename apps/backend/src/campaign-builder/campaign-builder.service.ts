@@ -57,7 +57,8 @@ export class CampaignBuilderService {
 
       // 2. Campaign作成
       const campaign = await this.createCampaign(
-        input.advertiserId,
+        advertiser.id, // Advertiser UUID
+        input.advertiserId, // TikTok Advertiser ID
         input.campaignName,
         accessToken,
       );
@@ -65,7 +66,7 @@ export class CampaignBuilderService {
       // 3. AdGroup作成
       const adGroup = await this.createAdGroup(
         input.advertiserId,
-        campaign.campaign_id,
+        campaign.data.campaign_id,
         input.pattern,
         input.dailyBudget,
         input.pixelId,
@@ -80,7 +81,7 @@ export class CampaignBuilderService {
       for (const adInput of input.ads) {
         const ad = await this.createAd(
           input.advertiserId,
-          adGroup.adgroup_id,
+          adGroup.data.adgroup_id,
           adInput.adName,
           adInput.creativeId,
           adInput.landingPageUrl,
@@ -91,7 +92,7 @@ export class CampaignBuilderService {
       }
 
       this.logger.log(
-        `Campaign created successfully: Campaign=${campaign.campaign_id}, AdGroup=${adGroup.adgroup_id}, Ads=${ads.length}`,
+        `Campaign created successfully: Campaign=${campaign.data.campaign_id}, AdGroup=${adGroup.data.adgroup_id}, Ads=${ads.length}`,
       );
 
       return {
@@ -109,19 +110,21 @@ export class CampaignBuilderService {
    * Campaign作成
    */
   private async createCampaign(
-    advertiserId: string,
+    advertiserUuid: string,
+    tiktokAdvertiserId: string,
     campaignName: string,
     accessToken: string,
   ) {
     this.logger.log(`Creating campaign: ${campaignName}`);
 
     return this.tiktokService.createCampaign(
-      advertiserId,
+      tiktokAdvertiserId,
       accessToken,
       campaignName,
       'LEAD_GENERATION', // リード生成
       'BUDGET_MODE_INFINITE', // 無制限（AdGroupで予算設定）
       undefined,
+      advertiserUuid, // Advertiser UUID for DB storage
     );
   }
 

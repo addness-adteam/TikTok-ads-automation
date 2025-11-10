@@ -627,6 +627,7 @@ export class TiktokService {
     objectiveType: string,
     budgetMode?: string,
     budget?: number,
+    advertiserUuid?: string,
   ) {
     try {
       this.logger.log(`Creating campaign: ${campaignName} for advertiser: ${advertiserId}`);
@@ -659,7 +660,7 @@ export class TiktokService {
         await this.prisma.campaign.create({
           data: {
             tiktokId: String(response.data.data.campaign_id),
-            advertiserId,
+            advertiserId: advertiserUuid || advertiserId, // Use UUID if provided
             name: campaignName,
             objectiveType,
             budgetMode: budgetMode || null,
@@ -717,6 +718,7 @@ export class TiktokService {
         budget_mode: options.budgetMode || 'BUDGET_MODE_DAY',
         budget: options.budget,
         bid_type: options.bidType || 'BID_TYPE_NO_BID',
+        billing_event: 'OCPM', // Optimized Cost per Mille for automatic bidding
         optimization_goal: options.optimizationGoal || 'COMPLETE_PAYMENT',
         schedule_type: 'SCHEDULE_START_END',
         schedule_start_time: options.scheduleStartTime,
