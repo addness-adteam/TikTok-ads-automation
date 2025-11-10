@@ -58,8 +58,8 @@ export default function CreativesPage() {
       const creativesData = await creativesRes.json();
       const advertisersData = await advertisersRes.json();
 
-      setCreatives(creativesData);
-      setAdvertisers(advertisersData);
+      setCreatives(creativesData.data || creativesData);
+      setAdvertisers(advertisersData.data || advertisersData);
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'データの取得に失敗しました');

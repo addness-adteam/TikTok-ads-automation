@@ -33,10 +33,16 @@ export class CreativeController {
 
     try {
       const creatives = await this.creativeService.findAll();
-      return creatives;
+      return {
+        success: true,
+        data: creatives,
+      };
     } catch (error) {
       this.logger.error('Failed to get creatives', error);
-      throw error;
+      return {
+        success: false,
+        error: error.message || 'Failed to fetch creatives',
+      };
     }
   }
 
