@@ -108,12 +108,16 @@ export class CreativeService {
       const md5Hash = crypto.createHash('md5').update(file.buffer).digest('hex');
       this.logger.log(`Video MD5 signature: ${md5Hash}`);
 
+      // 日本語ファイル名の文字化けを防ぐため、英数字のファイル名を生成
+      const ext = file.originalname.split('.').pop() || 'mp4';
+      const sanitizedFilename = `video_${Date.now()}_${md5Hash.substring(0, 8)}.${ext}`;
+
       const formData = new FormData();
       formData.append('advertiser_id', advertiserId);
       formData.append('upload_type', 'UPLOAD_BY_FILE');
       formData.append('video_signature', md5Hash);
       formData.append('video_file', file.buffer, {
-        filename: file.originalname,
+        filename: sanitizedFilename,
         contentType: file.mimetype,
       });
 
