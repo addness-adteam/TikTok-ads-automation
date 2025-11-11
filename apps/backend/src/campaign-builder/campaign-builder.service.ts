@@ -161,7 +161,7 @@ export class CampaignBuilderService {
 
     // ターゲティング設定
     const targeting = {
-      location_ids: ['2392'], // 日本
+      location_ids: ['1861060'], // 日本 (JP)
       age_groups: ['AGE_18_24', 'AGE_25_34', 'AGE_35_44', 'AGE_45_54', 'AGE_55_100'],
       gender: 'GENDER_UNLIMITED',
       languages: ['ja'], // 日本語
