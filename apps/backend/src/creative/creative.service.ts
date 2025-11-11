@@ -1,6 +1,6 @@
 import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { put, handleUpload } from '@vercel/blob/client';
+import { put } from '@vercel/blob';
 import { ConfigService } from '@nestjs/config';
 import axios from 'axios';
 import FormData from 'form-data';
@@ -324,24 +324,6 @@ export class CreativeService {
         status: 'UPLOADED',
       },
     });
-  }
-
-  /**
-   * Vercel Blob Client Upload用のトークンを生成
-   */
-  async generateBlobUploadToken(filename: string) {
-    this.logger.log(`Generating Blob upload token for: ${filename}`);
-
-    const blobToken = this.configService.get<string>('BLOB_READ_WRITE_TOKEN');
-
-    if (!blobToken) {
-      throw new BadRequestException('BLOB_READ_WRITE_TOKEN is not configured');
-    }
-
-    return {
-      token: blobToken,
-      url: 'https://blob.vercel-storage.com',
-    };
   }
 
   /**
