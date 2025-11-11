@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { Upload, Loader2, AlertCircle, CheckCircle, Trash2, Video, Image as ImageIcon } from 'lucide-react';
+import SparkMD5 from 'spark-md5';
 
 interface Creative {
   id: string;
@@ -80,11 +81,17 @@ export default function CreativesPage() {
 
   // MD5ハッシュ計算
   const calculateMD5 = async (file: File): Promise<string> => {
-    const buffer = await file.arrayBuffer();
-    const hashBuffer = await crypto.subtle.digest('MD5', buffer);
-    const hashArray = Array.from(new Uint8Array(hashBuffer));
-    const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-    return hashHex;
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const spark = new SparkMD5.ArrayBuffer();
+        spark.append(e.target?.result as ArrayBuffer);
+        const hash = spark.end();
+        resolve(hash);
+      };
+      reader.onerror = () => reject(new Error('ファイルの読み込みに失敗しました'));
+      reader.readAsArrayBuffer(file);
+    });
   };
 
   const handleUpload = async (e: React.FormEvent) => {
