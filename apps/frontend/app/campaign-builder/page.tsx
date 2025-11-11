@@ -23,12 +23,20 @@ interface Creative {
   tiktokImageId?: string;
 }
 
+interface Pixel {
+  pixel_id: string;
+  pixel_name: string;
+  pixel_code?: string;
+}
+
 type CampaignPattern = 'NON_TARGETING' | 'LOOKALIKE';
 
 export default function CampaignBuilderPage() {
   const [advertisers, setAdvertisers] = useState<Advertiser[]>([]);
   const [creatives, setCreatives] = useState<Creative[]>([]);
+  const [pixels, setPixels] = useState<Pixel[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isLoadingPixels, setIsLoadingPixels] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
@@ -36,6 +44,8 @@ export default function CampaignBuilderPage() {
   // フォームの状態
   const [pattern, setPattern] = useState<CampaignPattern>('NON_TARGETING');
   const [selectedAdvertiserId, setSelectedAdvertiserId] = useState('');
+  const [selectedPixelId, setSelectedPixelId] = useState('');
+  const [dailyBudget, setDailyBudget] = useState<number>(5000);
   const [campaignName, setCampaignName] = useState('');
   const [adTexts, setAdTexts] = useState<string[]>(['']);
   const [landingPageUrl, setLandingPageUrl] = useState('');
@@ -72,6 +82,43 @@ export default function CampaignBuilderPage() {
     }
   };
 
+  const fetchPixels = async (advertiserId: string) => {
+    try {
+      setIsLoadingPixels(true);
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
+      const response = await fetch(`${apiUrl}/api/pixels?advertiserId=${advertiserId}`);
+
+      if (!response.ok) {
+        throw new Error('Pixelの取得に失敗しました');
+      }
+
+      const result = await response.json();
+      setPixels(result.data || []);
+
+      // 最初のPixelを自動選択
+      if (result.data && result.data.length > 0) {
+        setSelectedPixelId(result.data[0].pixel_id);
+      }
+
+      setError(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Pixelの取得に失敗しました');
+      setPixels([]);
+    } finally {
+      setIsLoadingPixels(false);
+    }
+  };
+
+  const handleAdvertiserChange = (advertiserId: string) => {
+    setSelectedAdvertiserId(advertiserId);
+    setSelectedPixelId('');
+    setPixels([]);
+
+    if (advertiserId) {
+      fetchPixels(advertiserId);
+    }
+  };
+
   const handleAddAdText = () => {
     if (adTexts.length < 5) {
       setAdTexts([...adTexts, '']);
@@ -102,6 +149,14 @@ export default function CampaignBuilderPage() {
     // バリデーション
     if (!selectedAdvertiserId) {
       alert('広告アカウントを選択してください');
+      return;
+    }
+    if (!selectedPixelId) {
+      alert('Pixelを選択してください');
+      return;
+    }
+    if (!dailyBudget || dailyBudget <= 0) {
+      alert('日予算を入力してください');
       return;
     }
     if (!campaignName) {
@@ -138,6 +193,8 @@ export default function CampaignBuilderPage() {
         },
         body: JSON.stringify({
           advertiserId: selectedAdvertiserId,
+          pixelId: selectedPixelId,
+          dailyBudget,
           campaignName,
           pattern,
           adTexts: adTexts.filter(text => text.trim()),
@@ -161,6 +218,7 @@ export default function CampaignBuilderPage() {
       setLandingPageUrl('');
       setLpName('');
       setSelectedCreativeIds([]);
+      setDailyBudget(5000);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'キャンペーンの作成に失敗しました');
     } finally {
@@ -260,7 +318,7 @@ export default function CampaignBuilderPage() {
               </h2>
               <select
                 value={selectedAdvertiserId}
-                onChange={(e) => setSelectedAdvertiserId(e.target.value)}
+                onChange={(e) => handleAdvertiserChange(e.target.value)}
                 className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 <option value="">広告アカウントを選択してください</option>
@@ -277,6 +335,67 @@ export default function CampaignBuilderPage() {
                 </p>
               )}
             </div>
+
+            {/* Pixel選択 */}
+            {selectedAdvertiserId && (
+              <div className="bg-white rounded-lg border border-gray-200 p-6">
+                <h2 className="text-lg font-bold text-gray-900 mb-4">
+                  Pixel選択 <span className="text-red-500">*</span>
+                </h2>
+                {isLoadingPixels ? (
+                  <div className="flex items-center justify-center py-4">
+                    <Loader2 className="w-6 h-6 text-blue-600 animate-spin mr-2" />
+                    <p className="text-gray-600">Pixel読み込み中...</p>
+                  </div>
+                ) : pixels.length > 0 ? (
+                  <>
+                    <select
+                      value={selectedPixelId}
+                      onChange={(e) => setSelectedPixelId(e.target.value)}
+                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="">Pixelを選択してください</option>
+                      {pixels.map((pixel) => (
+                        <option key={pixel.pixel_id} value={pixel.pixel_id}>
+                          {pixel.pixel_name} (ID: {pixel.pixel_id})
+                        </option>
+                      ))}
+                    </select>
+                    <p className="mt-2 text-xs text-gray-500">
+                      コンバージョン計測に使用するPixelを選択してください
+                    </p>
+                  </>
+                ) : (
+                  <p className="text-gray-500 text-center py-4">
+                    この広告アカウントにPixelが登録されていません
+                  </p>
+                )}
+              </div>
+            )}
+
+            {/* 日予算 */}
+            {selectedAdvertiserId && (
+              <div className="bg-white rounded-lg border border-gray-200 p-6">
+                <h2 className="text-lg font-bold text-gray-900 mb-4">
+                  日予算 <span className="text-red-500">*</span>
+                </h2>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="number"
+                    value={dailyBudget}
+                    onChange={(e) => setDailyBudget(Number(e.target.value))}
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="5000"
+                    min="1"
+                    step="100"
+                  />
+                  <span className="text-gray-700 font-medium whitespace-nowrap">円</span>
+                </div>
+                <p className="mt-2 text-xs text-gray-500">
+                  1日あたりの広告予算を入力してください（推奨: 5,000円以上）
+                </p>
+              </div>
+            )}
 
             {/* キャンペーン名 */}
             <div className="bg-white rounded-lg border border-gray-200 p-6">

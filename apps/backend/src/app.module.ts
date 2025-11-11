@@ -13,6 +13,7 @@ import { GoogleSheetsModule } from './google-sheets/google-sheets.module';
 import { OptimizationModule } from './optimization/optimization.module';
 import { CreativeModule } from './creative/creative.module';
 import { CampaignBuilderModule } from './campaign-builder/campaign-builder.module';
+import { PixelsModule } from './pixels/pixels.module';
 
 @Module({
   imports: [
@@ -31,6 +32,7 @@ import { CampaignBuilderModule } from './campaign-builder/campaign-builder.modul
     OptimizationModule,
     CreativeModule,
     CampaignBuilderModule,
+    PixelsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

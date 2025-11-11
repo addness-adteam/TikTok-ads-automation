@@ -1310,4 +1310,36 @@ export class TiktokService {
       throw error;
     }
   }
+
+  /**
+   * Pixel一覧を取得
+   * GET /v1.3/pixel/list/
+   */
+  async getPixels(advertiserId: string, accessToken: string) {
+    try {
+      this.logger.log(`Fetching pixels for advertiser: ${advertiserId}`);
+
+      const response = await this.httpClient.get('/v1.3/pixel/list/', {
+        headers: {
+          'Access-Token': accessToken,
+        },
+        params: {
+          advertiser_id: advertiserId,
+        },
+      });
+
+      this.logger.log(`Retrieved ${response.data.data?.pixels?.length || 0} pixels`);
+      return response.data;
+    } catch (error) {
+      this.logger.error('Failed to get pixels');
+      this.logger.error(`Error details: ${JSON.stringify({
+        message: error.message,
+        status: error.response?.status,
+        statusText: error.response?.statusText,
+        data: error.response?.data,
+        code: error.code,
+      })}`);
+      throw error;
+    }
+  }
 }
