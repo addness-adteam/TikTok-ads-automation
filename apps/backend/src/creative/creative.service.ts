@@ -166,27 +166,51 @@ export class CreativeService {
       this.logger.log(`Video uploaded to TikTok: ${videoData.video_id}`);
 
       // 動画のカバー画像URLを取得するため、動画情報をクエリ
+      // TikTokは動画処理に時間がかかるため、リトライロジックを実装
       let videoCoverUrl: string | undefined;
       try {
-        const videoInfoResponse = await axios.get(
-          `${this.tiktokApiBaseUrl}/v1.3/file/video/ad/info/`,
-          {
-            params: {
-              advertiser_id: advertiserId,
-              video_ids: JSON.stringify([videoData.video_id]),
-            },
-            headers: {
-              'Access-Token': accessToken,
-            },
-          },
-        );
+        const maxRetries = 5;
+        const initialDelay = 3000; // 3秒
+        let videoInfo: any = null;
 
-        this.logger.log(`Video info API response: ${JSON.stringify(videoInfoResponse.data)}`);
-        const videoInfo = videoInfoResponse.data.data?.list?.[0];
-        this.logger.log(`Video info object: ${JSON.stringify(videoInfo)}`);
-        // TikTok APIは poster_url または cover_image_uri を返す
-        videoCoverUrl = videoInfo?.poster_url || videoInfo?.cover_image_uri || videoInfo?.video_cover_url;
-        this.logger.log(`Video cover URL retrieved: ${videoCoverUrl || 'Not available'}`);
+        for (let attempt = 1; attempt <= maxRetries; attempt++) {
+          // 指数バックオフで待機時間を増やす
+          const delayMs = initialDelay * Math.pow(1.5, attempt - 1);
+          this.logger.log(`Waiting ${delayMs}ms before querying video info (attempt ${attempt}/${maxRetries})...`);
+          await new Promise(resolve => setTimeout(resolve, delayMs));
+
+          const videoInfoResponse = await axios.get(
+            `${this.tiktokApiBaseUrl}/v1.3/file/video/ad/info/`,
+            {
+              params: {
+                advertiser_id: advertiserId,
+                video_ids: JSON.stringify([videoData.video_id]),
+              },
+              headers: {
+                'Access-Token': accessToken,
+              },
+            },
+          );
+
+          this.logger.log(`Video info API response (attempt ${attempt}): ${JSON.stringify(videoInfoResponse.data)}`);
+
+          // TikTokが動画を処理完了している場合、listは空ではない
+          if (videoInfoResponse.data.data?.list && videoInfoResponse.data.data.list.length > 0) {
+            videoInfo = videoInfoResponse.data.data.list[0];
+            this.logger.log(`Video info retrieved successfully on attempt ${attempt}: ${JSON.stringify(videoInfo)}`);
+            break;
+          } else {
+            this.logger.log(`Video not ready yet (attempt ${attempt}/${maxRetries}), list is empty`);
+          }
+        }
+
+        if (videoInfo) {
+          // TikTok APIは poster_url または cover_image_uri を返す
+          videoCoverUrl = videoInfo.poster_url || videoInfo.cover_image_uri || videoInfo.video_cover_url;
+          this.logger.log(`Video cover URL retrieved: ${videoCoverUrl || 'Not available'}`);
+        } else {
+          this.logger.warn(`Video info not available after ${maxRetries} retries, will proceed without thumbnail`);
+        }
       } catch (infoError) {
         this.logger.warn('Failed to get video cover URL, will proceed without thumbnail', infoError.message);
       }
@@ -494,27 +518,51 @@ export class CreativeService {
       this.logger.log(`Video uploaded to TikTok: ${videoData.video_id}`);
 
       // 動画のカバー画像URLを取得するため、動画情報をクエリ
+      // TikTokは動画処理に時間がかかるため、リトライロジックを実装
       let videoCoverUrl: string | undefined;
       try {
-        const videoInfoResponse = await axios.get(
-          `${this.tiktokApiBaseUrl}/v1.3/file/video/ad/info/`,
-          {
-            params: {
-              advertiser_id: advertiserId,
-              video_ids: JSON.stringify([videoData.video_id]),
-            },
-            headers: {
-              'Access-Token': accessToken,
-            },
-          },
-        );
+        const maxRetries = 5;
+        const initialDelay = 3000; // 3秒
+        let videoInfo: any = null;
 
-        this.logger.log(`Video info API response: ${JSON.stringify(videoInfoResponse.data)}`);
-        const videoInfo = videoInfoResponse.data.data?.list?.[0];
-        this.logger.log(`Video info object: ${JSON.stringify(videoInfo)}`);
-        // TikTok APIは poster_url または cover_image_uri を返す
-        videoCoverUrl = videoInfo?.poster_url || videoInfo?.cover_image_uri || videoInfo?.video_cover_url;
-        this.logger.log(`Video cover URL retrieved: ${videoCoverUrl || 'Not available'}`);
+        for (let attempt = 1; attempt <= maxRetries; attempt++) {
+          // 指数バックオフで待機時間を増やす
+          const delayMs = initialDelay * Math.pow(1.5, attempt - 1);
+          this.logger.log(`Waiting ${delayMs}ms before querying video info (attempt ${attempt}/${maxRetries})...`);
+          await new Promise(resolve => setTimeout(resolve, delayMs));
+
+          const videoInfoResponse = await axios.get(
+            `${this.tiktokApiBaseUrl}/v1.3/file/video/ad/info/`,
+            {
+              params: {
+                advertiser_id: advertiserId,
+                video_ids: JSON.stringify([videoData.video_id]),
+              },
+              headers: {
+                'Access-Token': accessToken,
+              },
+            },
+          );
+
+          this.logger.log(`Video info API response (attempt ${attempt}): ${JSON.stringify(videoInfoResponse.data)}`);
+
+          // TikTokが動画を処理完了している場合、listは空ではない
+          if (videoInfoResponse.data.data?.list && videoInfoResponse.data.data.list.length > 0) {
+            videoInfo = videoInfoResponse.data.data.list[0];
+            this.logger.log(`Video info retrieved successfully on attempt ${attempt}: ${JSON.stringify(videoInfo)}`);
+            break;
+          } else {
+            this.logger.log(`Video not ready yet (attempt ${attempt}/${maxRetries}), list is empty`);
+          }
+        }
+
+        if (videoInfo) {
+          // TikTok APIは poster_url または cover_image_uri を返す
+          videoCoverUrl = videoInfo.poster_url || videoInfo.cover_image_uri || videoInfo.video_cover_url;
+          this.logger.log(`Video cover URL retrieved: ${videoCoverUrl || 'Not available'}`);
+        } else {
+          this.logger.warn(`Video info not available after ${maxRetries} retries, will proceed without thumbnail`);
+        }
       } catch (infoError) {
         this.logger.warn('Failed to get video cover URL, will proceed without thumbnail', infoError.message);
       }
