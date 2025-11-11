@@ -184,7 +184,8 @@ export class CreativeService {
         this.logger.log(`Video info API response: ${JSON.stringify(videoInfoResponse.data)}`);
         const videoInfo = videoInfoResponse.data.data?.list?.[0];
         this.logger.log(`Video info object: ${JSON.stringify(videoInfo)}`);
-        videoCoverUrl = videoInfo?.video_cover_url;
+        // TikTok APIは poster_url または cover_image_uri を返す
+        videoCoverUrl = videoInfo?.poster_url || videoInfo?.cover_image_uri || videoInfo?.video_cover_url;
         this.logger.log(`Video cover URL retrieved: ${videoCoverUrl || 'Not available'}`);
       } catch (infoError) {
         this.logger.warn('Failed to get video cover URL, will proceed without thumbnail', infoError.message);
@@ -511,7 +512,8 @@ export class CreativeService {
         this.logger.log(`Video info API response: ${JSON.stringify(videoInfoResponse.data)}`);
         const videoInfo = videoInfoResponse.data.data?.list?.[0];
         this.logger.log(`Video info object: ${JSON.stringify(videoInfo)}`);
-        videoCoverUrl = videoInfo?.video_cover_url;
+        // TikTok APIは poster_url または cover_image_uri を返す
+        videoCoverUrl = videoInfo?.poster_url || videoInfo?.cover_image_uri || videoInfo?.video_cover_url;
         this.logger.log(`Video cover URL retrieved: ${videoCoverUrl || 'Not available'}`);
       } catch (infoError) {
         this.logger.warn('Failed to get video cover URL, will proceed without thumbnail', infoError.message);
