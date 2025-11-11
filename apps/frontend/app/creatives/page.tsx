@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { Upload, Loader2, AlertCircle, CheckCircle, Trash2, Video, Image as ImageIcon } from 'lucide-react';
-import { upload } from '@vercel/blob/client';
+import { put } from '@vercel/blob';
 
 interface Creative {
   id: string;
@@ -103,10 +103,20 @@ export default function CreativesPage() {
     try {
       const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
 
-      // ステップ1&2: Vercel Blobに直接アップロード
-      const blob = await upload(file.name, file, {
+      // ステップ1: Blobトークンを取得
+      const tokenResponse = await fetch(`${apiUrl}/api/creatives/blob-token`);
+      const tokenResult = await tokenResponse.json();
+
+      if (!tokenResponse.ok || !tokenResult.success) {
+        throw new Error(tokenResult.error || 'Blobトークンの取得に失敗しました');
+      }
+
+      const { token } = tokenResult.data;
+
+      // ステップ2: Vercel Blobに直接アップロード
+      const blob = await put(file.name, file, {
         access: 'public',
-        handleUploadUrl: `${apiUrl}/api/creatives/blob-token`,
+        token: token,
       });
 
       console.log('File uploaded to Blob:', blob.url);

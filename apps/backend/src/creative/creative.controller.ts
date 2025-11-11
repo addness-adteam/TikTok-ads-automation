@@ -25,33 +25,32 @@ export class CreativeController {
   ) {}
 
   /**
-   * Vercel Blob Client Upload用のトークン生成
-   * POST /api/creatives/blob-token
-   * Body: { filename: string }
+   * Vercel Blob Client Upload用のトークン取得
+   * GET /api/creatives/blob-token
    */
-  @Post('blob-token')
-  async getBlobUploadToken(@Body('filename') filename: string) {
-    this.logger.log(`Generating Vercel Blob upload token for: ${filename}`);
+  @Get('blob-token')
+  async getBlobUploadToken() {
+    this.logger.log(`Getting Blob upload token`);
 
     try {
-      if (!filename) {
-        throw new BadRequestException('filename is required');
-      }
-
       const blobToken = this.configService.get<string>('BLOB_READ_WRITE_TOKEN');
 
       if (!blobToken) {
         throw new BadRequestException('BLOB_READ_WRITE_TOKEN is not configured');
       }
 
-      // @vercel/blob/client expects this response format
       return {
-        url: `https://blob.vercel-storage.com`,
-        token: blobToken,
+        success: true,
+        data: {
+          token: blobToken,
+        },
       };
     } catch (error) {
-      this.logger.error('Failed to generate blob upload token', error);
-      throw error;
+      this.logger.error('Failed to get blob upload token', error);
+      return {
+        success: false,
+        error: error.message,
+      };
     }
   }
 
