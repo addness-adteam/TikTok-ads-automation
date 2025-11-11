@@ -181,7 +181,9 @@ export class CreativeService {
           },
         );
 
+        this.logger.log(`Video info API response: ${JSON.stringify(videoInfoResponse.data)}`);
         const videoInfo = videoInfoResponse.data.data?.list?.[0];
+        this.logger.log(`Video info object: ${JSON.stringify(videoInfo)}`);
         videoCoverUrl = videoInfo?.video_cover_url;
         this.logger.log(`Video cover URL retrieved: ${videoCoverUrl || 'Not available'}`);
       } catch (infoError) {
@@ -506,7 +508,9 @@ export class CreativeService {
           },
         );
 
+        this.logger.log(`Video info API response: ${JSON.stringify(videoInfoResponse.data)}`);
         const videoInfo = videoInfoResponse.data.data?.list?.[0];
+        this.logger.log(`Video info object: ${JSON.stringify(videoInfo)}`);
         videoCoverUrl = videoInfo?.video_cover_url;
         this.logger.log(`Video cover URL retrieved: ${videoCoverUrl || 'Not available'}`);
       } catch (infoError) {
