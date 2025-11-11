@@ -72,8 +72,8 @@ export default function CampaignBuilderPage() {
       const advertisersData = await advertisersRes.json();
       const creativesData = await creativesRes.json();
 
-      setAdvertisers(advertisersData);
-      setCreatives(creativesData);
+      setAdvertisers(advertisersData.data || advertisersData);
+      setCreatives(creativesData.data || creativesData);
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'データの取得に失敗しました');
