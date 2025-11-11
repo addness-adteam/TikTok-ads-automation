@@ -276,4 +276,53 @@ export class CreativeService {
       where: { id },
     });
   }
+
+  /**
+   * Advertiser情報取得
+   */
+  async getAdvertiser(advertiserId: string) {
+    return this.prisma.advertiser.findUnique({
+      where: { id: advertiserId },
+    });
+  }
+
+  /**
+   * Access Token取得
+   */
+  async getAccessToken(tiktokAdvertiserId: string): Promise<string | null> {
+    const token = await this.prisma.oAuthToken.findUnique({
+      where: { advertiserId: tiktokAdvertiserId },
+    });
+    return token?.accessToken || null;
+  }
+
+  /**
+   * Creative情報をDBに登録（TikTokアップロード後）
+   */
+  async registerCreative(data: {
+    advertiserId: string;
+    name: string;
+    type: 'VIDEO' | 'IMAGE';
+    tiktokVideoId?: string;
+    tiktokImageId?: string;
+    fileUrl?: string;
+    filename: string;
+    fileSize?: number;
+  }) {
+    this.logger.log(`Registering creative: ${data.name}`);
+
+    return this.prisma.creative.create({
+      data: {
+        advertiserId: data.advertiserId,
+        name: data.name,
+        tiktokVideoId: data.tiktokVideoId || null,
+        tiktokImageId: data.tiktokImageId || null,
+        type: data.type,
+        url: data.fileUrl || '',
+        filename: data.filename,
+        fileSize: data.fileSize || null,
+        status: 'UPLOADED',
+      },
+    });
+  }
 }

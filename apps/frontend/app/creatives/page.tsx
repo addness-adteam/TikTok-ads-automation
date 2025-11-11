@@ -78,6 +78,15 @@ export default function CreativesPage() {
     }
   };
 
+  // MD5ハッシュ計算
+  const calculateMD5 = async (file: File): Promise<string> => {
+    const buffer = await file.arrayBuffer();
+    const hashBuffer = await crypto.subtle.digest('MD5', buffer);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+    return hashHex;
+  };
+
   const handleUpload = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -100,21 +109,129 @@ export default function CreativesPage() {
     setSuccessMessage(null);
 
     try {
-      const formData = new FormData();
-      formData.append('file', file);
-      formData.append('advertiserId', selectedAdvertiserId);
-      formData.append('name', creativeName);
-
       const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
-      const response = await fetch(`${apiUrl}/api/creatives/upload`, {
+
+      // ステップ1: アクセストークンとAPI情報を取得
+      const tokenResponse = await fetch(`${apiUrl}/api/creatives/upload-token?advertiserId=${selectedAdvertiserId}`);
+      const tokenResult = await tokenResponse.json();
+
+      if (!tokenResponse.ok || !tokenResult.success) {
+        throw new Error(tokenResult.error || 'アクセストークンの取得に失敗しました');
+      }
+
+      const { accessToken, tiktokAdvertiserId, apiBaseUrl } = tokenResult.data;
+
+      // ファイルタイプを判定
+      const isVideo = file.type.startsWith('video/');
+      const isImage = file.type.startsWith('image/');
+
+      if (!isVideo && !isImage) {
+        throw new Error('動画または画像ファイルのみアップロード可能です');
+      }
+
+      let tiktokVideoId: string | undefined;
+      let tiktokImageId: string | undefined;
+
+      if (isVideo) {
+        // ステップ2: TikTok APIに動画を直接アップロード
+        const md5Hash = await calculateMD5(file);
+
+        // 日本語ファイル名の文字化けを防ぐため、英数字のファイル名を生成
+        const ext = file.name.split('.').pop() || 'mp4';
+        const sanitizedFilename = `video_${Date.now()}_${md5Hash.substring(0, 8)}.${ext}`;
+
+        const videoFormData = new FormData();
+        videoFormData.append('advertiser_id', tiktokAdvertiserId);
+        videoFormData.append('upload_type', 'UPLOAD_BY_FILE');
+        videoFormData.append('video_signature', md5Hash);
+        videoFormData.append('video_file', file, sanitizedFilename);
+
+        const videoResponse = await fetch(`${apiBaseUrl}/v1.3/file/video/ad/upload/`, {
+          method: 'POST',
+          headers: {
+            'Access-Token': accessToken,
+          },
+          body: videoFormData,
+        });
+
+        const videoResult = await videoResponse.json();
+
+        if (!videoResponse.ok || videoResult.code !== 0) {
+          throw new Error(videoResult.message || 'TikTokへの動画アップロードに失敗しました');
+        }
+
+        // TikTok API v1.3 returns data as an array
+        const videoData = Array.isArray(videoResult.data) ? videoResult.data[0] : videoResult.data;
+        tiktokVideoId = videoData.video_id;
+
+        if (!tiktokVideoId) {
+          throw new Error('TikTok Video IDの取得に失敗しました');
+        }
+
+        // 動画のカバー画像を取得してサムネイル用の画像IDを作成
+        try {
+          const videoInfoResponse = await fetch(
+            `${apiBaseUrl}/v1.3/file/video/ad/info/?advertiser_id=${tiktokAdvertiserId}&video_ids=${JSON.stringify([tiktokVideoId])}`,
+            {
+              headers: {
+                'Access-Token': accessToken,
+              },
+            }
+          );
+
+          const videoInfoResult = await videoInfoResponse.json();
+          const videoInfo = videoInfoResult.data?.list?.[0];
+          const videoCoverUrl = videoInfo?.video_cover_url;
+
+          if (videoCoverUrl) {
+            // カバー画像をTikTokに画像としてアップロード
+            const imageResponse = await fetch(`${apiBaseUrl}/v1.3/file/image/ad/upload/`, {
+              method: 'POST',
+              headers: {
+                'Access-Token': accessToken,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                advertiser_id: tiktokAdvertiserId,
+                image_url: videoCoverUrl,
+                upload_type: 'UPLOAD_BY_URL',
+              }),
+            });
+
+            const imageResult = await imageResponse.json();
+            if (imageResult.code === 0) {
+              tiktokImageId = imageResult.data?.image_id;
+            }
+          }
+        } catch (err) {
+          console.warn('サムネイル画像の取得に失敗しましたが、処理を続行します', err);
+        }
+      } else {
+        // 画像の場合は実装が必要（将来的に追加）
+        throw new Error('画像アップロードは現在対応していません');
+      }
+
+      // ステップ3: バックエンドのDBに登録
+      const registerResponse = await fetch(`${apiUrl}/api/creatives/register`, {
         method: 'POST',
-        body: formData,
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          advertiserId: selectedAdvertiserId,
+          name: creativeName,
+          type: isVideo ? 'VIDEO' : 'IMAGE',
+          tiktokVideoId,
+          tiktokImageId,
+          filename: file.name,
+          fileSize: file.size,
+        }),
       });
 
-      const result = await response.json();
+      const registerResult = await registerResponse.json();
 
-      if (!response.ok || !result.success) {
-        throw new Error(result.error || 'アップロードに失敗しました');
+      if (!registerResponse.ok || !registerResult.success) {
+        throw new Error(registerResult.error || 'DB登録に失敗しました');
       }
 
       setSuccessMessage('Creativeのアップロードに成功しました！');
