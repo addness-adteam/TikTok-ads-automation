@@ -386,7 +386,7 @@ export default function CampaignBuilderPage() {
                     onChange={(e) => setDailyBudget(Number(e.target.value))}
                     className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                     placeholder="5000"
-                    min="1"
+                    min="0"
                     step="100"
                   />
                   <span className="text-gray-700 font-medium whitespace-nowrap">円</span>
