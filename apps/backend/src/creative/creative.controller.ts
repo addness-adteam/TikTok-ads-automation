@@ -25,46 +25,33 @@ export class CreativeController {
   ) {}
 
   /**
-   * Access Token取得（フロントエンドから直接TikTokにアップロードする用）
-   * GET /api/creatives/upload-token?advertiserId=xxx
+   * Vercel Blob Client Upload用のトークン生成
+   * POST /api/creatives/blob-token
+   * Body: { filename: string }
    */
-  @Get('upload-token')
-  async getUploadToken(@Query('advertiserId') advertiserId: string) {
-    this.logger.log(`Getting upload token for advertiser: ${advertiserId}`);
+  @Post('blob-token')
+  async getBlobUploadToken(@Body('filename') filename: string) {
+    this.logger.log(`Generating Vercel Blob upload token for: ${filename}`);
 
     try {
-      if (!advertiserId) {
-        throw new BadRequestException('advertiserId is required');
+      if (!filename) {
+        throw new BadRequestException('filename is required');
       }
 
-      // Advertiserを取得
-      const advertiser = await this.creativeService.getAdvertiser(advertiserId);
+      const blobToken = this.configService.get<string>('BLOB_READ_WRITE_TOKEN');
 
-      if (!advertiser) {
-        throw new BadRequestException('Advertiser not found');
+      if (!blobToken) {
+        throw new BadRequestException('BLOB_READ_WRITE_TOKEN is not configured');
       }
 
-      // Access Tokenを取得
-      const token = await this.creativeService.getAccessToken(advertiser.tiktokAdvertiserId);
-
-      if (!token) {
-        throw new BadRequestException('Access token not found for this advertiser');
-      }
-
+      // @vercel/blob/client expects this response format
       return {
-        success: true,
-        data: {
-          accessToken: token,
-          tiktokAdvertiserId: advertiser.tiktokAdvertiserId,
-          apiBaseUrl: this.configService.get<string>('TIKTOK_API_BASE_URL'),
-        },
+        url: `https://blob.vercel-storage.com`,
+        token: blobToken,
       };
     } catch (error) {
-      this.logger.error('Failed to get upload token', error);
-      return {
-        success: false,
-        error: error.message,
-      };
+      this.logger.error('Failed to generate blob upload token', error);
+      throw error;
     }
   }
 
@@ -115,53 +102,44 @@ export class CreativeController {
   }
 
   /**
-   * Creative情報をDB登録（TikTokへのアップロード後）
-   * POST /api/creatives/register
+   * Vercel BlobからTikTok APIへアップロード
+   * POST /api/creatives/upload-from-blob
    * Body (JSON):
    *   - advertiserId: Advertiser ID (UUID)
    *   - name: Creative名
-   *   - type: 'VIDEO' | 'IMAGE'
-   *   - tiktokVideoId?: TikTok Video ID
-   *   - tiktokImageId?: TikTok Image ID
-   *   - fileUrl?: File URL
+   *   - blobUrl: Vercel BlobのURL
    *   - filename: ファイル名
-   *   - fileSize?: ファイルサイズ
+   *   - fileSize: ファイルサイズ
    */
-  @Post('register')
-  async register(
+  @Post('upload-from-blob')
+  async uploadFromBlob(
     @Body('advertiserId') advertiserId: string,
     @Body('name') name: string,
-    @Body('type') type: 'VIDEO' | 'IMAGE',
-    @Body('tiktokVideoId') tiktokVideoId?: string,
-    @Body('tiktokImageId') tiktokImageId?: string,
-    @Body('fileUrl') fileUrl?: string,
-    @Body('filename') filename?: string,
-    @Body('fileSize') fileSize?: number,
+    @Body('blobUrl') blobUrl: string,
+    @Body('filename') filename: string,
+    @Body('fileSize') fileSize: number,
   ) {
-    this.logger.log(`Registering creative for advertiser: ${advertiserId}`);
+    this.logger.log(`Uploading creative from Blob for advertiser: ${advertiserId}`);
 
     try {
-      if (!advertiserId || !name || !type) {
-        throw new BadRequestException('advertiserId, name, and type are required');
+      if (!advertiserId || !name || !blobUrl || !filename) {
+        throw new BadRequestException('advertiserId, name, blobUrl, and filename are required');
       }
 
-      const creative = await this.creativeService.registerCreative({
+      const creative = await this.creativeService.uploadFromBlob(
         advertiserId,
         name,
-        type,
-        tiktokVideoId,
-        tiktokImageId,
-        fileUrl,
-        filename: filename || 'unknown',
+        blobUrl,
+        filename,
         fileSize,
-      });
+      );
 
       return {
         success: true,
         data: creative,
       };
     } catch (error) {
-      this.logger.error('Failed to register creative', error);
+      this.logger.error('Failed to upload creative from Blob', error);
       return {
         success: false,
         error: error.message,

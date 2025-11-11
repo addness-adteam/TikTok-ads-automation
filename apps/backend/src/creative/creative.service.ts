@@ -1,6 +1,6 @@
 import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { put } from '@vercel/blob';
+import { put, handleUpload } from '@vercel/blob/client';
 import { ConfigService } from '@nestjs/config';
 import axios from 'axios';
 import FormData from 'form-data';
@@ -324,5 +324,220 @@ export class CreativeService {
         status: 'UPLOADED',
       },
     });
+  }
+
+  /**
+   * Vercel Blob Client Upload用のトークンを生成
+   */
+  async generateBlobUploadToken(filename: string) {
+    this.logger.log(`Generating Blob upload token for: ${filename}`);
+
+    const blobToken = this.configService.get<string>('BLOB_READ_WRITE_TOKEN');
+
+    if (!blobToken) {
+      throw new BadRequestException('BLOB_READ_WRITE_TOKEN is not configured');
+    }
+
+    return {
+      token: blobToken,
+      url: 'https://blob.vercel-storage.com',
+    };
+  }
+
+  /**
+   * Vercel BlobからファイルをダウンロードしてTikTok APIにアップロード
+   */
+  async uploadFromBlob(
+    advertiserId: string,
+    name: string,
+    blobUrl: string,
+    filename: string,
+    fileSize: number,
+  ) {
+    this.logger.log(`Uploading creative from Blob: ${blobUrl}`);
+
+    try {
+      // Advertiserテーブルから TikTok Advertiser ID を取得
+      const advertiser = await this.prisma.advertiser.findUnique({
+        where: { id: advertiserId },
+      });
+
+      if (!advertiser) {
+        throw new BadRequestException('Advertiser not found');
+      }
+
+      const tiktokAdvertiserId = advertiser.tiktokAdvertiserId;
+
+      // Access Tokenを取得
+      const accessToken = await this.getAccessToken(tiktokAdvertiserId);
+      if (!accessToken) {
+        throw new BadRequestException('Access token not found for this advertiser');
+      }
+
+      // Vercel Blobからファイルをダウンロード
+      this.logger.log(`Downloading file from Blob: ${blobUrl}`);
+      const response = await axios.get(blobUrl, {
+        responseType: 'arraybuffer',
+      });
+
+      const fileBuffer = Buffer.from(response.data);
+      const contentType = response.headers['content-type'] || 'application/octet-stream';
+
+      this.logger.log(`Downloaded file: ${fileBuffer.length} bytes, type: ${contentType}`);
+
+      // ファイルタイプを判定
+      const isVideo = contentType.startsWith('video/');
+      const isImage = contentType.startsWith('image/');
+
+      if (!isVideo && !isImage) {
+        throw new BadRequestException('Only video and image files are supported');
+      }
+
+      // TikTok APIにアップロード
+      let tiktokVideoId: string | null = null;
+      let tiktokImageId: string | null = null;
+      let thumbnailImageId: string | null = null;
+
+      if (isVideo) {
+        // 動画アップロード
+        const videoResult = await this.uploadVideoToTikTokFromBuffer(
+          tiktokAdvertiserId,
+          fileBuffer,
+          filename,
+          contentType,
+          accessToken,
+        );
+        tiktokVideoId = videoResult.videoId;
+
+        // 動画のカバー画像を取得してサムネイル用の画像IDを作成
+        if (videoResult.videoCoverUrl) {
+          this.logger.log(`Uploading video thumbnail from cover URL: ${videoResult.videoCoverUrl}`);
+          thumbnailImageId = await this.uploadImageToTikTok(
+            tiktokAdvertiserId,
+            videoResult.videoCoverUrl,
+            accessToken,
+          );
+          this.logger.log(`Thumbnail image uploaded: ${thumbnailImageId}`);
+        }
+      } else {
+        // 画像アップロード
+        tiktokImageId = await this.uploadImageToTikTok(tiktokAdvertiserId, blobUrl, accessToken);
+      }
+
+      // DBに保存
+      const creative = await this.prisma.creative.create({
+        data: {
+          advertiserId,
+          name,
+          tiktokVideoId: isVideo ? tiktokVideoId : null,
+          tiktokImageId: isImage ? tiktokImageId : thumbnailImageId,
+          type: isVideo ? 'VIDEO' : 'IMAGE',
+          url: blobUrl,
+          filename,
+          fileSize,
+          width: null,
+          height: null,
+          duration: null,
+          status: 'UPLOADED',
+        },
+      });
+
+      this.logger.log(`Creative saved to database: ${creative.id}`);
+
+      return creative;
+    } catch (error) {
+      this.logger.error('Failed to upload creative from Blob', error);
+      throw error;
+    }
+  }
+
+  /**
+   * TikTok APIに動画をアップロード（Bufferから）
+   */
+  private async uploadVideoToTikTokFromBuffer(
+    advertiserId: string,
+    fileBuffer: Buffer,
+    filename: string,
+    contentType: string,
+    accessToken: string,
+  ): Promise<{ videoId: string; videoCoverUrl?: string }> {
+    this.logger.log(`Uploading video to TikTok: ${filename} (${fileBuffer.length} bytes)`);
+
+    try {
+      // Calculate MD5 hash of the video file
+      const md5Hash = crypto.createHash('md5').update(fileBuffer).digest('hex');
+      this.logger.log(`Video MD5 signature: ${md5Hash}`);
+
+      // 日本語ファイル名の文字化けを防ぐため、英数字のファイル名を生成
+      const ext = filename.split('.').pop() || 'mp4';
+      const sanitizedFilename = `video_${Date.now()}_${md5Hash.substring(0, 8)}.${ext}`;
+
+      const formData = new FormData();
+      formData.append('advertiser_id', advertiserId);
+      formData.append('upload_type', 'UPLOAD_BY_FILE');
+      formData.append('video_signature', md5Hash);
+      formData.append('video_file', fileBuffer, {
+        filename: sanitizedFilename,
+        contentType: contentType,
+      });
+
+      const response = await axios.post(
+        `${this.tiktokApiBaseUrl}/v1.3/file/video/ad/upload/`,
+        formData,
+        {
+          headers: {
+            'Access-Token': accessToken,
+            ...formData.getHeaders(),
+          },
+          maxContentLength: Infinity,
+          maxBodyLength: Infinity,
+        },
+      );
+
+      this.logger.log(`TikTok API Response: ${JSON.stringify(response.data)}`);
+
+      // TikTok API v1.3 returns data as an array
+      const videoData = Array.isArray(response.data.data)
+        ? response.data.data[0]
+        : response.data.data;
+
+      if (!videoData?.video_id) {
+        this.logger.error(`Response data structure: ${JSON.stringify(response.data)}`);
+        throw new Error('Failed to get video_id from TikTok API');
+      }
+
+      this.logger.log(`Video uploaded to TikTok: ${videoData.video_id}`);
+
+      // 動画のカバー画像URLを取得するため、動画情報をクエリ
+      let videoCoverUrl: string | undefined;
+      try {
+        const videoInfoResponse = await axios.get(
+          `${this.tiktokApiBaseUrl}/v1.3/file/video/ad/info/`,
+          {
+            params: {
+              advertiser_id: advertiserId,
+              video_ids: JSON.stringify([videoData.video_id]),
+            },
+            headers: {
+              'Access-Token': accessToken,
+            },
+          },
+        );
+
+        const videoInfo = videoInfoResponse.data.data?.list?.[0];
+        videoCoverUrl = videoInfo?.video_cover_url;
+        this.logger.log(`Video cover URL retrieved: ${videoCoverUrl || 'Not available'}`);
+      } catch (infoError) {
+        this.logger.warn('Failed to get video cover URL, will proceed without thumbnail', infoError.message);
+      }
+
+      return {
+        videoId: videoData.video_id,
+        videoCoverUrl,
+      };
+    } catch (error) {
+      this.logger.error('Failed to upload video to TikTok', error.response?.data || error.message);
+      throw error;
+    }
   }
 }
