@@ -11,6 +11,7 @@ interface FrontendCampaignInput {
   campaignName: string;
   pattern: 'NON_TARGETING' | 'LOOKALIKE';
   adTexts: string[];
+  adNames?: string[]; // 広告名（オプション）
   landingPageUrl: string;
   lpName: string;
   creativeIds: string[];
@@ -64,9 +65,10 @@ export class CampaignBuilderController {
       const ads = frontendInput.adTexts.map((adText, index) => {
         // 各広告文とCreativeを組み合わせて広告を作成
         const creativeId = frontendInput.creativeIds[index % frontendInput.creativeIds.length];
+        const adName = frontendInput.adNames?.[index] || `${frontendInput.lpName}_${index + 1}`;
 
         return {
-          adName: `${frontendInput.lpName}_${index + 1}`,
+          adName,
           creativeId,
           landingPageUrl: `${frontendInput.landingPageUrl}?registration_route=TikTok広告-${advertiser.appeal?.name || '訴求'}-${frontendInput.lpName}`,
         };

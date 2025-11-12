@@ -48,6 +48,7 @@ export default function CampaignBuilderPage() {
   const [dailyBudget, setDailyBudget] = useState<number>(5000);
   const [campaignName, setCampaignName] = useState('');
   const [adTexts, setAdTexts] = useState<string[]>(['']);
+  const [adNames, setAdNames] = useState<string[]>(['']);
   const [landingPageUrl, setLandingPageUrl] = useState('');
   const [lpName, setLpName] = useState('');
   const [selectedCreativeIds, setSelectedCreativeIds] = useState<string[]>([]);
@@ -122,17 +123,25 @@ export default function CampaignBuilderPage() {
   const handleAddAdText = () => {
     if (adTexts.length < 5) {
       setAdTexts([...adTexts, '']);
+      setAdNames([...adNames, '']);
     }
   };
 
   const handleRemoveAdText = (index: number) => {
     setAdTexts(adTexts.filter((_, i) => i !== index));
+    setAdNames(adNames.filter((_, i) => i !== index));
   };
 
   const handleAdTextChange = (index: number, value: string) => {
     const newTexts = [...adTexts];
     newTexts[index] = value;
     setAdTexts(newTexts);
+  };
+
+  const handleAdNameChange = (index: number, value: string) => {
+    const newNames = [...adNames];
+    newNames[index] = value;
+    setAdNames(newNames);
   };
 
   const toggleCreative = (creativeId: string) => {
@@ -167,6 +176,14 @@ export default function CampaignBuilderPage() {
       alert('広告文を少なくとも1つ入力してください');
       return;
     }
+    if (adNames.filter(name => name.trim()).length === 0) {
+      alert('広告名を少なくとも1つ入力してください');
+      return;
+    }
+    if (adTexts.filter(text => text.trim()).length !== adNames.filter(name => name.trim()).length) {
+      alert('広告文と広告名の数を一致させてください');
+      return;
+    }
     if (!landingPageUrl) {
       alert('Landing PageのURLを入力してください');
       return;
@@ -198,6 +215,7 @@ export default function CampaignBuilderPage() {
           campaignName,
           pattern,
           adTexts: adTexts.filter(text => text.trim()),
+          adNames: adNames.filter(name => name.trim()),
           landingPageUrl,
           lpName,
           creativeIds: selectedCreativeIds,
@@ -451,6 +469,31 @@ export default function CampaignBuilderPage() {
                 ))}
               </div>
               <p className="mt-2 text-xs text-gray-500">最大5個まで追加できます</p>
+            </div>
+
+            {/* 広告名 */}
+            <div className="bg-white rounded-lg border border-gray-200 p-6">
+              <h2 className="text-lg font-bold text-gray-900 mb-2">
+                広告名 <span className="text-red-500">*</span>
+              </h2>
+              <p className="text-sm text-gray-600 mb-4">
+                記入例: 日付（6桁）/CR制作者名/CR名/テスト変数/LP種類-CR番号（5桁）<br />
+                <span className="text-gray-500">例: 251104/鈴木織大/これまだ言ってない/奇行/LP1-CR00055</span>
+              </p>
+              <div className="space-y-3">
+                {adNames.map((name, index) => (
+                  <div key={index} className="flex gap-2">
+                    <input
+                      type="text"
+                      value={name}
+                      onChange={(e) => handleAdNameChange(index, e.target.value)}
+                      className="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder={`広告名 ${index + 1} (例: 251104/鈴木織大/これまだ言ってない/奇行/LP1-CR00055)`}
+                    />
+                  </div>
+                ))}
+              </div>
+              <p className="mt-2 text-xs text-gray-500">※ 広告文と同じ数の広告名を入力してください</p>
             </div>
 
             {/* Landing Page */}
