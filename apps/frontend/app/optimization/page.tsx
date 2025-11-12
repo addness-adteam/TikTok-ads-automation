@@ -432,41 +432,49 @@ export default function OptimizationPage() {
                 </div>
 
                 <div className="flex gap-3">
-                  <button
-                    onClick={executeOptimization}
-                    disabled={selectedAdvertiserIds.length === 0 || isExecuting}
-                    className="flex-1 flex items-center justify-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
-                  >
-                    {isExecuting ? (
-                      <>
-                        <Loader2 className="w-5 h-5 animate-spin" />
-                        実行中...
-                      </>
-                    ) : (
-                      <>
-                        <PlayCircle className="w-5 h-5" />
-                        選択したアカウントで実行
-                      </>
-                    )}
-                  </button>
+                  <div className="flex-1 rounded-lg p-[3px]" style={{
+                    background: 'linear-gradient(90deg, #FE2C55 0%, #FE2C55 50%, #25F4EE 50%, #25F4EE 100%)'
+                  }}>
+                    <button
+                      onClick={executeOptimization}
+                      disabled={selectedAdvertiserIds.length === 0 || isExecuting}
+                      className="w-full flex items-center justify-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
+                    >
+                      {isExecuting ? (
+                        <>
+                          <Loader2 className="w-5 h-5 animate-spin" />
+                          実行中...
+                        </>
+                      ) : (
+                        <>
+                          <PlayCircle className="w-5 h-5" />
+                          選択したアカウントで実行
+                        </>
+                      )}
+                    </button>
+                  </div>
 
-                  <button
-                    onClick={executeAllOptimization}
-                    disabled={isExecuting}
-                    className="flex-1 flex items-center justify-center gap-2 px-6 py-3 bg-purple-600 text-white rounded-lg font-medium hover:bg-purple-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
-                  >
-                    {isExecuting ? (
-                      <>
-                        <Loader2 className="w-5 h-5 animate-spin" />
-                        実行中...
-                      </>
-                    ) : (
-                      <>
-                        <PlayCircle className="w-5 h-5" />
-                        全アカウントで実行
-                      </>
-                    )}
-                  </button>
+                  <div className="flex-1 rounded-lg p-[3px]" style={{
+                    background: 'linear-gradient(90deg, #FE2C55 0%, #FE2C55 50%, #25F4EE 50%, #25F4EE 100%)'
+                  }}>
+                    <button
+                      onClick={executeAllOptimization}
+                      disabled={isExecuting}
+                      className="w-full flex items-center justify-center gap-2 px-6 py-3 bg-purple-600 text-white rounded-lg font-medium hover:bg-purple-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
+                    >
+                      {isExecuting ? (
+                        <>
+                          <Loader2 className="w-5 h-5 animate-spin" />
+                          実行中...
+                        </>
+                      ) : (
+                        <>
+                          <PlayCircle className="w-5 h-5" />
+                          全アカウントで実行
+                        </>
+                      )}
+                    </button>
+                  </div>
                 </div>
               </div>
             )}
