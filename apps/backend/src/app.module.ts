@@ -14,6 +14,7 @@ import { OptimizationModule } from './optimization/optimization.module';
 import { CreativeModule } from './creative/creative.module';
 import { CampaignBuilderModule } from './campaign-builder/campaign-builder.module';
 import { PixelsModule } from './pixels/pixels.module';
+import { AdTextTemplateModule } from './ad-text-template/ad-text-template.module';
 
 @Module({
   imports: [
@@ -33,6 +34,7 @@ import { PixelsModule } from './pixels/pixels.module';
     CreativeModule,
     CampaignBuilderModule,
     PixelsModule,
+    AdTextTemplateModule,
   ],
   controllers: [AppController],
   providers: [AppService],

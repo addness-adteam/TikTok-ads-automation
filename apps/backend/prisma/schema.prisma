@@ -26,8 +26,27 @@ model Appeal {
   updatedAt             DateTime    @updatedAt
 
   advertisers           Advertiser[]
+  adTextTemplates       AdTextTemplate[]
 
   @@map("appeals")
+}
+
+// ============================================================================
+// 広告文テンプレート（AdTextTemplate）
+// ============================================================================
+
+model AdTextTemplate {
+  id          String    @id @default(uuid())
+  appealId    String
+  name        String    // テンプレート名（例: "新春セール"）
+  text        String    // 広告文本体
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  appeal      Appeal    @relation(fields: [appealId], references: [id], onDelete: Cascade)
+
+  @@map("ad_text_templates")
 }
 
 // ============================================================================

@@ -87,6 +87,14 @@ export class AppealService {
             name: true,
           },
         },
+        adTextTemplates: {
+          where: {
+            isActive: true,
+          },
+          orderBy: {
+            createdAt: 'desc',
+          },
+        },
       },
       orderBy: {
         createdAt: 'desc',
@@ -106,6 +114,14 @@ export class AppealService {
             id: true,
             tiktokAdvertiserId: true,
             name: true,
+          },
+        },
+        adTextTemplates: {
+          where: {
+            isActive: true,
+          },
+          orderBy: {
+            createdAt: 'desc',
           },
         },
       },
