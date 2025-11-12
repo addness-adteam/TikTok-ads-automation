@@ -187,7 +187,7 @@ export default function AppealsPage() {
         <header className="bg-white border-b border-gray-200">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
             <div>
-              <h1 className="text-2xl font-bold text-gray-900">訴求マスタ管理</h1>
+              <h1 className="text-2xl font-bold text-gray-900">KPI設定管理</h1>
               <p className="text-sm text-gray-600 mt-1">訴求ごとのKPI目標設定と広告アカウントの紐付け</p>
             </div>
             <button

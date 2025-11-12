@@ -11,7 +11,7 @@ const menuItems = [
     icon: LayoutDashboard,
   },
   {
-    name: '訴求マスタ',
+    name: 'KPI設定',
     href: '/appeals',
     icon: Target,
   },
