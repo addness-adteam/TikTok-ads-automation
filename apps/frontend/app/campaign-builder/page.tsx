@@ -29,17 +29,29 @@ interface Pixel {
   pixel_code?: string;
 }
 
+interface AdTextTemplate {
+  id: string;
+  name: string;
+  text: string;
+  appealId: string;
+}
+
 type CampaignPattern = 'NON_TARGETING' | 'LOOKALIKE';
 
 export default function CampaignBuilderPage() {
   const [advertisers, setAdvertisers] = useState<Advertiser[]>([]);
   const [creatives, setCreatives] = useState<Creative[]>([]);
   const [pixels, setPixels] = useState<Pixel[]>([]);
+  const [adTextTemplates, setAdTextTemplates] = useState<AdTextTemplate[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isLoadingPixels, setIsLoadingPixels] = useState(false);
+  const [isLoadingTemplates, setIsLoadingTemplates] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [showTemplateModal, setShowTemplateModal] = useState(false);
+  const [newTemplateName, setNewTemplateName] = useState('');
+  const [newTemplateText, setNewTemplateText] = useState('');
 
   // フォームの状態
   const [pattern, setPattern] = useState<CampaignPattern>('NON_TARGETING');
@@ -110,13 +122,44 @@ export default function CampaignBuilderPage() {
     }
   };
 
+  const fetchAdTextTemplates = async (advertiserId: string) => {
+    try {
+      setIsLoadingTemplates(true);
+
+      // 広告アカウントからappealIdを取得
+      const advertiser = advertisers.find(a => a.id === advertiserId);
+      if (!advertiser || !advertiser.appealId) {
+        setAdTextTemplates([]);
+        return;
+      }
+
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
+      const response = await fetch(`${apiUrl}/api/appeals/${advertiser.appealId}/ad-text-templates`);
+
+      if (!response.ok) {
+        throw new Error('広告文テンプレートの取得に失敗しました');
+      }
+
+      const result = await response.json();
+      setAdTextTemplates(result.data || []);
+      setError(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '広告文テンプレートの取得に失敗しました');
+      setAdTextTemplates([]);
+    } finally {
+      setIsLoadingTemplates(false);
+    }
+  };
+
   const handleAdvertiserChange = (advertiserId: string) => {
     setSelectedAdvertiserId(advertiserId);
     setSelectedPixelId('');
     setPixels([]);
+    setAdTextTemplates([]);
 
     if (advertiserId) {
       fetchPixels(advertiserId);
+      fetchAdTextTemplates(advertiserId);
     }
   };
 
@@ -142,6 +185,60 @@ export default function CampaignBuilderPage() {
     const newNames = [...adNames];
     newNames[index] = value;
     setAdNames(newNames);
+  };
+
+  const handleTemplateSelect = (index: number, templateId: string) => {
+    const template = adTextTemplates.find(t => t.id === templateId);
+    if (template) {
+      const newTexts = [...adTexts];
+      newTexts[index] = template.text;
+      setAdTexts(newTexts);
+    }
+  };
+
+  const handleCreateTemplate = async () => {
+    try {
+      const advertiser = advertisers.find(a => a.id === selectedAdvertiserId);
+      if (!advertiser || !advertiser.appealId) {
+        alert('広告アカウントを選択してください');
+        return;
+      }
+
+      if (!newTemplateName.trim() || !newTemplateText.trim()) {
+        alert('テンプレート名と広告文を入力してください');
+        return;
+      }
+
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
+      const response = await fetch(`${apiUrl}/api/appeals/${advertiser.appealId}/ad-text-templates`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          name: newTemplateName,
+          text: newTemplateText,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('テンプレートの作成に失敗しました');
+      }
+
+      const result = await response.json();
+
+      // テンプレートリストを更新
+      setAdTextTemplates([result.data, ...adTextTemplates]);
+
+      // モーダルを閉じる
+      setShowTemplateModal(false);
+      setNewTemplateName('');
+      setNewTemplateText('');
+
+      alert('テンプレートを作成しました');
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'テンプレートの作成に失敗しました');
+    }
   };
 
   const toggleCreative = (creativeId: string) => {
@@ -435,40 +532,77 @@ export default function CampaignBuilderPage() {
                 <h2 className="text-lg font-bold text-gray-900">
                   広告文 <span className="text-red-500">*</span>
                 </h2>
-                {adTexts.length < 5 && (
-                  <button
-                    type="button"
-                    onClick={handleAddAdText}
-                    className="flex items-center gap-1 text-sm text-blue-600 hover:text-blue-700"
-                  >
-                    <Plus className="w-4 h-4" />
-                    追加
-                  </button>
-                )}
+                <div className="flex gap-2">
+                  {selectedAdvertiserId && adTextTemplates.length >= 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setShowTemplateModal(true)}
+                      className="flex items-center gap-1 text-sm text-green-600 hover:text-green-700"
+                    >
+                      <Plus className="w-4 h-4" />
+                      新しいテンプレート作成
+                    </button>
+                  )}
+                  {adTexts.length < 5 && (
+                    <button
+                      type="button"
+                      onClick={handleAddAdText}
+                      className="flex items-center gap-1 text-sm text-blue-600 hover:text-blue-700"
+                    >
+                      <Plus className="w-4 h-4" />
+                      広告文を追加
+                    </button>
+                  )}
+                </div>
               </div>
               <div className="space-y-3">
                 {adTexts.map((text, index) => (
-                  <div key={index} className="flex gap-2">
-                    <input
-                      type="text"
-                      value={text}
-                      onChange={(e) => handleAdTextChange(index, e.target.value)}
-                      className="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      placeholder={`広告文 ${index + 1}`}
-                    />
-                    {adTexts.length > 1 && (
-                      <button
-                        type="button"
-                        onClick={() => handleRemoveAdText(index)}
-                        className="p-3 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                      >
-                        <X className="w-5 h-5" />
-                      </button>
-                    )}
+                  <div key={index} className="space-y-2">
+                    <div className="flex gap-2 items-start">
+                      <div className="flex-1 space-y-2">
+                        {/* テンプレート選択 */}
+                        {adTextTemplates.length > 0 && (
+                          <select
+                            onChange={(e) => {
+                              if (e.target.value) {
+                                handleTemplateSelect(index, e.target.value);
+                              }
+                            }}
+                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                          >
+                            <option value="">テンプレートから選択（オプション）</option>
+                            {adTextTemplates.map((template) => (
+                              <option key={template.id} value={template.id}>
+                                {template.name}: {template.text.substring(0, 30)}...
+                              </option>
+                            ))}
+                          </select>
+                        )}
+                        {/* 手動入力 */}
+                        <input
+                          type="text"
+                          value={text}
+                          onChange={(e) => handleAdTextChange(index, e.target.value)}
+                          className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          placeholder={`広告文 ${index + 1}（手動入力 or テンプレート選択）`}
+                        />
+                      </div>
+                      {adTexts.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveAdText(index)}
+                          className="p-3 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                        >
+                          <X className="w-5 h-5" />
+                        </button>
+                      )}
+                    </div>
                   </div>
                 ))}
               </div>
-              <p className="mt-2 text-xs text-gray-500">最大5個まで追加できます</p>
+              <p className="mt-2 text-xs text-gray-500">
+                最大5個まで追加できます。テンプレートから選択するか、直接入力してください。
+              </p>
             </div>
 
             {/* 広告名 */}
@@ -596,6 +730,63 @@ export default function CampaignBuilderPage() {
           </form>
         </main>
       </div>
+
+      {/* テンプレート作成モーダル */}
+      {showTemplateModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 w-full max-w-md">
+            <h3 className="text-lg font-bold text-gray-900 mb-4">新しい広告文テンプレートを作成</h3>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  テンプレート名 <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={newTemplateName}
+                  onChange={(e) => setNewTemplateName(e.target.value)}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="例: 新春セール"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  広告文 <span className="text-red-500">*</span>
+                </label>
+                <textarea
+                  value={newTemplateText}
+                  onChange={(e) => setNewTemplateText(e.target.value)}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 h-24"
+                  placeholder="広告文を入力してください"
+                />
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-3 mt-6">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowTemplateModal(false);
+                  setNewTemplateName('');
+                  setNewTemplateText('');
+                }}
+                className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                キャンセル
+              </button>
+              <button
+                type="button"
+                onClick={handleCreateTemplate}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+              >
+                作成して使用
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </AppLayout>
   );
 }
