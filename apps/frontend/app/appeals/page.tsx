@@ -267,8 +267,8 @@ export default function AppealsPage() {
                   </div>
                 </div>
 
-                {/* スプレッドシートURL */}
-                <div className="space-y-2 mb-4">
+                {/* スプレッドシートURL - ユーザーから非表示 */}
+                {/* <div className="space-y-2 mb-4">
                   {appeal.cvSpreadsheetUrl && (
                     <div className="text-sm">
                       <span className="text-gray-500">CV集計シート: </span>
@@ -285,7 +285,7 @@ export default function AppealsPage() {
                       </a>
                     </div>
                   )}
-                </div>
+                </div> */}
 
                 {/* 紐付けアカウント */}
                 {appeal.advertisers.length > 0 && (
