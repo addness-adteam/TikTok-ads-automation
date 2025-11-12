@@ -1,5 +1,6 @@
 import { Controller, Get, Post, Put, Delete, Body, Param, Logger } from '@nestjs/common';
-import { AdTextTemplateService, CreateAdTextTemplateDto, UpdateAdTextTemplateDto } from './ad-text-template.service';
+import { AdTextTemplateService } from './ad-text-template.service';
+import type { CreateAdTextTemplateDto, UpdateAdTextTemplateDto } from './ad-text-template.service';
 
 @Controller('api')
 export class AdTextTemplateController {
