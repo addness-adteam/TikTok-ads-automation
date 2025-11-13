@@ -204,7 +204,10 @@ export class JobsController {
    * GET /jobs/test-report?advertiserId=xxx
    */
   @Get('test-report')
-  async testReport(@Query('advertiserId') advertiserId?: string) {
+  async testReport(
+    @Query('advertiserId') advertiserId?: string,
+    @Query('dataLevel') dataLevel?: 'AUCTION_CAMPAIGN' | 'AUCTION_ADGROUP' | 'AUCTION_AD',
+  ) {
     try {
       // 指定されたAdvertiserIDまたは最初の有効なトークンを取得
       const token = advertiserId
@@ -233,7 +236,10 @@ export class JobsController {
         };
       }
 
-      this.logger.log(`Testing report API for advertiser: ${token.advertiserId}`);
+      // デフォルトはAUCTION_ADレベル
+      const level = dataLevel || 'AUCTION_AD';
+
+      this.logger.log(`Testing report API for advertiser: ${token.advertiserId}, level: ${level}`);
 
       // 過去7日間のレポートデータを取得
       const endDate = new Date();
@@ -248,7 +254,7 @@ export class JobsController {
         token.advertiserId,
         token.accessToken,
         {
-          dataLevel: 'AUCTION_CAMPAIGN',
+          dataLevel: level,
           startDate: startDateStr,
           endDate: endDateStr,
         },
