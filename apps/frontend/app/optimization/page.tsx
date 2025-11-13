@@ -170,7 +170,7 @@ export default function OptimizationPage() {
     setError(null);
 
     try {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
+      const apiUrl = getApiUrl();
       const response = await fetch(`${apiUrl}/api/optimization/execute`, {
         method: 'POST',
         headers: {
@@ -194,6 +194,7 @@ export default function OptimizationPage() {
           evaluated: result.data.results.reduce((sum: number, r: any) => sum + (r.evaluated || 0), 0),
           decisions: result.data.results.reduce((sum: number, r: any) => sum + (r.decisions || 0), 0),
           executed: result.data.results.reduce((sum: number, r: any) => sum + (r.executed || 0), 0),
+          detailedLogs: result.data.results.flatMap((r: any) => r.detailedLogs || []),
         };
         setExecutionResults(totalResults);
       } else {
