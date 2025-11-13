@@ -611,7 +611,7 @@ export default function CampaignBuilderPage() {
                 広告名 <span className="text-red-500">*</span>
               </h2>
               <p className="text-sm text-gray-600 mb-4">
-                記入例: 日付（6桁）/CR制作者名/CR名/テスト変数/LP種類-CR番号（5桁）<br />
+                記入ルール：日付（6桁）/CR制作者名/CR名/テスト変数/LP種類-CR番号（5桁）<br />
                 <span className="text-gray-500">例: 251104/鈴木織大/これまだ言ってない/奇行/LP1-CR00055</span>
               </p>
               <div className="space-y-3">
