@@ -432,13 +432,11 @@ export default function OptimizationPage() {
                 </div>
 
                 <div className="flex gap-3">
-                  <div className="flex-1 rounded-lg p-[3px]" style={{
-                    background: 'linear-gradient(90deg, #FE2C55 0%, #FE2C55 50%, #25F4EE 50%, #25F4EE 100%)'
-                  }}>
+                  <div className="flex-1">
                     <button
                       onClick={executeOptimization}
                       disabled={selectedAdvertiserIds.length === 0 || isExecuting}
-                      className="w-full flex items-center justify-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
+                      className="w-full flex items-center justify-center gap-2 px-6 py-3 bg-gray-900 text-white rounded-lg font-medium hover:bg-gray-800 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
                     >
                       {isExecuting ? (
                         <>
@@ -454,13 +452,11 @@ export default function OptimizationPage() {
                     </button>
                   </div>
 
-                  <div className="flex-1 rounded-lg p-[3px]" style={{
-                    background: 'linear-gradient(90deg, #FE2C55 0%, #FE2C55 50%, #25F4EE 50%, #25F4EE 100%)'
-                  }}>
+                  <div className="flex-1">
                     <button
                       onClick={executeAllOptimization}
                       disabled={isExecuting}
-                      className="w-full flex items-center justify-center gap-2 px-6 py-3 bg-purple-600 text-white rounded-lg font-medium hover:bg-purple-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
+                      className="w-full flex items-center justify-center gap-2 px-6 py-3 bg-gray-900 text-white rounded-lg font-medium hover:bg-gray-800 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
                     >
                       {isExecuting ? (
                         <>
