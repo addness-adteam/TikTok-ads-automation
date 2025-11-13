@@ -1149,6 +1149,10 @@ export class TiktokService {
             continue;
           }
 
+          // デバッグ: 受信したレコードの構造をログ出力
+          this.logger.debug(`Processing AD record - adId: ${adId}, statDate: ${statDate.toISOString()}`);
+          this.logger.debug(`Raw metrics object: ${JSON.stringify(metrics)}`);
+
           // DBのAdレコードを検索（tiktokIdで）
           const ad = await this.prisma.ad.findUnique({
             where: { tiktokId: String(adId) },
@@ -1185,15 +1189,20 @@ export class TiktokService {
             videoWatched6s: parseInt(metrics.video_watched_6s || '0', 10),
           };
 
+          // デバッグ: パース後のメトリクスデータをログ出力
+          this.logger.debug(`Parsed metric data: ${JSON.stringify(metricData)}`);
+
           if (existingMetric) {
             await this.prisma.metric.update({
               where: { id: existingMetric.id },
               data: metricData,
             });
+            this.logger.debug(`Updated existing metric for ad ${adId}`);
           } else {
             await this.prisma.metric.create({
               data: metricData,
             });
+            this.logger.debug(`Created new metric for ad ${adId}`);
           }
 
         } else if (dataLevel === 'AUCTION_ADGROUP') {

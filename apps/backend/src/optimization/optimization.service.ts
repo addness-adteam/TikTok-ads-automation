@@ -339,6 +339,8 @@ export class OptimizationService {
    * @param tiktokAdId TikTok APIから返される広告ID
    */
   private async getAdMetrics(tiktokAdId: string, startDate: Date, endDate: Date) {
+    this.logger.debug(`Getting metrics for ad ${tiktokAdId} from ${startDate.toISOString()} to ${endDate.toISOString()}`);
+
     // まずTikTok IDからAdレコードを検索
     const ad = await this.prisma.ad.findUnique({
       where: { tiktokId: tiktokAdId },
@@ -353,6 +355,8 @@ export class OptimizationService {
       };
     }
 
+    this.logger.debug(`Found ad in DB: ${ad.id} (tiktokId: ${tiktokAdId})`);
+
     // Adレコードのid（UUID）を使ってメトリクスを検索
     const metrics = await this.prisma.metric.findMany({
       where: {
@@ -366,10 +370,16 @@ export class OptimizationService {
 
     this.logger.log(`Found ${metrics.length} metrics for ad ${tiktokAdId} (${ad.id})`);
 
+    if (metrics.length > 0) {
+      this.logger.debug(`Sample metric values: impressions=${metrics[0].impressions}, clicks=${metrics[0].clicks}, spend=${metrics[0].spend}`);
+    }
+
     // 合計を計算
     const totalImpressions = metrics.reduce((sum, m) => sum + m.impressions, 0);
     const totalClicks = metrics.reduce((sum, m) => sum + (m.clicks || 0), 0);
     const totalSpend = metrics.reduce((sum, m) => sum + m.spend, 0);
+
+    this.logger.debug(`Total metrics: impressions=${totalImpressions}, clicks=${totalClicks}, spend=${totalSpend}`);
 
     return {
       impressions: totalImpressions,
