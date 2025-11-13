@@ -78,6 +78,29 @@ export class TiktokController {
   }
 
   /**
+   * 既存のアクセストークンから全アカウントを同期
+   * POST /auth/tiktok/sync-advertisers
+   */
+  @Post('sync-advertisers')
+  async syncAdvertisers() {
+    this.logger.log('Advertiser sync requested');
+
+    try {
+      const result = await this.tiktokService.syncAllAdvertisersFromToken();
+      return {
+        success: true,
+        data: result,
+      };
+    } catch (error) {
+      this.logger.error('Advertiser sync failed', error);
+      return {
+        success: false,
+        error: error.message,
+      };
+    }
+  }
+
+  /**
    * トークンのリフレッシュ
    * POST /auth/tiktok/refresh
    * Body: { "refreshToken": "xxx" }

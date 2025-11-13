@@ -201,6 +201,100 @@ export class TiktokService {
   }
 
   /**
+   * 既存のアクセストークンから全アカウントを同期
+   * DBに保存されているトークンを使って、アクセス可能な全てのAdvertiserを取得・登録
+   */
+  async syncAllAdvertisersFromToken() {
+    try {
+      this.logger.log('Starting advertiser synchronization from existing token');
+
+      // DBから有効なOAuthTokenを1つ取得
+      const existingToken = await this.prisma.oAuthToken.findFirst({
+        where: {
+          expiresAt: {
+            gt: new Date(),
+          },
+        },
+        orderBy: {
+          createdAt: 'desc',
+        },
+      });
+
+      if (!existingToken) {
+        throw new Error('No valid OAuth token found in database');
+      }
+
+      this.logger.log(`Using token for advertiser: ${existingToken.advertiserId}`);
+
+      // このトークンでアクセス可能な全Advertiser情報を取得
+      const advertiserData = await this.getAdvertiserInfo(existingToken.accessToken);
+
+      if (!advertiserData?.data?.list || advertiserData.data.list.length === 0) {
+        throw new Error('No advertisers found for this token');
+      }
+
+      const advertisers = advertiserData.data.list;
+      this.logger.log(`Found ${advertisers.length} advertisers accessible with this token`);
+
+      // 無期限トークンのため、遠い未来の日付に設定
+      const expiresAt = new Date('2099-12-31T23:59:59Z');
+
+      // 各Advertiserに対して、同じトークンでレコードを作成/更新
+      let syncedCount = 0;
+      for (const adv of advertisers) {
+        const advertiserId = adv.advertiser_id;
+        const advertiserName = adv.advertiser_name || `Advertiser ${advertiserId}`;
+
+        // Advertiserレコードを作成/更新
+        await this.prisma.advertiser.upsert({
+          where: { tiktokAdvertiserId: advertiserId },
+          create: {
+            tiktokAdvertiserId: advertiserId,
+            name: advertiserName,
+          },
+          update: {
+            name: advertiserName,
+          },
+        });
+
+        // OAuthTokenを作成/更新
+        await this.prisma.oAuthToken.upsert({
+          where: { advertiserId },
+          create: {
+            advertiserId,
+            accessToken: existingToken.accessToken,
+            refreshToken: existingToken.refreshToken,
+            scope: existingToken.scope,
+            expiresAt,
+          },
+          update: {
+            accessToken: existingToken.accessToken,
+            refreshToken: existingToken.refreshToken,
+            scope: existingToken.scope,
+            expiresAt,
+          },
+        });
+
+        this.logger.log(`Synced advertiser: ${advertiserId} (${advertiserName})`);
+        syncedCount++;
+      }
+
+      this.logger.log(`Successfully synced ${syncedCount} advertisers`);
+
+      return {
+        syncedCount,
+        advertisers: advertisers.map(adv => ({
+          id: adv.advertiser_id,
+          name: adv.advertiser_name,
+        })),
+      };
+    } catch (error) {
+      this.logger.error('Failed to sync advertisers from token', error);
+      throw error;
+    }
+  }
+
+  /**
    * Campaign一覧を取得
    * GET /v1.3/campaign/get/
    */
