@@ -318,18 +318,21 @@ export class OptimizationService {
 
   /**
    * 評価期間を計算（過去7日間、当日は含めない）
+   * JST基準で正しく計算
    */
   private calculateEvaluationPeriod(): { startDate: Date; endDate: Date } {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    const now = new Date();
+    const jstOffset = 9 * 60 * 60 * 1000; // JSTはUTC+9時間
+    const jstNow = new Date(now.getTime() + jstOffset);
 
-    const endDate = new Date(today);
-    endDate.setDate(endDate.getDate() - 1); // 昨日
-    endDate.setHours(23, 59, 59, 999); // その日の終わりまで含める
+    // JST基準で昨日の終わりと7日前の始まりを計算
+    const endDate = new Date(jstNow);
+    endDate.setUTCDate(endDate.getUTCDate() - 1); // 昨日
+    endDate.setUTCHours(23, 59, 59, 999); // その日の終わりまで含める
 
     const startDate = new Date(endDate);
-    startDate.setDate(startDate.getDate() - 6); // 7日前
-    startDate.setHours(0, 0, 0, 0); // その日の始まりから
+    startDate.setUTCDate(startDate.getUTCDate() - 6); // 7日前
+    startDate.setUTCHours(0, 0, 0, 0); // その日の始まりから
 
     return { startDate, endDate };
   }

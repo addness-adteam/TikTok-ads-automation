@@ -314,14 +314,19 @@ export class SchedulerService implements OnModuleInit {
         return;
       }
 
-      // 過去7日間のデータを取得
-      const endDate = new Date();
-      endDate.setDate(endDate.getDate() - 1); // 前日まで
-      const startDate = new Date();
-      startDate.setDate(startDate.getDate() - 7); // 7日前から
+      // 過去7日間のデータを取得（JST基準で正しく計算）
+      const now = new Date();
+      const jstOffset = 9 * 60 * 60 * 1000; // JSTはUTC+9時間
+      const jstNow = new Date(now.getTime() + jstOffset);
 
-      const startDateStr = startDate.toISOString().split('T')[0];
-      const endDateStr = endDate.toISOString().split('T')[0];
+      // JST基準で昨日と7日前を計算
+      const endDateJST = new Date(jstNow);
+      endDateJST.setUTCDate(endDateJST.getUTCDate() - 1); // 昨日
+      const startDateJST = new Date(jstNow);
+      startDateJST.setUTCDate(startDateJST.getUTCDate() - 7); // 7日前
+
+      const startDateStr = startDateJST.toISOString().split('T')[0];
+      const endDateStr = endDateJST.toISOString().split('T')[0];
 
       const dataLevels: Array<'AUCTION_CAMPAIGN' | 'AUCTION_ADGROUP' | 'AUCTION_AD'> = [
         'AUCTION_CAMPAIGN',
