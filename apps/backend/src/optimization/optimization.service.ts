@@ -22,6 +22,20 @@ interface AdPerformance {
   appealName: string;
 }
 
+interface CampaignPerformance {
+  campaignId: string;
+  campaignName: string;
+  lpName: string;
+  registrationPath: string;
+  impressions: number;
+  clicks: number;
+  spend: number;
+  cvCount: number;
+  frontSalesCount: number;
+  cpa: number;
+  frontCPO: number;
+}
+
 interface OptimizationDecision {
   adId: string;
   adName: string;
@@ -31,6 +45,16 @@ interface OptimizationDecision {
   currentBudget?: number;
   newBudget?: number;
   performance?: AdPerformance; // 追加：パフォーマンス情報
+}
+
+interface CampaignOptimizationDecision {
+  campaignId: string;
+  campaignName: string;
+  action: 'PAUSE' | 'CONTINUE' | 'INCREASE_BUDGET';
+  reason: string;
+  currentBudget?: number;
+  newBudget?: number;
+  performance?: CampaignPerformance;
 }
 
 @Injectable()
@@ -43,6 +67,20 @@ export class OptimizationService {
     private googleSheetsService: GoogleSheetsService,
     private appealService: AppealService,
   ) {}
+
+  /**
+   * ad_nameがクリエイティブ名（ファイル名）かどうかを判定
+   * CR名には.mp4, .jpg, .png などの拡張子が含まれる
+   */
+  private isCreativeName(adName: string | null | undefined): boolean {
+    if (!adName) return false;
+
+    const videoExtensions = ['.mp4', '.MP4', '.mov', '.MOV', '.avi', '.AVI'];
+    const imageExtensions = ['.jpg', '.JPG', '.jpeg', '.JPEG', '.png', '.PNG', '.gif', '.GIF'];
+    const allExtensions = [...videoExtensions, ...imageExtensions];
+
+    return allExtensions.some(ext => adName.includes(ext));
+  }
 
   /**
    * 予算調整を実行（全Advertiser対象）
@@ -100,13 +138,40 @@ export class OptimizationService {
 
     const appeal = advertiser.appeal;
 
+    // ========================================
+    // Phase 1: 広告レベルの予算調整（広告名がある広告）
+    // ========================================
+    this.logger.log('========================================');
+    this.logger.log('Phase 1: Evaluating ads with ad_name (manual campaigns)');
+    this.logger.log('========================================');
+
     // 配信中の広告を取得
     const activeAds = await this.getActiveAds(advertiserId, accessToken);
     this.logger.log(`Found ${activeAds.length} active ads for advertiser ${advertiserId}`);
 
-    // 各広告のパフォーマンスを評価
+    // 処理済みキャンペーンIDを記録
+    const processedCampaigns = new Set<string>();
+
+    // 各広告のパフォーマンスを評価（広告名がある広告のみ）
     const adPerformances: AdPerformance[] = [];
     for (const ad of activeAds) {
+      // 広告名がない、または広告名がCR名（拡張子含む）の場合はスキップ（Phase 2で処理）
+      if (!ad.ad_name || ad.ad_name.trim() === '') {
+        this.logger.debug(`Ad ${ad.ad_id} has no ad_name, skipping in Phase 1`);
+        continue;
+      }
+
+      // CR名（拡張子含む）の場合は旧スマプラなのでPhase 2で処理
+      if (this.isCreativeName(ad.ad_name)) {
+        this.logger.debug(
+          `Ad ${ad.ad_id} has creative name (${ad.ad_name}), skipping in Phase 1 (will be processed as Smart+ legacy in Phase 2)`
+        );
+        continue;
+      }
+
+      // このキャンペーンは通常キャンペーン（または新スマプラ）としてマーク
+      processedCampaigns.add(ad.campaign_id);
+
       try {
         const performance = await this.evaluateAdPerformance(ad, appeal, accessToken);
         if (performance) {
@@ -177,6 +242,158 @@ export class OptimizationService {
       }
     }));
 
+    this.logger.log(`Phase 1 completed: Processed ${processedCampaigns.size} campaigns with named ads`);
+
+    // ========================================
+    // Phase 2: キャンペーンレベルの予算調整（旧スマートプラス）
+    // ========================================
+    this.logger.log('========================================');
+    this.logger.log('Phase 2: Evaluating campaigns without ad_name (Smart+ legacy)');
+    this.logger.log('========================================');
+
+    const activeCampaigns = await this.getActiveCampaigns(advertiserId, accessToken);
+    let smartPlusCampaignCount = 0;
+    const campaignExecutionResults: any[] = [];
+
+    for (const campaign of activeCampaigns) {
+      // Phase 1で処理済みのキャンペーンはスキップ（通常キャンペーン）
+      if (processedCampaigns.has(campaign.campaign_id)) {
+        this.logger.debug(
+          `Campaign ${campaign.campaign_id} (${campaign.campaign_name}) already processed as manual campaign, skipping`
+        );
+        continue;
+      }
+
+      // キャンペーン配下の広告を確認
+      const campaignAds = await this.getAdsForCampaign(
+        advertiserId,
+        accessToken,
+        campaign.campaign_id
+      );
+
+      // 全広告がCR名（拡張子含む）かどうかをチェック
+      const allAdsHaveCreativeNames = campaignAds.length > 0 && campaignAds.every(
+        (ad: any) => this.isCreativeName(ad.ad_name)
+      );
+
+      // CR名でない広告名（手動の広告名）を持つ広告が1つでもあれば通常/新スマプラキャンペーン
+      const hasManualAdNames = campaignAds.some(
+        (ad: any) => ad.ad_name && ad.ad_name.trim() !== '' && !this.isCreativeName(ad.ad_name)
+      );
+
+      if (hasManualAdNames) {
+        this.logger.debug(
+          `Campaign ${campaign.campaign_id} (${campaign.campaign_name}) has manual ad names (not creative names), skipping in Phase 2`
+        );
+        continue;
+      }
+
+      // 全広告がCR名でない場合（空の広告名のみ）もスキップ
+      if (!allAdsHaveCreativeNames) {
+        this.logger.debug(
+          `Campaign ${campaign.campaign_id} (${campaign.campaign_name}) does not have all creative names, skipping in Phase 2`
+        );
+        continue;
+      }
+
+      // ここまで来たら：全広告がCR名（拡張子含む） = 旧スマートプラス候補
+      // キャンペーン名をパースしてみる
+      const parsedName = this.parseAdName(campaign.campaign_name);
+
+      if (!parsedName) {
+        this.logger.warn(
+          `Campaign ${campaign.campaign_id} (${campaign.campaign_name}) has no named ads but campaign name is unparseable, skipping`
+        );
+        continue;
+      }
+
+      // ここから旧スマートプラスの評価
+      this.logger.log(
+        `✓ Detected Smart+ legacy campaign: ${campaign.campaign_id} (${campaign.campaign_name})`
+      );
+      smartPlusCampaignCount++;
+
+      try {
+        const performance = await this.evaluateCampaignPerformance(
+          campaign,
+          appeal,
+          accessToken
+        );
+
+        if (!performance) {
+          this.logger.warn(`Failed to evaluate campaign ${campaign.campaign_id}, skipping`);
+          continue;
+        }
+
+        const decision = await this.makeCampaignOptimizationDecision(performance, appeal);
+
+        // 判定に応じてアクションを実行
+        if (decision.action === 'PAUSE') {
+          await this.pauseCampaign(
+            campaign.campaign_id,
+            advertiserId,
+            accessToken,
+            decision.reason
+          );
+          campaignExecutionResults.push({
+            campaignId: campaign.campaign_id,
+            campaignName: campaign.campaign_name,
+            action: 'PAUSE',
+            reason: decision.reason,
+          });
+        } else if (decision.action === 'INCREASE_BUDGET') {
+          // キャンペーン配下の広告セットを取得
+          const adgroups = await this.tiktokService.getAdGroups(
+            advertiserId,
+            accessToken,
+            [campaign.campaign_id]  // 配列として渡す
+          );
+
+          if (adgroups.data?.list?.length > 0) {
+            const adgroupId = adgroups.data.list[0].adgroup_id;
+
+            // 既存のincreaseBudgetメソッドが自動で判定
+            await this.increaseBudget(
+              adgroupId,
+              advertiserId,
+              accessToken,
+              0.3,  // 30%増額
+            );
+            campaignExecutionResults.push({
+              campaignId: campaign.campaign_id,
+              campaignName: campaign.campaign_name,
+              action: 'INCREASE_BUDGET',
+              reason: decision.reason,
+            });
+          } else {
+            this.logger.warn(`No adgroups found for campaign ${campaign.campaign_id}, skipping budget increase`);
+          }
+        } else {
+          // CONTINUE
+          campaignExecutionResults.push({
+            campaignId: campaign.campaign_id,
+            campaignName: campaign.campaign_name,
+            action: 'CONTINUE',
+            reason: decision.reason,
+          });
+        }
+      } catch (error) {
+        this.logger.error(`Failed to optimize campaign ${campaign.campaign_id}:`, error);
+        campaignExecutionResults.push({
+          campaignId: campaign.campaign_id,
+          campaignName: campaign.campaign_name,
+          action: 'ERROR',
+          reason: `実行エラー: ${error.message}`,
+          error: error.message,
+        });
+      }
+    }
+
+    this.logger.log(
+      `Phase 2 completed: Processed ${smartPlusCampaignCount} Smart+ legacy campaigns`
+    );
+    this.logger.log(`Optimization completed for advertiser: ${advertiserId}`);
+
     return {
       advertiserId,
       success: true,
@@ -186,6 +403,11 @@ export class OptimizationService {
       executed: executionResults.length,
       results: executionResults,
       detailedLogs, // 追加：各広告の詳細ログ
+      // Phase 2の結果を追加
+      smartPlusCampaigns: {
+        total: smartPlusCampaignCount,
+        results: campaignExecutionResults,
+      },
     };
   }
 
@@ -663,6 +885,249 @@ export class OptimizationService {
     });
 
     return advertisers.map((a) => a.tiktokAdvertiserId);
+  }
+
+  /**
+   * 特定キャンペーン配下の広告を取得
+   */
+  private async getAdsForCampaign(
+    advertiserId: string,
+    accessToken: string,
+    campaignId: string
+  ) {
+    // 全広告を取得
+    const adsResponse = await this.tiktokService.getAds(advertiserId, accessToken);
+    const allAds = adsResponse.data?.list || [];
+
+    // 指定キャンペーン配下の広告のみフィルタ
+    const campaignAds = allAds.filter((ad: any) => ad.campaign_id === campaignId);
+
+    this.logger.debug(`Found ${campaignAds.length} ads for campaign ${campaignId}`);
+    return campaignAds;
+  }
+
+  /**
+   * 配信中のキャンペーンを取得
+   */
+  private async getActiveCampaigns(advertiserId: string, accessToken: string) {
+    const campaignsResponse = await this.tiktokService.getCampaigns(
+      advertiserId,
+      accessToken
+    );
+
+    // ステータスが配信中（ENABLE）のキャンペーンのみフィルタリング
+    const activeCampaigns = campaignsResponse.data?.list?.filter(
+      (campaign: any) => campaign.operation_status === 'ENABLE'
+    ) || [];
+
+    this.logger.log(`Active campaigns count: ${activeCampaigns.length}`);
+    return activeCampaigns;
+  }
+
+  /**
+   * キャンペーンのパフォーマンスを評価（旧スマートプラス対応）
+   */
+  private async evaluateCampaignPerformance(
+    campaign: any,
+    appeal: any,
+    accessToken: string,
+  ): Promise<CampaignPerformance | null> {
+    this.logger.log(`Evaluating campaign: ${campaign.campaign_id}, name: ${campaign.campaign_name}`);
+
+    // キャンペーン名をパース
+    const parsedName = this.parseAdName(campaign.campaign_name);
+    if (!parsedName) {
+      this.logger.warn(`Invalid campaign name format, skipping: ${campaign.campaign_name}`);
+      return null;
+    }
+
+    this.logger.log(`Parsed campaign name successfully: ${JSON.stringify(parsedName)}`);
+
+    // 登録経路を生成
+    const registrationPath = this.generateRegistrationPath(parsedName.lpName, appeal.name);
+
+    // 評価期間を計算（過去7日間）
+    const { startDate, endDate } = this.calculateEvaluationPeriod();
+
+    // キャンペーンのメトリクスを取得（DBから）
+    const metrics = await this.getCampaignMetrics(
+      campaign.campaign_id,
+      startDate,
+      endDate
+    );
+
+    // Google SheetsからCV数とフロント販売本数を取得
+    const cvCount = await this.googleSheetsService.getCVCount(
+      appeal.name,
+      appeal.cvSpreadsheetUrl,
+      registrationPath,
+      startDate,
+      endDate,
+    );
+
+    const frontSalesCount = await this.googleSheetsService.getFrontSalesCount(
+      appeal.name,
+      appeal.frontSpreadsheetUrl,
+      registrationPath,
+      startDate,
+      endDate,
+    );
+
+    // CPA・フロントCPOを計算
+    const cpa = cvCount > 0 ? metrics.spend / cvCount : 0;
+    const frontCPO = frontSalesCount > 0 ? metrics.spend / frontSalesCount : 0;
+
+    return {
+      campaignId: campaign.campaign_id,
+      campaignName: campaign.campaign_name,
+      lpName: parsedName.lpName,
+      registrationPath,
+      impressions: metrics.impressions,
+      clicks: metrics.clicks,
+      spend: metrics.spend,
+      cvCount,
+      frontSalesCount,
+      cpa,
+      frontCPO,
+    };
+  }
+
+  /**
+   * キャンペーンのメトリクスを取得
+   */
+  private async getCampaignMetrics(
+    tiktokCampaignId: string,
+    startDate: Date,
+    endDate: Date
+  ) {
+    this.logger.debug(`Getting metrics for campaign ${tiktokCampaignId}`);
+
+    // Campaign IDからキャンペーンを検索
+    const campaign = await this.prisma.campaign.findUnique({
+      where: { tiktokId: tiktokCampaignId },
+    });
+
+    if (!campaign) {
+      this.logger.warn(`Campaign not found in DB: ${tiktokCampaignId}`);
+      return { impressions: 0, clicks: 0, spend: 0 };
+    }
+
+    // キャンペーンレベルのメトリクスを取得
+    const campaignMetrics = await this.prisma.metric.findMany({
+      where: {
+        entityType: 'CAMPAIGN',
+        campaignId: campaign.id,
+        statDate: { gte: startDate, lte: endDate }
+      }
+    });
+
+    // 広告セットレベルのメトリクスも取得（フォールバック）
+    const adgroupMetrics = await this.prisma.metric.findMany({
+      where: {
+        entityType: 'ADGROUP',
+        adGroup: { campaignId: campaign.id },
+        statDate: { gte: startDate, lte: endDate }
+      }
+    });
+
+    // キャンペーンメトリクスを優先、なければ広告セットメトリクスを使用
+    const metrics = campaignMetrics.length > 0 ? campaignMetrics : adgroupMetrics;
+
+    this.logger.log(`Found ${metrics.length} metrics for campaign ${tiktokCampaignId} (using ${campaignMetrics.length > 0 ? 'CAMPAIGN' : 'ADGROUP'} level)`);
+
+    // 合計を計算
+    return {
+      impressions: metrics.reduce((sum, m) => sum + m.impressions, 0),
+      clicks: metrics.reduce((sum, m) => sum + m.clicks, 0),
+      spend: metrics.reduce((sum, m) => sum + m.spend, 0),
+    };
+  }
+
+  /**
+   * キャンペーンを停止
+   */
+  private async pauseCampaign(
+    campaignId: string,
+    advertiserId: string,
+    accessToken: string,
+    reason: string,
+  ) {
+    await this.tiktokService.updateCampaign(
+      advertiserId,
+      accessToken,
+      campaignId,
+      { status: 'DISABLE' }
+    );
+
+    // ChangeLogに記録
+    await this.logChange(
+      'CAMPAIGN',
+      campaignId,
+      'PAUSE',
+      'OPTIMIZATION',
+      { status: 'ENABLE' },
+      { status: 'DISABLE' },
+      reason,
+    );
+
+    this.logger.log(`Paused campaign ${campaignId}: ${reason}`);
+  }
+
+  /**
+   * キャンペーンの最適化判定を作成
+   */
+  private async makeCampaignOptimizationDecision(
+    performance: CampaignPerformance,
+    appeal: any,
+  ): Promise<CampaignOptimizationDecision> {
+    const { impressions, spend, cvCount, frontSalesCount, cpa, frontCPO } = performance;
+    const { allowableCPA, targetCPA, allowableFrontCPO, targetFrontCPO } = appeal;
+
+    // ヘルパー関数：decisionを作成
+    const createDecision = (
+      action: 'PAUSE' | 'CONTINUE' | 'INCREASE_BUDGET',
+      reason: string
+    ): CampaignOptimizationDecision => ({
+      campaignId: performance.campaignId,
+      campaignName: performance.campaignName,
+      action,
+      reason,
+      performance,
+    });
+
+    // 5000インプレッション未達の場合
+    if (impressions < 5000) {
+      return createDecision('CONTINUE', `インプレッション数が5000未満（${impressions}）のため、継続配信`);
+    }
+
+    // フロント販売が1件以上ある場合
+    if (frontSalesCount >= 1) {
+      if (frontCPO <= targetFrontCPO) {
+        return createDecision('INCREASE_BUDGET', `フロントCPO（¥${frontCPO.toFixed(0)}）が目標値（¥${targetFrontCPO}）以下のため、予算30%増額`);
+      } else if (frontCPO <= allowableFrontCPO) {
+        return createDecision('CONTINUE', `フロントCPO（¥${frontCPO.toFixed(0)}）が許容値（¥${allowableFrontCPO}）以下のため、継続配信`);
+      } else {
+        return createDecision('PAUSE', `フロントCPO（¥${frontCPO.toFixed(0)}）が許容値（¥${allowableFrontCPO}）を超過したため停止`);
+      }
+    }
+
+    // フロント販売が0件の場合
+    if (frontSalesCount === 0) {
+      if (cpa === 0) {
+        return createDecision('PAUSE', `CVもフロント販売も0件のため停止（広告費: ¥${spend.toFixed(0)}）`);
+      }
+
+      // CVはあるがフロント販売が0件の場合
+      const totalSpend = spend; // キャンペーンレベルでは累積広告費を使用
+      if (cpa <= allowableCPA && totalSpend <= allowableFrontCPO) {
+        return createDecision('CONTINUE', `CPA（¥${cpa.toFixed(0)}）が許容値以下で累積広告費も範囲内のため継続配信`);
+      } else {
+        return createDecision('PAUSE', `CPA（¥${cpa.toFixed(0)}）または累積広告費（¥${totalSpend.toFixed(0)}）が基準を超過したため停止`);
+      }
+    }
+
+    // デフォルト: 継続配信
+    return createDecision('CONTINUE', '継続配信');
   }
 
   /**
