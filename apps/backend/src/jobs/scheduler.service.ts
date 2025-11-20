@@ -255,12 +255,128 @@ export class SchedulerService implements OnModuleInit {
             adsSynced++;
           }
 
+          // Smart+ Adsを取得してDBに保存
+          let smartPlusAdsSynced = 0;
+          try {
+            const smartPlusAdsResult = await this.tiktokService.getSmartPlusAds(
+              token.advertiserId,
+              token.accessToken,
+            );
+
+            const smartPlusAds = smartPlusAdsResult.data?.list || [];
+            this.logger.log(`Retrieved ${smartPlusAds.length} Smart+ ads for ${token.advertiserId}`);
+
+            for (const ad of smartPlusAds) {
+              // Smart+ AdのIDを決定（smart_plus_ad_id を優先）
+              const adId = ad.smart_plus_ad_id || ad.ad_id;
+              if (!adId) {
+                this.logger.warn(`Smart+ ad has no ID, skipping`);
+                continue;
+              }
+
+              // AdGroupを探す
+              if (!ad.adgroup_id) {
+                this.logger.warn(`Smart+ ad ${adId} has no adgroup_id, skipping`);
+                continue;
+              }
+
+              const adgroup = await this.prisma.adGroup.findUnique({
+                where: { tiktokId: String(ad.adgroup_id) },
+              });
+
+              if (!adgroup) {
+                this.logger.warn(`AdGroup ${ad.adgroup_id} not found for Smart+ ad ${adId}, skipping`);
+                continue;
+              }
+
+              // Creativeを処理
+              let creativeId: string | null = null;
+              if (ad.video_id) {
+                const creative = await this.prisma.creative.findFirst({
+                  where: { tiktokVideoId: ad.video_id },
+                });
+
+                if (!creative) {
+                  const newCreative = await this.prisma.creative.create({
+                    data: {
+                      advertiserId: advertiser.id,
+                      name: `Video ${ad.video_id}`,
+                      type: 'VIDEO',
+                      tiktokVideoId: ad.video_id,
+                      url: ad.video_id || '',
+                      filename: `video_${ad.video_id}`,
+                    },
+                  });
+                  creativeId = newCreative.id;
+                } else {
+                  creativeId = creative.id;
+                }
+              } else if (ad.image_ids && ad.image_ids.length > 0) {
+                const creative = await this.prisma.creative.findFirst({
+                  where: { tiktokImageId: ad.image_ids[0] },
+                });
+
+                if (!creative) {
+                  const newCreative = await this.prisma.creative.create({
+                    data: {
+                      advertiserId: advertiser.id,
+                      name: `Image ${ad.image_ids[0]}`,
+                      type: 'IMAGE',
+                      tiktokImageId: ad.image_ids[0],
+                      url: ad.image_ids[0] || '',
+                      filename: `image_${ad.image_ids[0]}`,
+                    },
+                  });
+                  creativeId = newCreative.id;
+                } else {
+                  creativeId = creative.id;
+                }
+              }
+
+              if (!creativeId) {
+                this.logger.warn(`No creative found for Smart+ ad ${adId}, skipping`);
+                continue;
+              }
+
+              // Smart+ Adをupsert（tiktokIdにはsmart_plus_ad_idを使用）
+              await this.prisma.ad.upsert({
+                where: { tiktokId: String(adId) },
+                create: {
+                  tiktokId: String(adId),
+                  adgroupId: adgroup.id,
+                  name: ad.ad_name,
+                  creativeId,
+                  adText: ad.ad_text,
+                  callToAction: ad.call_to_action,
+                  landingPageUrl: ad.landing_page_url,
+                  displayName: ad.identity_id,
+                  status: ad.operation_status,
+                  reviewStatus: ad.app_download_status || 'APPROVED',
+                },
+                update: {
+                  name: ad.ad_name,
+                  adText: ad.ad_text,
+                  callToAction: ad.call_to_action,
+                  landingPageUrl: ad.landing_page_url,
+                  displayName: ad.identity_id,
+                  status: ad.operation_status,
+                  reviewStatus: ad.app_download_status || 'APPROVED',
+                },
+              });
+              smartPlusAdsSynced++;
+            }
+
+            this.logger.log(`Synced ${smartPlusAdsSynced} Smart+ ads for ${token.advertiserId}`);
+          } catch (error) {
+            this.logger.error(`Failed to sync Smart+ ads for ${token.advertiserId}:`, error.message);
+          }
+
           totalCampaigns += campaignsSynced;
           totalAdgroups += adgroupsSynced;
-          totalAds += adsSynced;
+          totalAds += adsSynced + smartPlusAdsSynced;
 
           this.logger.log(
-            `Synced for ${token.advertiserId}: ${campaignsSynced} campaigns, ${adgroupsSynced} adgroups, ${adsSynced} ads`,
+            `Synced for ${token.advertiserId}: ${campaignsSynced} campaigns, ${adgroupsSynced} adgroups, ${adsSynced} regular ads, ${smartPlusAdsSynced} Smart+ ads`,
           );
         } catch (error) {
           this.logger.error(`Failed to sync entities for ${token.advertiserId}:`, error.message);
@@ -358,7 +474,7 @@ export class SchedulerService implements OnModuleInit {
 
             // データベースに保存
             if (reportData.length > 0) {
-              await this.tiktokService.saveReportMetrics(reportData, dataLevel);
+              await this.tiktokService.saveReportMetrics(reportData, dataLevel, token.advertiserId);
               this.logger.log(
                 `Successfully saved ${reportData.length} metrics for ${token.advertiserId} - ${dataLevel}`,
               );
@@ -412,7 +528,7 @@ export class SchedulerService implements OnModuleInit {
       );
 
       if (reportData.length > 0) {
-        await this.tiktokService.saveReportMetrics(reportData, dataLevel);
+        await this.tiktokService.saveReportMetrics(reportData, dataLevel, advertiserId);
         this.logger.log(`Saved ${reportData.length} metrics`);
       }
 

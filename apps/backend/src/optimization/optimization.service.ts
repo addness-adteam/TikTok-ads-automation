@@ -155,14 +155,15 @@ export class OptimizationService {
     // 各広告のパフォーマンスを評価（広告名がある広告のみ）
     const adPerformances: AdPerformance[] = [];
     for (const ad of activeAds) {
-      // 広告名がない、または広告名がCR名（拡張子含む）の場合はスキップ（Phase 2で処理）
+      // 広告名がない場合はスキップ（Phase 2で処理）
       if (!ad.ad_name || ad.ad_name.trim() === '') {
         this.logger.debug(`Ad ${ad.ad_id} has no ad_name, skipping in Phase 1`);
         continue;
       }
 
       // CR名（拡張子含む）の場合は旧スマプラなのでPhase 2で処理
-      if (this.isCreativeName(ad.ad_name)) {
+      // ただし、新スマートプラス広告（isSmartPlus=true）の場合は、Phase 1で処理
+      if (this.isCreativeName(ad.ad_name) && !ad.isSmartPlus) {
         this.logger.debug(
           `Ad ${ad.ad_id} has creative name (${ad.ad_name}), skipping in Phase 1 (will be processed as Smart+ legacy in Phase 2)`
         );
@@ -412,21 +413,46 @@ export class OptimizationService {
   }
 
   /**
-   * 配信中の広告を取得
+   * 配信中の広告を取得（通常広告 + 新スマートプラス広告）
    */
   private async getActiveAds(advertiserId: string, accessToken: string) {
-    // TikTok APIから広告一覧を取得
+    // 新スマートプラス広告を取得
+    const smartPlusAdsResponse = await this.tiktokService.getSmartPlusAds(advertiserId, accessToken);
+    const smartPlusAds = smartPlusAdsResponse.data?.list?.filter((ad: any) => ad.operation_status === 'ENABLE') || [];
+
+    // 新スマートプラス広告のIDセットを作成
+    const smartPlusAdIds = new Set(smartPlusAds.map((ad: any) => ad.smart_plus_ad_id));
+
+    // 通常の広告を取得
     const adsResponse = await this.tiktokService.getAds(advertiserId, accessToken);
+    const allRegularAds = adsResponse.data?.list?.filter((ad: any) => ad.operation_status === 'ENABLE') || [];
 
-    // ステータスが配信中（ENABLE）の広告のみフィルタリング
-    const activeAds = adsResponse.data?.list?.filter((ad: any) => ad.operation_status === 'ENABLE') || [];
+    // 通常の広告から新スマートプラス広告を除外（重複を避ける）
+    // 通常のad/getでも新スマートプラス広告が返ってくるが、広告名がクリエイティブ名になっているため除外
+    const regularAdsOnly = allRegularAds.filter((ad: any) => {
+      // ad.ad_idまたはad.smart_plus_ad_idが新スマートプラス広告に含まれていない場合のみ残す
+      return !smartPlusAdIds.has(ad.ad_id) && !smartPlusAdIds.has(ad.smart_plus_ad_id);
+    });
 
-    this.logger.log(`Active ads count: ${activeAds.length}`);
-    if (activeAds.length > 0) {
-      this.logger.log(`Sample ad names: ${activeAds.slice(0, 3).map((ad: any) => ad.ad_name).join(', ')}`);
+    // 新スマートプラス広告を処理
+    smartPlusAds.forEach((ad: any) => {
+      ad.isSmartPlus = true;
+      // smart_plus_ad_id を ad_id としても保存（メトリクス取得に使用）
+      if (!ad.ad_id) {
+        ad.ad_id = ad.smart_plus_ad_id;
+      }
+      // /smart_plus/ad/get/ からの ad_name は正しい手動設定名なので、そのまま使う
+    });
+
+    // 両方の広告を結合
+    const allActiveAds = [...regularAdsOnly, ...smartPlusAds];
+
+    this.logger.log(`Active ads count: ${allActiveAds.length} (Regular: ${regularAdsOnly.length}, Smart+: ${smartPlusAds.length})`);
+    if (allActiveAds.length > 0) {
+      this.logger.log(`Sample ad names: ${allActiveAds.slice(0, 3).map((ad: any) => `${ad.ad_name}${ad.isSmartPlus ? ' [Smart+]' : ''}`).join(', ')}`);
     }
 
-    return activeAds;
+    return allActiveAds;
   }
 
   /**
@@ -888,21 +914,28 @@ export class OptimizationService {
   }
 
   /**
-   * 特定キャンペーン配下の広告を取得
+   * 特定キャンペーン配下の広告を取得（通常広告 + 新スマートプラス広告）
    */
   private async getAdsForCampaign(
     advertiserId: string,
     accessToken: string,
     campaignId: string
   ) {
-    // 全広告を取得
+    // 通常の広告を取得
     const adsResponse = await this.tiktokService.getAds(advertiserId, accessToken);
-    const allAds = adsResponse.data?.list || [];
+    const regularAds = adsResponse.data?.list || [];
+
+    // 新スマートプラス広告を取得
+    const smartPlusAdsResponse = await this.tiktokService.getSmartPlusAds(advertiserId, accessToken);
+    const smartPlusAds = smartPlusAdsResponse.data?.list || [];
+
+    // 全広告を結合
+    const allAds = [...regularAds, ...smartPlusAds];
 
     // 指定キャンペーン配下の広告のみフィルタ
     const campaignAds = allAds.filter((ad: any) => ad.campaign_id === campaignId);
 
-    this.logger.debug(`Found ${campaignAds.length} ads for campaign ${campaignId}`);
+    this.logger.debug(`Found ${campaignAds.length} ads for campaign ${campaignId} (Regular: ${regularAds.filter((ad: any) => ad.campaign_id === campaignId).length}, Smart+: ${smartPlusAds.filter((ad: any) => ad.campaign_id === campaignId).length})`);
     return campaignAds;
   }
 

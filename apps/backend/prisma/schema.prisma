@@ -222,6 +222,7 @@ model Metric {
   videoViews      Int         @default(0)
   videoWatched2s  Int         @default(0)
   videoWatched6s  Int         @default(0)
+  registrationPath String?    // 登録経路（旧スマプラキャンペーン用）
   createdAt       DateTime    @default(now())
 
   campaign        Campaign?   @relation(fields: [campaignId], references: [id], onDelete: Cascade)
@@ -232,6 +233,7 @@ model Metric {
   @@index([adgroupId, statDate], name: "metric_adgroup_idx")
   @@index([adId, statDate], name: "metric_ad_idx")
   @@index([statDate], name: "metric_statdate_idx")
+  @@index([registrationPath], name: "metric_registration_path_idx")
   @@map("metrics")
 }
 

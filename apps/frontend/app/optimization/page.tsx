@@ -55,6 +55,22 @@ interface OptimizationResult {
       allowableFrontCPO?: number;
     };
   }>;
+  smartPlusCampaigns?: {
+    total: number;
+    results: Array<{
+      campaignId: string;
+      campaignName: string;
+      action: 'PAUSE' | 'CONTINUE' | 'INCREASE_BUDGET';
+      reason: string;
+      currentBudget?: number;
+      newBudget?: number;
+      metrics?: {
+        cvCount?: number;
+        frontSalesCount?: number;
+        spend?: number;
+      };
+    }>;
+  };
 }
 
 export default function OptimizationPage() {
@@ -187,6 +203,7 @@ export default function OptimizationPage() {
 
       if (result.success) {
         // 全体の結果を集計
+        const allSmartPlusResults = result.data.results.flatMap((r: any) => r.smartPlusCampaigns?.results || []);
         const totalResults: OptimizationResult = {
           advertiserId: 'all',
           success: true,
@@ -195,6 +212,10 @@ export default function OptimizationPage() {
           decisions: result.data.results.reduce((sum: number, r: any) => sum + (r.decisions || 0), 0),
           executed: result.data.results.reduce((sum: number, r: any) => sum + (r.executed || 0), 0),
           detailedLogs: result.data.results.flatMap((r: any) => r.detailedLogs || []),
+          smartPlusCampaigns: allSmartPlusResults.length > 0 ? {
+            total: result.data.results.reduce((sum: number, r: any) => sum + (r.smartPlusCampaigns?.total || 0), 0),
+            results: allSmartPlusResults,
+          } : undefined,
         };
         setExecutionResults(totalResults);
       } else {
@@ -258,7 +279,7 @@ export default function OptimizationPage() {
                     </span>
                   )}
                 </h3>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-3">
+                <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mt-3">
                   <div>
                     <p className="text-xs text-green-600">対象広告数</p>
                     <p className="text-lg font-bold text-green-900">
@@ -278,21 +299,32 @@ export default function OptimizationPage() {
                     </p>
                   </div>
                   <div>
-                    <p className="text-xs text-green-600">実行数</p>
+                    <p className="text-xs text-green-600">実行数 (Phase 1)</p>
                     <p className="text-lg font-bold text-green-900">
                       {executionResults.executed || 0}
                     </p>
                   </div>
+                  <div>
+                    <p className="text-xs text-green-600">実行数 (Phase 2)</p>
+                    <p className="text-lg font-bold text-green-900">
+                      {executionResults.smartPlusCampaigns?.total || 0}
+                    </p>
+                  </div>
                 </div>
+                {executionResults.smartPlusCampaigns && executionResults.smartPlusCampaigns.total > 0 && (
+                  <div className="mt-2 text-xs text-green-700">
+                    ※ Phase 1: 通常キャンペーンの広告 / Phase 2: 旧スマートプラスキャンペーン
+                  </div>
+                )}
               </div>
             </div>
           )}
 
-          {/* 詳細ログ表示 */}
+          {/* Phase 1: 詳細ログ表示 */}
           {executionResults && executionResults.detailedLogs && executionResults.detailedLogs.length > 0 && (
             <div className="mb-6 bg-white border border-gray-200 rounded-lg p-6">
               <h3 className="text-lg font-semibold text-gray-900 mb-4">
-                個別広告結果 (全{executionResults.detailedLogs.length}件)
+                Phase 1: 個別広告結果 (全{executionResults.detailedLogs.length}件)
               </h3>
               <div className="space-y-4">
                 {executionResults.detailedLogs.map((log, index) => {
@@ -353,6 +385,60 @@ export default function OptimizationPage() {
                               </div>
                             )}
                           </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Phase 2: スマートプラスキャンペーン結果表示 */}
+          {executionResults && executionResults.smartPlusCampaigns && executionResults.smartPlusCampaigns.results && executionResults.smartPlusCampaigns.results.length > 0 && (
+            <div className="mb-6 bg-white border border-gray-200 rounded-lg p-6">
+              <h3 className="text-lg font-semibold text-gray-900 mb-4">
+                Phase 2: 旧スマートプラスキャンペーン結果 (全{executionResults.smartPlusCampaigns.results.length}件)
+              </h3>
+              <div className="space-y-4">
+                {executionResults.smartPlusCampaigns.results.map((result, index) => {
+                  const actionIcon = result.action === 'PAUSE' ? '⏸️' :
+                                    result.action === 'INCREASE_BUDGET' ? '📈' : '✅';
+                  const actionText = result.action === 'PAUSE' ? 'pause' :
+                                    result.action === 'INCREASE_BUDGET' ? 'increase' : 'maintain';
+                  const actionColor = result.action === 'PAUSE' ? 'text-red-700' :
+                                     result.action === 'INCREASE_BUDGET' ? 'text-blue-700' : 'text-green-700';
+
+                  return (
+                    <div key={index} className="border border-gray-200 rounded-lg p-4 bg-blue-50">
+                      <div className="flex items-start gap-2 mb-2">
+                        <span className="text-xl">{actionIcon}</span>
+                        <div className="flex-1">
+                          <p className="font-medium text-gray-900">キャンペーン: {result.campaignName}</p>
+                          <p className={`text-sm font-semibold ${actionColor} mt-1`}>
+                            判定: {actionText}
+                            {result.currentBudget !== undefined && result.newBudget !== undefined && (
+                              <span className="ml-2">
+                                (¥{result.currentBudget.toLocaleString()} → ¥{result.newBudget.toLocaleString()})
+                              </span>
+                            )}
+                          </p>
+                          <p className="text-sm text-gray-700 mt-1">理由: {result.reason}</p>
+
+                          {result.metrics && (
+                            <div className="mt-2 text-sm text-gray-600 space-y-1">
+                              {(result.metrics.cvCount !== undefined || result.metrics.frontSalesCount !== undefined) && (
+                                <div>
+                                  実績: CV{result.metrics.cvCount || 0}件, フロント{result.metrics.frontSalesCount || 0}件
+                                </div>
+                              )}
+                              {result.metrics.spend !== undefined && (
+                                <div>
+                                  支出: ¥{Math.round(result.metrics.spend).toLocaleString()}
+                                </div>
+                              )}
+                            </div>
+                          )}
                         </div>
                       </div>
                     </div>

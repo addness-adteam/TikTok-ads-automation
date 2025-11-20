@@ -1225,6 +1225,7 @@ export class TiktokService {
   async saveReportMetrics(
     reportData: any[],
     dataLevel: string,
+    advertiserId?: string,
   ) {
     try {
       this.logger.log(`Saving ${reportData.length} ${dataLevel} metrics to database`);
@@ -1353,7 +1354,7 @@ export class TiktokService {
           }
 
         } else if (dataLevel === 'AUCTION_CAMPAIGN') {
-          // CAMPAIGNレベルのメトリクス（既存の処理）
+          // CAMPAIGNレベルのメトリクス
           const campaignId = record.dimensions?.campaign_id || record.campaign_id;
 
           if (!campaignId) {
@@ -1364,6 +1365,13 @@ export class TiktokService {
           // DBのCampaignレコードを検索（tiktokIdで）
           const campaign = await this.prisma.campaign.findUnique({
             where: { tiktokId: String(campaignId) },
+            include: {
+              advertiser: {
+                include: {
+                  appeal: true,
+                },
+              },
+            },
           });
 
           if (!campaign) {
@@ -1380,7 +1388,8 @@ export class TiktokService {
             },
           });
 
-          const metricData = {
+          // 基本メトリクスデータ
+          const metricData: any = {
             entityType: 'CAMPAIGN',
             campaignId: campaign.id,
             statDate: statDate,
@@ -1393,6 +1402,56 @@ export class TiktokService {
             cpm: parseFloat(metrics.cpm || '0'),
             cpa: parseFloat(metrics.cost_per_conversion || '0'),
           };
+
+          // Phase 2: 旧スマートプラスキャンペーンの登録経路を生成
+          if (advertiserId && campaign.advertiser?.appeal) {
+            try {
+              // キャンペーン配下の広告を取得（AdGroup経由）
+              const campaignAds = await this.prisma.ad.findMany({
+                where: {
+                  adGroup: {
+                    campaignId: campaign.id
+                  }
+                },
+                select: { name: true },
+              });
+
+              // 全広告がCR名（拡張子含む）かどうかをチェック
+              const allAdsHaveCreativeNames =
+                campaignAds.length > 0 &&
+                campaignAds.every((ad) => this.isCreativeName(ad.name));
+
+              // 手動広告名を持つ広告が1つでもあれば通常キャンペーン
+              const hasManualAdNames = campaignAds.some(
+                (ad) => ad.name && ad.name.trim() !== '' && !this.isCreativeName(ad.name),
+              );
+
+              // 旧スマプラ判定: 全広告がCR名 かつ 手動広告名がない
+              if (allAdsHaveCreativeNames && !hasManualAdNames) {
+                // キャンペーン名をパース
+                const parsedName = this.parseAdName(campaign.name);
+
+                if (parsedName) {
+                  // 登録経路を生成
+                  const registrationPath = this.generateRegistrationPath(
+                    parsedName.lpName,
+                    campaign.advertiser.appeal.name,
+                  );
+
+                  metricData.registrationPath = registrationPath;
+
+                  this.logger.log(
+                    `Smart+ legacy campaign detected: ${campaign.name} -> ${registrationPath}`,
+                  );
+                }
+              }
+            } catch (error) {
+              this.logger.warn(
+                `Failed to determine registration path for campaign ${campaign.id}: ${error.message}`,
+              );
+              // エラーが発生してもメトリクス保存は継続
+            }
+          }
 
           if (existingMetric) {
             await this.prisma.metric.update({
@@ -1431,7 +1490,7 @@ export class TiktokService {
         },
       });
 
-      this.logger.log(`Retrieved ${response.data.data?.pixels?.length || 0} pixels`);
+      this.logger.log(`Retrieved ${response.data.data?.pixels||[]?.length || 0} pixels`);
       return response.data;
     } catch (error) {
       this.logger.error('Failed to get pixels');
@@ -1444,5 +1503,144 @@ export class TiktokService {
       })}`);
       throw error;
     }
+  }
+
+  /**
+   * Upgraded Smart+ 広告一覧を取得
+   * GET /v1.3/smart_plus/ad/get/
+   */
+  async getSmartPlusAds(advertiserId: string, accessToken: string, smartPlusAdIds?: string[]) {
+    try {
+      this.logger.log(`Fetching Smart+ ads for advertiser: ${advertiserId}`);
+
+      const params: any = {
+        advertiser_id: advertiserId,
+        page_size: 100, // 最大値
+      };
+
+      if (smartPlusAdIds && smartPlusAdIds.length > 0) {
+        params.filtering = JSON.stringify({
+          smart_plus_ad_ids: smartPlusAdIds,
+        });
+      }
+
+      this.logger.log(`Request params: ${JSON.stringify(params)}`);
+
+      const response = await this.httpClient.get('/v1.3/smart_plus/ad/get/', {
+        headers: {
+          'Access-Token': accessToken,
+        },
+        params,
+      });
+
+      this.logger.log(`Retrieved ${response.data.data?.list?.length || 0} Smart+ ads`);
+      return response.data;
+    } catch (error) {
+      this.logger.error('Failed to get Smart+ ads');
+      this.logger.error(`Error details: ${JSON.stringify({
+        message: error.message,
+        status: error.response?.status,
+        statusText: error.response?.statusText,
+        data: error.response?.data,
+        code: error.code,
+      })}`);
+      throw error;
+    }
+  }
+
+  /**
+   * 単一 Smart+ Ad取得
+   * GET /v1.3/smart_plus/ad/get/
+   */
+  async getSmartPlusAd(advertiserId: string, accessToken: string, smartPlusAdId: string) {
+    try {
+      this.logger.log(`Fetching Smart+ ad: ${smartPlusAdId}`);
+
+      const response = await this.httpClient.get('/v1.3/smart_plus/ad/get/', {
+        headers: {
+          'Access-Token': accessToken,
+        },
+        params: {
+          advertiser_id: advertiserId,
+          filtering: JSON.stringify({
+            smart_plus_ad_ids: [smartPlusAdId],
+          }),
+        },
+      });
+
+      const ads = response.data.data?.list || [];
+      if (ads.length === 0) {
+        throw new Error(`Smart+ ad not found: ${smartPlusAdId}`);
+      }
+
+      this.logger.log(`Smart+ ad fetched successfully: ${JSON.stringify(ads[0])}`);
+      return ads[0];
+    } catch (error) {
+      this.logger.error('Failed to get Smart+ ad', error.response?.data || error.message);
+      throw error;
+    }
+  }
+
+  // ============================================================================
+  // 旧スマートプラスキャンペーン判定用のヘルパー関数
+  // ============================================================================
+
+  /**
+   * 広告名がクリエイティブ名（拡張子含む）かどうかを判定
+   * @param adName 広告名
+   * @returns CR名の場合true
+   */
+  private isCreativeName(adName: string | null | undefined): boolean {
+    if (!adName) return false;
+
+    const videoExtensions = ['.mp4', '.MP4', '.mov', '.MOV', '.avi', '.AVI'];
+    const imageExtensions = ['.jpg', '.JPG', '.jpeg', '.JPEG', '.png', '.PNG', '.gif', '.GIF'];
+    const allExtensions = [...videoExtensions, ...imageExtensions];
+
+    return allExtensions.some((ext) => adName.includes(ext));
+  }
+
+  /**
+   * 広告名/キャンペーン名をパース
+   * 形式: 出稿日/制作者名/CR名/LP名-番号
+   * @param name 広告名またはキャンペーン名
+   * @returns パース結果（失敗時はnull）
+   */
+  private parseAdName(name: string): { date: string; creator: string; creativeName: string; lpName: string } | null {
+    const parts = name.split('/');
+
+    // 最低4パート必要（出稿日/制作者名/CR名/LP名）
+    if (parts.length < 4) {
+      return null;
+    }
+
+    // 最初のパート: 出稿日
+    const date = parts[0];
+
+    // 2番目のパート: 制作者名
+    const creator = parts[1];
+
+    // 最後のパート: LP名-番号
+    const lpName = parts[parts.length - 1];
+
+    // 3番目から最後の手前まで: CR名（複数パートの場合は "/" で結合）
+    const creativeName = parts.slice(2, parts.length - 1).join('/');
+
+    return {
+      date,
+      creator,
+      creativeName,
+      lpName,
+    };
+  }
+
+  /**
+   * 登録経路を生成
+   * @param lpName LP名-番号
+   * @param appealName 訴求名
+   * @returns 登録経路（形式: TikTok広告-訴求-LP名および番号）
+   */
+  private generateRegistrationPath(lpName: string, appealName: string): string {
+    return `TikTok広告-${appealName}-${lpName}`;
   }
 }
