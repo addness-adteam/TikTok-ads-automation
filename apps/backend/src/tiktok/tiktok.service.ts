@@ -304,6 +304,7 @@ export class TiktokService {
 
       const requestBody: any = {
         advertiser_id: advertiserId,
+        page_size: 100, // TikTok API v1.3の最大値
       };
 
       if (campaignIds && campaignIds.length > 0) {
