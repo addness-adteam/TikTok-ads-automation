@@ -289,47 +289,65 @@ export class SchedulerService implements OnModuleInit {
                 continue;
               }
 
-              // Creativeを処理
+              // Creativeを処理（Smart+ 広告は creative_list から取得）
               let creativeId: string | null = null;
-              if (ad.video_id) {
-                const creative = await this.prisma.creative.findFirst({
-                  where: { tiktokVideoId: ad.video_id },
-                });
 
-                if (!creative) {
-                  const newCreative = await this.prisma.creative.create({
-                    data: {
-                      advertiserId: advertiser.id,
-                      name: `Video ${ad.video_id}`,
-                      type: 'VIDEO',
-                      tiktokVideoId: ad.video_id,
-                      url: ad.video_id || '',
-                      filename: `video_${ad.video_id}`,
-                    },
-                  });
-                  creativeId = newCreative.id;
-                } else {
-                  creativeId = creative.id;
-                }
-              } else if (ad.image_ids && ad.image_ids.length > 0) {
-                const creative = await this.prisma.creative.findFirst({
-                  where: { tiktokImageId: ad.image_ids[0] },
-                });
+              // creative_list から最初の有効なクリエイティブを取得
+              const creativeList = ad.creative_list || [];
+              const enabledCreative = creativeList.find(
+                (c: any) => c.material_operation_status === 'ENABLE'
+              );
 
-                if (!creative) {
-                  const newCreative = await this.prisma.creative.create({
-                    data: {
-                      advertiserId: advertiser.id,
-                      name: `Image ${ad.image_ids[0]}`,
-                      type: 'IMAGE',
-                      tiktokImageId: ad.image_ids[0],
-                      url: ad.image_ids[0] || '',
-                      filename: `image_${ad.image_ids[0]}`,
-                    },
+              if (enabledCreative?.creative_info) {
+                const creativeInfo = enabledCreative.creative_info;
+                const videoId = creativeInfo.video_info?.video_id;
+                const imageInfo = creativeInfo.image_info;
+
+                if (videoId) {
+                  const creative = await this.prisma.creative.findFirst({
+                    where: { tiktokVideoId: videoId },
                   });
-                  creativeId = newCreative.id;
-                } else {
-                  creativeId = creative.id;
+
+                  if (!creative) {
+                    const newCreative = await this.prisma.creative.create({
+                      data: {
+                        advertiserId: advertiser.id,
+                        name: creativeInfo.material_name || `Video ${videoId}`,
+                        type: 'VIDEO',
+                        tiktokVideoId: videoId,
+                        url: videoId || '',
+                        filename: `video_${videoId}`,
+                      },
+                    });
+                    creativeId = newCreative.id;
+                  } else {
+                    creativeId = creative.id;
+                  }
+                } else if (imageInfo && imageInfo.length > 0) {
+                  // image_info から web_uri を取得してIDとして使用
+                  const imageId = imageInfo[0].web_uri || imageInfo[0].image_id;
+
+                  if (imageId) {
+                    const creative = await this.prisma.creative.findFirst({
+                      where: { tiktokImageId: imageId },
+                    });
+
+                    if (!creative) {
+                      const newCreative = await this.prisma.creative.create({
+                        data: {
+                          advertiserId: advertiser.id,
+                          name: creativeInfo.material_name || `Image ${imageId}`,
+                          type: 'IMAGE',
+                          tiktokImageId: imageId,
+                          url: imageId || '',
+                          filename: `image_${imageId}`,
+                        },
+                      });
+                      creativeId = newCreative.id;
+                    } else {
+                      creativeId = creative.id;
+                    }
+                  }
                 }
               }
 
