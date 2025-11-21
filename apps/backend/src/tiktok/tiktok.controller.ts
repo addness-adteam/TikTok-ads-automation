@@ -1,12 +1,16 @@
 import { Controller, Get, Post, Query, Body, Logger, Res } from '@nestjs/common';
 import type { Response } from 'express';
 import { TiktokService } from './tiktok.service';
+import { PrismaService } from '../prisma/prisma.service';
 
 @Controller('auth/tiktok')
 export class TiktokController {
   private readonly logger = new Logger(TiktokController.name);
 
-  constructor(private readonly tiktokService: TiktokService) {}
+  constructor(
+    private readonly tiktokService: TiktokService,
+    private readonly prisma: PrismaService,
+  ) {}
 
   /**
    * OAuth認証URL取得
@@ -431,6 +435,106 @@ export class TiktokController {
       return {
         success: false,
         error: error.response?.data || error.message,
+      };
+    }
+  }
+
+  /**
+   * Smart+広告の同期状況を確認
+   * GET /auth/tiktok/verify-smart-plus?advertiserId=7543540647266074641
+   */
+  @Get('verify-smart-plus')
+  async verifySmartPlusSync(@Query('advertiserId') advertiserId: string) {
+    this.logger.log(`Verifying Smart+ ads sync for advertiser: ${advertiserId}`);
+
+    if (!advertiserId) {
+      return {
+        success: false,
+        error: 'advertiserId query parameter is required',
+      };
+    }
+
+    try {
+      // Advertiserを取得
+      const advertiser = await this.prisma.advertiser.findFirst({
+        where: { tiktokAdvertiserId: advertiserId },
+      });
+
+      if (!advertiser) {
+        return {
+          success: false,
+          error: 'Advertiser not found in database',
+        };
+      }
+
+      // DBから全広告を取得
+      const allAds = await this.prisma.ad.findMany({
+        where: {
+          adGroup: {
+            campaign: {
+              advertiserId: advertiser.id,
+            },
+          },
+        },
+        include: {
+          adGroup: {
+            include: {
+              campaign: true,
+            },
+          },
+        },
+      });
+
+      // Smart+形式の広告を特定（/を含み、拡張子を含まない）
+      const smartPlusAds = allAds.filter((ad) => {
+        return (
+          ad.name &&
+          ad.name.includes('/') &&
+          !ad.name.includes('.mp4') &&
+          !ad.name.includes('.MP4') &&
+          !ad.name.includes('.mov')
+        );
+      });
+
+      // 配信中のSmart+広告
+      const activeSmartPlusAds = smartPlusAds.filter(
+        (ad) => ad.status === 'ENABLE'
+      );
+
+      // サンプルデータ（最新10件）
+      const sampleAds = smartPlusAds
+        .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime())
+        .slice(0, 10)
+        .map((ad) => ({
+          tiktokId: ad.tiktokId,
+          name: ad.name,
+          status: ad.status,
+          campaign: ad.adGroup.campaign.name,
+          callToAction: ad.callToAction,
+          hasLandingPage: !!ad.landingPageUrl,
+          updatedAt: ad.updatedAt,
+        }));
+
+      return {
+        success: true,
+        advertiserName: advertiser.name,
+        advertiserId: advertiserId,
+        stats: {
+          totalAds: allAds.length,
+          smartPlusAds: smartPlusAds.length,
+          activeSmartPlusAds: activeSmartPlusAds.length,
+        },
+        sampleAds,
+        message:
+          smartPlusAds.length > 0
+            ? `✅ ${smartPlusAds.length} Smart+ ads found (${activeSmartPlusAds.length} active)`
+            : '❌ No Smart+ ads found - sync may have failed',
+      };
+    } catch (error: any) {
+      this.logger.error('Failed to verify Smart+ sync', error);
+      return {
+        success: false,
+        error: error.message,
       };
     }
   }
