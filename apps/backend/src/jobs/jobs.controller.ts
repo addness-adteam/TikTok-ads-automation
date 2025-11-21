@@ -133,6 +133,29 @@ export class JobsController {
   }
 
   /**
+   * エンティティ同期バッチジョブを手動で実行（Smart+広告を含む）
+   * POST /jobs/run-entity-sync
+   */
+  @Post('run-entity-sync')
+  async runEntitySync() {
+    this.logger.log('Manual trigger: Running daily entity sync batch job (including Smart+ ads)');
+
+    try {
+      await this.schedulerService.scheduleDailyEntitySync();
+      return {
+        success: true,
+        message: 'Daily entity sync batch job completed (including Smart+ ads)',
+      };
+    } catch (error) {
+      this.logger.error('Manual entity sync failed', error);
+      return {
+        success: false,
+        error: error.message,
+      };
+    }
+  }
+
+  /**
    * 特定のAdvertiserのトークン情報を確認
    * GET /jobs/check-token?advertiserId=xxx
    */
