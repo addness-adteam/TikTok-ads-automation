@@ -509,6 +509,40 @@ export class SchedulerService implements OnModuleInit {
             errorCount++;
           }
         }
+
+        // Smart+広告のメトリクスを取得
+        try {
+          this.logger.log(
+            `Fetching Smart+ ad metrics for advertiser ${token.advertiserId} (${startDateStr} ~ ${endDateStr})`,
+          );
+
+          const smartPlusMetrics = await this.tiktokService.getAllSmartPlusAdMetrics(
+            token.advertiserId,
+            token.accessToken,
+            {
+              startDate: startDateStr,
+              endDate: endDateStr,
+            },
+          );
+
+          if (smartPlusMetrics.length > 0) {
+            await this.tiktokService.saveSmartPlusMetrics(smartPlusMetrics, token.advertiserId);
+            this.logger.log(
+              `Successfully saved ${smartPlusMetrics.length} Smart+ metrics for ${token.advertiserId}`,
+            );
+            successCount++;
+          } else {
+            this.logger.warn(
+              `No Smart+ metrics returned for ${token.advertiserId}`,
+            );
+          }
+        } catch (error) {
+          this.logger.error(
+            `Failed to fetch/save Smart+ metrics for ${token.advertiserId}:`,
+            error.message,
+          );
+          errorCount++;
+        }
       }
 
       this.logger.log(

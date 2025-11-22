@@ -1644,4 +1644,287 @@ export class TiktokService {
   private generateRegistrationPath(lpName: string, appealName: string): string {
     return `TikTok広告-${appealName}-${lpName}`;
   }
+
+  /**
+   * Smart+広告のメトリクスを取得
+   * GET /v1.3/smart_plus/material_report/overview/
+   */
+  async getSmartPlusAdMetrics(
+    advertiserId: string,
+    accessToken: string,
+    options: {
+      startDate: string;
+      endDate: string;
+      smartPlusAdIds?: string[];
+      metrics?: string[];
+    },
+  ) {
+    try {
+      const {
+        startDate,
+        endDate,
+        smartPlusAdIds,
+        metrics = [
+          'impressions',
+          'clicks',
+          'spend',
+          'ctr',
+          'cpc',
+          'cpm',
+          'conversion',
+          'cost_per_conversion',
+          'video_watched_2s',
+          'video_watched_6s',
+        ],
+      } = options;
+
+      this.logger.log(`Fetching Smart+ ad metrics for advertiser: ${advertiserId}, period: ${startDate} ~ ${endDate}`);
+
+      const params: any = {
+        advertiser_id: advertiserId,
+        dimensions: JSON.stringify(['smart_plus_ad_id', 'main_material_id']),
+        metrics: JSON.stringify(metrics),
+        start_date: startDate,
+        end_date: endDate,
+        page: 1,
+        page_size: 100,
+      };
+
+      // 特定のSmart+広告IDでフィルタする場合
+      if (smartPlusAdIds && smartPlusAdIds.length > 0) {
+        params.filtering = JSON.stringify({
+          smart_plus_ad_ids: smartPlusAdIds,
+        });
+      }
+
+      const response = await this.httpClient.get('/v1.3/smart_plus/material_report/overview/', {
+        headers: {
+          'Access-Token': accessToken,
+        },
+        params,
+      });
+
+      this.logger.log(`Retrieved Smart+ metrics data: ${response.data.data?.list?.length || 0} records`);
+      return response.data;
+    } catch (error) {
+      this.logger.error('Failed to get Smart+ ad metrics');
+      this.logger.error(`Error details: ${JSON.stringify({
+        message: error.message,
+        status: error.response?.status,
+        statusText: error.response?.statusText,
+        data: error.response?.data,
+        code: error.code,
+      })}`);
+      throw error;
+    }
+  }
+
+  /**
+   * 全ページのSmart+メトリクスデータを取得
+   */
+  async getAllSmartPlusAdMetrics(
+    advertiserId: string,
+    accessToken: string,
+    options: {
+      startDate: string;
+      endDate: string;
+      smartPlusAdIds?: string[];
+      metrics?: string[];
+    },
+  ) {
+    const allData: any[] = [];
+    let currentPage = 1;
+    const pageSize = 100;
+    let hasMorePages = true;
+
+    this.logger.log(`Fetching all Smart+ ad metrics for advertiser: ${advertiserId}`);
+
+    while (hasMorePages) {
+      const params: any = {
+        advertiser_id: advertiserId,
+        dimensions: JSON.stringify(['smart_plus_ad_id', 'main_material_id']),
+        metrics: JSON.stringify(options.metrics || [
+          'impressions',
+          'clicks',
+          'spend',
+          'ctr',
+          'cpc',
+          'cpm',
+          'conversion',
+          'cost_per_conversion',
+          'video_watched_2s',
+          'video_watched_6s',
+        ]),
+        start_date: options.startDate,
+        end_date: options.endDate,
+        page: currentPage,
+        page_size: pageSize,
+      };
+
+      if (options.smartPlusAdIds && options.smartPlusAdIds.length > 0) {
+        params.filtering = JSON.stringify({
+          smart_plus_ad_ids: options.smartPlusAdIds,
+        });
+      }
+
+      const response = await this.httpClient.get('/v1.3/smart_plus/material_report/overview/', {
+        headers: {
+          'Access-Token': accessToken,
+        },
+        params,
+      });
+
+      if (response.data.data?.list && response.data.data.list.length > 0) {
+        allData.push(...response.data.data.list);
+
+        const totalPages = Math.ceil((response.data.data.page_info?.total_number || 0) / pageSize);
+
+        if (currentPage >= totalPages) {
+          hasMorePages = false;
+        } else {
+          currentPage++;
+        }
+      } else {
+        hasMorePages = false;
+      }
+    }
+
+    this.logger.log(`Fetched total ${allData.length} Smart+ metric records across ${currentPage} pages`);
+    return allData;
+  }
+
+  /**
+   * Smart+広告のメトリクスをDBに保存
+   * Smart+のAPIはクリエイティブごとにメトリクスを返すため、広告IDごとに集計してから保存
+   */
+  async saveSmartPlusMetrics(
+    metricsData: any[],
+    advertiserId: string,
+  ) {
+    try {
+      this.logger.log(`Processing ${metricsData.length} Smart+ ad metric records`);
+
+      // ステップ1: smart_plus_ad_idごとにメトリクスを集計
+      const adMetricsMap = new Map<string, {
+        impressions: number;
+        clicks: number;
+        spend: number;
+        conversions: number;
+        ctr: number;
+        cpc: number;
+        cpm: number;
+        cpa: number;
+        videoViews: number;
+        videoWatched2s: number;
+        videoWatched6s: number;
+        creativeCount: number;
+      }>();
+
+      for (const record of metricsData) {
+        const smartPlusAdId = record.dimensions?.smart_plus_ad_id;
+        const metrics = record.metrics || {};
+
+        if (!smartPlusAdId) {
+          this.logger.warn('Skipping Smart+ metric record without smart_plus_ad_id');
+          continue;
+        }
+
+        if (!adMetricsMap.has(smartPlusAdId)) {
+          adMetricsMap.set(smartPlusAdId, {
+            impressions: 0,
+            clicks: 0,
+            spend: 0,
+            conversions: 0,
+            ctr: 0,
+            cpc: 0,
+            cpm: 0,
+            cpa: 0,
+            videoViews: 0,
+            videoWatched2s: 0,
+            videoWatched6s: 0,
+            creativeCount: 0,
+          });
+        }
+
+        const aggregated = adMetricsMap.get(smartPlusAdId)!;
+
+        // 各クリエイティブのメトリクスを合計
+        aggregated.impressions += parseInt(metrics.impressions || '0', 10);
+        aggregated.clicks += parseInt(metrics.clicks || '0', 10);
+        aggregated.spend += parseFloat(metrics.spend || '0');
+        aggregated.conversions += parseInt(metrics.conversion || '0', 10);
+        aggregated.videoViews += parseInt(metrics.video_views || '0', 10);
+        aggregated.videoWatched2s += parseInt(metrics.video_watched_2s || '0', 10);
+        aggregated.videoWatched6s += parseInt(metrics.video_watched_6s || '0', 10);
+        aggregated.creativeCount += 1;
+      }
+
+      this.logger.log(`Aggregated metrics for ${adMetricsMap.size} Smart+ ads`);
+
+      // ステップ2: 統計日時を計算（昨日）
+      const yesterday = new Date();
+      yesterday.setDate(yesterday.getDate() - 1);
+      yesterday.setHours(0, 0, 0, 0);
+
+      // ステップ3: 各広告の集計メトリクスをDBに保存
+      let savedCount = 0;
+      for (const [smartPlusAdId, aggregated] of adMetricsMap.entries()) {
+        // DBのAdレコードを検索（tiktokId = smart_plus_ad_id）
+        const ad = await this.prisma.ad.findUnique({
+          where: { tiktokId: String(smartPlusAdId) },
+        });
+
+        if (!ad) {
+          this.logger.warn(`Smart+ ad not found in DB: ${smartPlusAdId}`);
+          continue;
+        }
+
+        this.logger.debug(`Processing Smart+ ad ${smartPlusAdId}: ${aggregated.creativeCount} creatives, ${aggregated.impressions} impressions, ${aggregated.spend} spend`);
+
+        // 平均値を計算（CTR、CPC、CPMなど）
+        const ctr = aggregated.clicks > 0 ? (aggregated.clicks / aggregated.impressions) * 100 : 0;
+        const cpc = aggregated.clicks > 0 ? aggregated.spend / aggregated.clicks : 0;
+        const cpm = aggregated.impressions > 0 ? (aggregated.spend / aggregated.impressions) * 1000 : 0;
+        const cpa = aggregated.conversions > 0 ? aggregated.spend / aggregated.conversions : 0;
+
+        const metricData = {
+          entityType: 'AD' as const,
+          adId: ad.id,
+          statDate: yesterday,
+          impressions: aggregated.impressions,
+          clicks: aggregated.clicks,
+          spend: aggregated.spend,
+          conversions: aggregated.conversions,
+          ctr: ctr,
+          cpc: cpc,
+          cpm: cpm,
+          cpa: cpa,
+          videoViews: aggregated.videoViews,
+          videoWatched2s: aggregated.videoWatched2s,
+          videoWatched6s: aggregated.videoWatched6s,
+        };
+
+        // 既存のメトリクスを削除してから新しいデータを挿入（上書き）
+        await this.prisma.metric.deleteMany({
+          where: {
+            entityType: 'AD',
+            adId: ad.id,
+            statDate: yesterday,
+          },
+        });
+
+        await this.prisma.metric.create({
+          data: metricData,
+        });
+
+        this.logger.debug(`Saved aggregated metrics for Smart+ ad ${smartPlusAdId} (${aggregated.creativeCount} creatives)`);
+        savedCount++;
+      }
+
+      this.logger.log(`Successfully saved metrics for ${savedCount} Smart+ ads`);
+    } catch (error) {
+      this.logger.error('Failed to save Smart+ metrics to database', error);
+      throw error;
+    }
+  }
 }
