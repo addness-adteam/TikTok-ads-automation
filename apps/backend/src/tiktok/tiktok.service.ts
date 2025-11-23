@@ -1259,15 +1259,7 @@ export class TiktokService {
             continue;
           }
 
-          // メトリクスを保存（ADレベル）- 既存レコードを検索してupdate or create
-          const existingMetric = await this.prisma.metric.findFirst({
-            where: {
-              entityType: 'AD',
-              adId: ad.id,
-              statDate: statDate,
-            },
-          });
-
+          // メトリクスを保存（ADレベル）- 重複を防ぐため既存レコードを削除してから作成
           const metricData = {
             entityType: 'AD',
             adId: ad.id,
@@ -1288,18 +1280,20 @@ export class TiktokService {
           // デバッグ: パース後のメトリクスデータをログ出力
           this.logger.debug(`Parsed metric data: ${JSON.stringify(metricData)}`);
 
-          if (existingMetric) {
-            await this.prisma.metric.update({
-              where: { id: existingMetric.id },
-              data: metricData,
-            });
-            this.logger.debug(`Updated existing metric for ad ${adId}`);
-          } else {
-            await this.prisma.metric.create({
-              data: metricData,
-            });
-            this.logger.debug(`Created new metric for ad ${adId}`);
-          }
+          // 既存のメトリクスを削除（重複防止）
+          await this.prisma.metric.deleteMany({
+            where: {
+              entityType: 'AD',
+              adId: ad.id,
+              statDate: statDate,
+            },
+          });
+
+          // 新しいメトリクスを作成
+          await this.prisma.metric.create({
+            data: metricData,
+          });
+          this.logger.debug(`Saved metric for ad ${adId}`);
 
         } else if (dataLevel === 'AUCTION_ADGROUP') {
           // ADGROUPレベルのメトリクス
@@ -1320,15 +1314,7 @@ export class TiktokService {
             continue;
           }
 
-          // メトリクスを保存（ADGROUPレベル）- 既存レコードを検索してupdate or create
-          const existingMetric = await this.prisma.metric.findFirst({
-            where: {
-              entityType: 'ADGROUP',
-              adgroupId: adgroup.id,
-              statDate: statDate,
-            },
-          });
-
+          // メトリクスを保存（ADGROUPレベル）- 重複を防ぐため既存レコードを削除してから作成
           const metricData = {
             entityType: 'ADGROUP',
             adgroupId: adgroup.id,
@@ -1343,16 +1329,19 @@ export class TiktokService {
             cpa: parseFloat(metrics.cost_per_conversion || '0'),
           };
 
-          if (existingMetric) {
-            await this.prisma.metric.update({
-              where: { id: existingMetric.id },
-              data: metricData,
-            });
-          } else {
-            await this.prisma.metric.create({
-              data: metricData,
-            });
-          }
+          // 既存のメトリクスを削除（重複防止）
+          await this.prisma.metric.deleteMany({
+            where: {
+              entityType: 'ADGROUP',
+              adgroupId: adgroup.id,
+              statDate: statDate,
+            },
+          });
+
+          // 新しいメトリクスを作成
+          await this.prisma.metric.create({
+            data: metricData,
+          });
 
         } else if (dataLevel === 'AUCTION_CAMPAIGN') {
           // CAMPAIGNレベルのメトリクス
@@ -1380,15 +1369,7 @@ export class TiktokService {
             continue;
           }
 
-          // メトリクスを保存（CAMPAIGNレベル）- 既存レコードを検索してupdate or create
-          const existingMetric = await this.prisma.metric.findFirst({
-            where: {
-              entityType: 'CAMPAIGN',
-              campaignId: campaign.id,
-              statDate: statDate,
-            },
-          });
-
+          // メトリクスを保存（CAMPAIGNレベル）- 重複を防ぐため既存レコードを削除してから作成
           // 基本メトリクスデータ
           const metricData: any = {
             entityType: 'CAMPAIGN',
@@ -1454,16 +1435,19 @@ export class TiktokService {
             }
           }
 
-          if (existingMetric) {
-            await this.prisma.metric.update({
-              where: { id: existingMetric.id },
-              data: metricData,
-            });
-          } else {
-            await this.prisma.metric.create({
-              data: metricData,
-            });
-          }
+          // 既存のメトリクスを削除（重複防止）
+          await this.prisma.metric.deleteMany({
+            where: {
+              entityType: 'CAMPAIGN',
+              campaignId: campaign.id,
+              statDate: statDate,
+            },
+          });
+
+          // 新しいメトリクスを作成
+          await this.prisma.metric.create({
+            data: metricData,
+          });
         }
       }
 

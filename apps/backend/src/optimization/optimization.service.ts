@@ -592,9 +592,12 @@ export class OptimizationService {
   private async getAdMetrics(tiktokAdId: string, startDate: Date, endDate: Date) {
     this.logger.debug(`Getting metrics for ad ${tiktokAdId} from ${startDate.toISOString()} to ${endDate.toISOString()}`);
 
-    // まずTikTok IDからAdレコードを検索
+    // まずTikTok IDからAdレコードを検索（AdGroupも含めてSmart+判定用）
     const ad = await this.prisma.ad.findUnique({
       where: { tiktokId: tiktokAdId },
+      include: {
+        adGroup: true,
+      },
     });
 
     if (!ad) {
@@ -608,24 +611,45 @@ export class OptimizationService {
 
     this.logger.debug(`Found ad in DB: ${ad.id} (tiktokId: ${tiktokAdId})`);
 
-    // Adレコードのid（UUID）を使ってメトリクスを検索
-    const metrics = await this.prisma.metric.findMany({
-      where: {
-        adId: ad.id,
-        statDate: {
-          gte: startDate,
-          lte: endDate,
-        },
-      },
-    });
+    // Smart+広告かどうかを判定
+    const isSmartPlus = ad.adGroup.bidType === 'BID_TYPE_NO_BID';
 
-    this.logger.log(`Found ${metrics.length} metrics for ad ${tiktokAdId} (${ad.id})`);
+    let metrics;
+    if (isSmartPlus) {
+      // Smart+広告の場合：最新の1レコードのみを使用（既に7日間の合算値）
+      this.logger.debug(`Smart+ ad detected, using latest single metric record`);
+      metrics = await this.prisma.metric.findMany({
+        where: {
+          adId: ad.id,
+          statDate: {
+            gte: startDate,
+            lte: endDate,
+          },
+        },
+        orderBy: { statDate: 'desc' },
+        take: 1,
+      });
+    } else {
+      // 通常広告の場合：期間内の全レコードを取得
+      this.logger.debug(`Regular ad detected, fetching all metrics in period`);
+      metrics = await this.prisma.metric.findMany({
+        where: {
+          adId: ad.id,
+          statDate: {
+            gte: startDate,
+            lte: endDate,
+          },
+        },
+      });
+    }
+
+    this.logger.log(`Found ${metrics.length} metrics for ad ${tiktokAdId} (${ad.id}) [${isSmartPlus ? 'Smart+' : 'Regular'}]`);
 
     if (metrics.length > 0) {
       this.logger.debug(`Sample metric values: impressions=${metrics[0].impressions}, clicks=${metrics[0].clicks}, spend=${metrics[0].spend}`);
     }
 
-    // 合計を計算
+    // 合計を計算（Smart+の場合は1レコードのみなので実質そのまま、通常広告は7日分の合計）
     const totalImpressions = metrics.reduce((sum, m) => sum + m.impressions, 0);
     const totalClicks = metrics.reduce((sum, m) => sum + (m.clicks || 0), 0);
     const totalSpend = metrics.reduce((sum, m) => sum + m.spend, 0);
