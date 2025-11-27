@@ -336,6 +336,56 @@ export class TiktokService {
   }
 
   /**
+   * 全Campaign一覧を取得（ページネーション対応）
+   * GET /v1.3/campaign/get/
+   */
+  async getAllCampaigns(advertiserId: string, accessToken: string) {
+    const allData: any[] = [];
+    let currentPage = 1;
+    const pageSize = 100;
+    let hasMorePages = true;
+
+    this.logger.log(`Fetching all campaigns for advertiser: ${advertiserId}`);
+
+    while (hasMorePages) {
+      try {
+        const response = await this.httpClient.get('/v1.3/campaign/get/', {
+          headers: {
+            'Access-Token': accessToken,
+          },
+          params: {
+            advertiser_id: advertiserId,
+            page_size: pageSize,
+            page: currentPage,
+          },
+        });
+
+        const list = response.data.data?.list || [];
+        if (list.length > 0) {
+          allData.push(...list);
+
+          const totalNumber = response.data.data?.page_info?.total_number || 0;
+          const totalPages = Math.ceil(totalNumber / pageSize);
+
+          if (currentPage >= totalPages) {
+            hasMorePages = false;
+          } else {
+            currentPage++;
+          }
+        } else {
+          hasMorePages = false;
+        }
+      } catch (error) {
+        this.logger.error(`Failed to get campaigns page ${currentPage}: ${error.message}`);
+        throw error;
+      }
+    }
+
+    this.logger.log(`Fetched total ${allData.length} campaigns across ${currentPage} pages`);
+    return allData;
+  }
+
+  /**
    * Ad Group（広告セット）一覧を取得
    * GET /v1.3/adgroup/get/
    */
@@ -376,6 +426,56 @@ export class TiktokService {
       })}`);
       throw error;
     }
+  }
+
+  /**
+   * 全Ad Group一覧を取得（ページネーション対応）
+   * GET /v1.3/adgroup/get/
+   */
+  async getAllAdGroups(advertiserId: string, accessToken: string) {
+    const allData: any[] = [];
+    let currentPage = 1;
+    const pageSize = 100;
+    let hasMorePages = true;
+
+    this.logger.log(`Fetching all ad groups for advertiser: ${advertiserId}`);
+
+    while (hasMorePages) {
+      try {
+        const response = await this.httpClient.get('/v1.3/adgroup/get/', {
+          headers: {
+            'Access-Token': accessToken,
+          },
+          params: {
+            advertiser_id: advertiserId,
+            page_size: pageSize,
+            page: currentPage,
+          },
+        });
+
+        const list = response.data.data?.list || [];
+        if (list.length > 0) {
+          allData.push(...list);
+
+          const totalNumber = response.data.data?.page_info?.total_number || 0;
+          const totalPages = Math.ceil(totalNumber / pageSize);
+
+          if (currentPage >= totalPages) {
+            hasMorePages = false;
+          } else {
+            currentPage++;
+          }
+        } else {
+          hasMorePages = false;
+        }
+      } catch (error) {
+        this.logger.error(`Failed to get ad groups page ${currentPage}: ${error.message}`);
+        throw error;
+      }
+    }
+
+    this.logger.log(`Fetched total ${allData.length} ad groups across ${currentPage} pages`);
+    return allData;
   }
 
   /**
@@ -503,6 +603,56 @@ export class TiktokService {
       })}`);
       throw error;
     }
+  }
+
+  /**
+   * 全Ad一覧を取得（ページネーション対応）
+   * GET /v1.3/ad/get/
+   */
+  async getAllAds(advertiserId: string, accessToken: string) {
+    const allData: any[] = [];
+    let currentPage = 1;
+    const pageSize = 100;
+    let hasMorePages = true;
+
+    this.logger.log(`Fetching all ads for advertiser: ${advertiserId}`);
+
+    while (hasMorePages) {
+      try {
+        const response = await this.httpClient.get('/v1.3/ad/get/', {
+          headers: {
+            'Access-Token': accessToken,
+          },
+          params: {
+            advertiser_id: advertiserId,
+            page_size: pageSize,
+            page: currentPage,
+          },
+        });
+
+        const list = response.data.data?.list || [];
+        if (list.length > 0) {
+          allData.push(...list);
+
+          const totalNumber = response.data.data?.page_info?.total_number || 0;
+          const totalPages = Math.ceil(totalNumber / pageSize);
+
+          if (currentPage >= totalPages) {
+            hasMorePages = false;
+          } else {
+            currentPage++;
+          }
+        } else {
+          hasMorePages = false;
+        }
+      } catch (error) {
+        this.logger.error(`Failed to get ads page ${currentPage}: ${error.message}`);
+        throw error;
+      }
+    }
+
+    this.logger.log(`Fetched total ${allData.length} ads across ${currentPage} pages`);
+    return allData;
   }
 
   /**
@@ -1531,6 +1681,56 @@ export class TiktokService {
       })}`);
       throw error;
     }
+  }
+
+  /**
+   * 全Smart+ Ad一覧を取得（ページネーション対応）
+   * GET /v1.3/smart_plus/ad/get/
+   */
+  async getAllSmartPlusAds(advertiserId: string, accessToken: string) {
+    const allData: any[] = [];
+    let currentPage = 1;
+    const pageSize = 100;
+    let hasMorePages = true;
+
+    this.logger.log(`Fetching all Smart+ ads for advertiser: ${advertiserId}`);
+
+    while (hasMorePages) {
+      try {
+        const response = await this.httpClient.get('/v1.3/smart_plus/ad/get/', {
+          headers: {
+            'Access-Token': accessToken,
+          },
+          params: {
+            advertiser_id: advertiserId,
+            page_size: pageSize,
+            page: currentPage,
+          },
+        });
+
+        const list = response.data.data?.list || [];
+        if (list.length > 0) {
+          allData.push(...list);
+
+          const totalNumber = response.data.data?.page_info?.total_number || 0;
+          const totalPages = Math.ceil(totalNumber / pageSize);
+
+          if (currentPage >= totalPages) {
+            hasMorePages = false;
+          } else {
+            currentPage++;
+          }
+        } else {
+          hasMorePages = false;
+        }
+      } catch (error) {
+        this.logger.error(`Failed to get Smart+ ads page ${currentPage}: ${error.message}`);
+        throw error;
+      }
+    }
+
+    this.logger.log(`Fetched total ${allData.length} Smart+ ads across ${currentPage} pages`);
+    return allData;
   }
 
   /**

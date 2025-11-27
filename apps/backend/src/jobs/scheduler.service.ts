@@ -73,13 +73,11 @@ export class SchedulerService implements OnModuleInit {
             update: {},
           });
 
-          // Campaignを取得してDBに保存
-          const campaignsResult = await this.tiktokService.getCampaigns(
+          // Campaignを取得してDBに保存（ページネーション対応）
+          const campaigns = await this.tiktokService.getAllCampaigns(
             token.advertiserId,
             token.accessToken,
           );
-
-          const campaigns = campaignsResult.data?.list || [];
           let campaignsSynced = 0;
 
           for (const campaign of campaigns) {
@@ -105,13 +103,11 @@ export class SchedulerService implements OnModuleInit {
             campaignsSynced++;
           }
 
-          // AdGroupを取得してDBに保存
-          const adgroupsResult = await this.tiktokService.getAdGroups(
+          // AdGroupを取得してDBに保存（ページネーション対応）
+          const adgroups = await this.tiktokService.getAllAdGroups(
             token.advertiserId,
             token.accessToken,
           );
-
-          const adgroups = adgroupsResult.data?.list || [];
           let adgroupsSynced = 0;
 
           for (const adgroup of adgroups) {
@@ -160,13 +156,11 @@ export class SchedulerService implements OnModuleInit {
             adgroupsSynced++;
           }
 
-          // Adを取得してDBに保存
-          const adsResult = await this.tiktokService.getAds(
+          // Adを取得してDBに保存（ページネーション対応）
+          const ads = await this.tiktokService.getAllAds(
             token.advertiserId,
             token.accessToken,
           );
-
-          const ads = adsResult.data?.list || [];
           let adsSynced = 0;
 
           for (const ad of ads) {
@@ -258,12 +252,11 @@ export class SchedulerService implements OnModuleInit {
           // Smart+ Adsを取得してDBに保存
           let smartPlusAdsSynced = 0;
           try {
-            const smartPlusAdsResult = await this.tiktokService.getSmartPlusAds(
+            // Smart+ Adsを取得してDBに保存（ページネーション対応）
+            const smartPlusAds = await this.tiktokService.getAllSmartPlusAds(
               token.advertiserId,
               token.accessToken,
             );
-
-            const smartPlusAds = smartPlusAdsResult.data?.list || [];
             this.logger.log(`Retrieved ${smartPlusAds.length} Smart+ ads for ${token.advertiserId}`);
 
             for (const ad of smartPlusAds) {
