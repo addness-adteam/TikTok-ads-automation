@@ -20,6 +20,7 @@ interface AdPerformance {
   frontCPO: number;
   registrationPath: string;
   appealName: string;
+  isSmartPlus?: boolean; // 新スマートプラス広告フラグ
 }
 
 interface CampaignPerformance {
@@ -40,11 +41,13 @@ interface OptimizationDecision {
   adId: string;
   adName: string;
   adgroupId: string;
+  campaignId: string;
   action: 'PAUSE' | 'CONTINUE' | 'INCREASE_BUDGET';
   reason: string;
   currentBudget?: number;
   newBudget?: number;
   performance?: AdPerformance; // 追加：パフォーマンス情報
+  isSmartPlus?: boolean; // 新スマートプラス広告フラグ
 }
 
 interface CampaignOptimizationDecision {
@@ -520,6 +523,7 @@ export class OptimizationService {
       frontCPO,
       registrationPath,
       appealName: appeal.name,
+      isSmartPlus: ad.isSmartPlus || false, // 新スマートプラス広告フラグを追加
     };
   }
 
@@ -678,11 +682,13 @@ export class OptimizationService {
       adId: performance.adId,
       adName: performance.adName,
       adgroupId: performance.adgroupId,
+      campaignId: performance.campaignId,
       action,
       reason,
       currentBudget,
       newBudget,
       performance,
+      isSmartPlus: performance.isSmartPlus,
     });
 
     // 5000インプレッション未達の場合
@@ -780,14 +786,24 @@ export class OptimizationService {
     }
 
     // 予算増額の広告が1つでもあれば予算を増額
-    const hasIncreaseBudget = remainingDecisions.some((d) => d.action === 'INCREASE_BUDGET');
+    const increaseBudgetDecisions = remainingDecisions.filter((d) => d.action === 'INCREASE_BUDGET');
 
-    if (hasIncreaseBudget) {
-      await this.increaseBudget(adgroupId, advertiserId, accessToken, 0.3); // 30%増額
+    if (increaseBudgetDecisions.length > 0) {
+      // 新スマートプラス広告かどうかを判定（1つでもスマプラ広告があればスマプラとして処理）
+      const isSmartPlus = increaseBudgetDecisions.some((d) => d.isSmartPlus);
+      const campaignId = increaseBudgetDecisions[0].campaignId;
+
+      if (isSmartPlus) {
+        this.logger.log(`Smart+ ad detected for adgroup ${adgroupId}, using Smart+ budget update API`);
+        await this.increaseSmartPlusBudget(adgroupId, campaignId, advertiserId, accessToken, 0.3);
+      } else {
+        await this.increaseBudget(adgroupId, advertiserId, accessToken, 0.3);
+      }
+
       return {
         adgroupId,
         action: 'INCREASE_BUDGET',
-        reason: '予算増額対象の広告が存在するため、広告セットの予算を30%増額',
+        reason: `予算増額対象の広告が存在するため、広告セットの予算を30%増額${isSmartPlus ? '（Smart+ API使用）' : ''}`,
       };
     }
 
@@ -890,6 +906,106 @@ export class OptimizationService {
     } catch (error) {
       this.logger.error(`Failed to increase budget for adgroup ${adgroupId}:`, error);
       throw new Error(`予算増額に失敗: ${error.message}`);
+    }
+  }
+
+  /**
+   * 新スマートプラス広告セットの予算を増額
+   * CBO有効時はキャンペーン予算を、CBO無効時は広告セット予算を更新
+   */
+  private async increaseSmartPlusBudget(
+    adgroupId: string,
+    campaignId: string,
+    advertiserId: string,
+    accessToken: string,
+    increaseRate: number,
+  ) {
+    try {
+      this.logger.log(`Increasing Smart+ budget for adgroup: ${adgroupId}, campaign: ${campaignId} by ${increaseRate * 100}%`);
+
+      // Smart+キャンペーン情報を取得してCBOが有効かどうかを確認
+      const campaignsResponse = await this.tiktokService.getCampaigns(advertiserId, accessToken);
+      const campaign = campaignsResponse.data?.list?.find((c: any) => c.campaign_id === campaignId);
+
+      if (!campaign) {
+        throw new Error(`Smart+ campaign not found: ${campaignId}`);
+      }
+
+      this.logger.log(`Smart+ campaign fetched: budget=${campaign.budget}, budget_optimize_on=${campaign.budget_optimize_on}, budget_mode=${campaign.budget_mode}`);
+
+      // CBO有効かどうかを判定
+      // budget_optimize_on === true の場合のみCBO有効
+      // undefined や false の場合は広告セット予算を使用
+      // また、budget_mode が BUDGET_MODE_INFINITE の場合もキャンペーン予算は無制限なので広告セット予算を使用
+      const isCBOEnabled = campaign.budget_optimize_on === true && campaign.budget_mode !== 'BUDGET_MODE_INFINITE';
+
+      this.logger.log(`CBO判定: budget_optimize_on=${campaign.budget_optimize_on}, budget_mode=${campaign.budget_mode}, isCBOEnabled=${isCBOEnabled}`);
+
+      if (isCBOEnabled) {
+        // CBO有効：キャンペーン予算を更新
+        const currentBudget = campaign.budget;
+        const newBudget = Math.floor(currentBudget * (1 + increaseRate));
+
+        this.logger.log(`CBO enabled, updating campaign budget: ${currentBudget} → ${newBudget}`);
+
+        const response = await this.tiktokService.updateSmartPlusCampaignBudget(
+          advertiserId,
+          accessToken,
+          campaignId,
+          newBudget,
+        );
+
+        this.logger.log(`Smart+ campaign budget update response: ${JSON.stringify(response)}`);
+
+        await this.logChange(
+          'CAMPAIGN',
+          campaignId,
+          'UPDATE_BUDGET',
+          'OPTIMIZATION',
+          { budget: currentBudget },
+          { budget: newBudget },
+          `Smart+キャンペーン予算を${increaseRate * 100}%増額（${currentBudget} → ${newBudget}）`,
+        );
+
+        return { success: true, campaignId, action: 'BUDGET_INCREASED', oldBudget: currentBudget, newBudget, isSmartPlus: true, level: 'CAMPAIGN' };
+      } else {
+        // CBO無効：広告セット予算を更新
+        // 広告セット情報を取得
+        const adgroupsResponse = await this.tiktokService.getAdGroups(advertiserId, accessToken, [campaignId]);
+        const adgroup = adgroupsResponse.data?.list?.find((ag: any) => ag.adgroup_id === adgroupId);
+
+        if (!adgroup) {
+          throw new Error(`Smart+ adgroup not found: ${adgroupId}`);
+        }
+
+        const currentBudget = adgroup.budget;
+        const newBudget = Math.floor(currentBudget * (1 + increaseRate));
+
+        this.logger.log(`CBO disabled, updating adgroup budget: ${currentBudget} → ${newBudget}`);
+
+        const response = await this.tiktokService.updateSmartPlusAdGroupBudgets(
+          advertiserId,
+          accessToken,
+          [{ adgroup_id: adgroupId, budget: newBudget }],
+        );
+
+        this.logger.log(`Smart+ adgroup budget update response: ${JSON.stringify(response)}`);
+
+        await this.logChange(
+          'ADGROUP',
+          adgroupId,
+          'UPDATE_BUDGET',
+          'OPTIMIZATION',
+          { budget: currentBudget },
+          { budget: newBudget },
+          `Smart+広告セット予算を${increaseRate * 100}%増額（${currentBudget} → ${newBudget}）`,
+        );
+
+        return { success: true, adgroupId, action: 'BUDGET_INCREASED', oldBudget: currentBudget, newBudget, isSmartPlus: true, level: 'ADGROUP' };
+      }
+    } catch (error) {
+      this.logger.error(`Failed to increase Smart+ budget for adgroup ${adgroupId}:`, error);
+      throw new Error(`Smart+予算増額に失敗: ${error.message}`);
     }
   }
 

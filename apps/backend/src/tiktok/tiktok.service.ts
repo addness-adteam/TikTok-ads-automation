@@ -2111,4 +2111,131 @@ export class TiktokService {
       throw error;
     }
   }
+
+  // ============================================================================
+  // Upgraded Smart+ 予算更新 API
+  // ============================================================================
+
+  /**
+   * Upgraded Smart+ 広告セットの予算を更新
+   * POST /v1.3/smart_plus/adgroup/budget/update/
+   *
+   * @param advertiserId 広告主ID
+   * @param accessToken アクセストークン
+   * @param budgetUpdates 予算更新情報の配列（最大20件）
+   */
+  async updateSmartPlusAdGroupBudgets(
+    advertiserId: string,
+    accessToken: string,
+    budgetUpdates: Array<{ adgroup_id: string; budget: number }>,
+  ) {
+    try {
+      this.logger.log(`Updating Smart+ adgroup budgets for advertiser: ${advertiserId}`);
+      this.logger.log(`Budget updates: ${JSON.stringify(budgetUpdates)}`);
+
+      if (budgetUpdates.length === 0) {
+        this.logger.warn('No budget updates provided');
+        return { code: 0, message: 'No updates', data: {} };
+      }
+
+      if (budgetUpdates.length > 20) {
+        throw new Error('Maximum 20 adgroup budget updates allowed per request');
+      }
+
+      const requestBody = {
+        advertiser_id: advertiserId,
+        budget: budgetUpdates,
+      };
+
+      const response = await this.httpClient.post(
+        '/v1.3/smart_plus/adgroup/budget/update/',
+        requestBody,
+        {
+          headers: {
+            'Access-Token': accessToken,
+            'Content-Type': 'application/json',
+          },
+        },
+      );
+
+      this.logger.log(`Smart+ adgroup budget update response: ${JSON.stringify(response.data)}`);
+
+      if (response.data.code !== 0) {
+        const error = new Error(`TikTok API error: ${response.data.message}`);
+        this.logger.error('Failed to update Smart+ adgroup budgets', response.data);
+        throw error;
+      }
+
+      this.logger.log('Smart+ adgroup budgets updated successfully');
+      return response.data;
+    } catch (error) {
+      this.logger.error('Failed to update Smart+ adgroup budgets');
+      this.logger.error(`Error details: ${JSON.stringify({
+        message: error.message,
+        status: error.response?.status,
+        statusText: error.response?.statusText,
+        data: error.response?.data,
+        code: error.code,
+      })}`);
+      throw error;
+    }
+  }
+
+  /**
+   * Upgraded Smart+ キャンペーンの予算を更新
+   * POST /v1.3/smart_plus/campaign/update/
+   *
+   * @param advertiserId 広告主ID
+   * @param accessToken アクセストークン
+   * @param campaignId キャンペーンID
+   * @param budget 新しい予算
+   */
+  async updateSmartPlusCampaignBudget(
+    advertiserId: string,
+    accessToken: string,
+    campaignId: string,
+    budget: number,
+  ) {
+    try {
+      this.logger.log(`Updating Smart+ campaign budget: campaignId=${campaignId}, budget=${budget}`);
+
+      const requestBody = {
+        advertiser_id: advertiserId,
+        campaign_id: campaignId,
+        budget: budget,
+      };
+
+      const response = await this.httpClient.post(
+        '/v1.3/smart_plus/campaign/update/',
+        requestBody,
+        {
+          headers: {
+            'Access-Token': accessToken,
+            'Content-Type': 'application/json',
+          },
+        },
+      );
+
+      this.logger.log(`Smart+ campaign budget update response: ${JSON.stringify(response.data)}`);
+
+      if (response.data.code !== 0) {
+        const error = new Error(`TikTok API error: ${response.data.message}`);
+        this.logger.error('Failed to update Smart+ campaign budget', response.data);
+        throw error;
+      }
+
+      this.logger.log('Smart+ campaign budget updated successfully');
+      return response.data;
+    } catch (error) {
+      this.logger.error('Failed to update Smart+ campaign budget');
+      this.logger.error(`Error details: ${JSON.stringify({
+        message: error.message,
+        status: error.response?.status,
+        statusText: error.response?.statusText,
+        data: error.response?.data,
+        code: error.code,
+      })}`);
+      throw error;
+    }
+  }
 }
