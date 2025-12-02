@@ -163,6 +163,24 @@ export class SchedulerService implements OnModuleInit {
           );
           let adsSynced = 0;
 
+          // Smart+ 広告の手動設定名を取得するためのマップを作成
+          // ad/get APIが返すsmart_plus_ad_idをキーに、正しい広告名を取得
+          const smartPlusAdNameMap = new Map<string, string>();
+          try {
+            const smartPlusAdsForNames = await this.tiktokService.getAllSmartPlusAds(
+              token.advertiserId,
+              token.accessToken,
+            );
+            for (const spAd of smartPlusAdsForNames) {
+              if (spAd.smart_plus_ad_id && spAd.ad_name) {
+                smartPlusAdNameMap.set(String(spAd.smart_plus_ad_id), spAd.ad_name);
+              }
+            }
+            this.logger.log(`Built Smart+ ad name map with ${smartPlusAdNameMap.size} entries`);
+          } catch (error) {
+            this.logger.warn(`Failed to fetch Smart+ ads for name mapping: ${error.message}`);
+          }
+
           for (const ad of ads) {
             const adgroup = await this.prisma.adGroup.findUnique({
               where: { tiktokId: String(ad.adgroup_id) },
@@ -173,7 +191,7 @@ export class SchedulerService implements OnModuleInit {
               continue;
             }
 
-            // Creativeを処理（既存のCreativeがあればそれを使用、なければダミーを作成）
+            // Creativeを処理（既存のCreativeがあればそれを使用、なければ作成）
             let creativeId: string | null = null;
             if (ad.video_id) {
               const creative = await this.prisma.creative.findFirst({
@@ -222,12 +240,24 @@ export class SchedulerService implements OnModuleInit {
               continue;
             }
 
+            // Smart+ 広告の場合: smart_plus_ad_idをtiktokIdとして使用し、手動設定名を使用
+            // これにより、予算最適化で正しい広告名（日付/制作者/CR名/LP名）が使われる
+            const isSmartPlusAd = !!ad.smart_plus_ad_id;
+            const tiktokIdToUse = isSmartPlusAd ? String(ad.smart_plus_ad_id) : String(ad.ad_id);
+            const adNameToUse = isSmartPlusAd
+              ? (smartPlusAdNameMap.get(String(ad.smart_plus_ad_id)) || ad.ad_name)
+              : ad.ad_name;
+
+            if (isSmartPlusAd) {
+              this.logger.debug(`Smart+ ad detected: ad_id=${ad.ad_id}, smart_plus_ad_id=${ad.smart_plus_ad_id}, name=${adNameToUse}`);
+            }
+
             await this.prisma.ad.upsert({
-              where: { tiktokId: String(ad.ad_id) },
+              where: { tiktokId: tiktokIdToUse },
               create: {
-                tiktokId: String(ad.ad_id),
+                tiktokId: tiktokIdToUse,
                 adgroupId: adgroup.id,
-                name: ad.ad_name,
+                name: adNameToUse,
                 creativeId,
                 adText: ad.ad_text,
                 callToAction: ad.call_to_action,
@@ -237,7 +267,7 @@ export class SchedulerService implements OnModuleInit {
                 reviewStatus: ad.app_download_status || 'APPROVED',
               },
               update: {
-                name: ad.ad_name,
+                name: adNameToUse,
                 adText: ad.ad_text,
                 callToAction: ad.call_to_action,
                 landingPageUrl: ad.landing_page_url,
@@ -249,15 +279,16 @@ export class SchedulerService implements OnModuleInit {
             adsSynced++;
           }
 
-          // Smart+ Adsを取得してDBに保存
+          // Smart+ Adsのフォールバック同期
+          // 通常のad/get APIで取得できないSmart+広告がある場合のみ処理
+          // （通常は上記の処理でsmart_plus_ad_idを持つ広告は既に同期済み）
           let smartPlusAdsSynced = 0;
           try {
-            // Smart+ Adsを取得してDBに保存（ページネーション対応）
             const smartPlusAds = await this.tiktokService.getAllSmartPlusAds(
               token.advertiserId,
               token.accessToken,
             );
-            this.logger.log(`Retrieved ${smartPlusAds.length} Smart+ ads for ${token.advertiserId}`);
+            this.logger.log(`Checking ${smartPlusAds.length} Smart+ ads for fallback sync`);
 
             for (const ad of smartPlusAds) {
               // Smart+ AdのIDを決定（smart_plus_ad_id を優先）
@@ -267,9 +298,17 @@ export class SchedulerService implements OnModuleInit {
                 continue;
               }
 
+              // 既にDBに存在する場合はスキップ（通常広告同期で既に処理済み）
+              const existingAd = await this.prisma.ad.findUnique({
+                where: { tiktokId: String(adId) },
+              });
+              if (existingAd) {
+                continue;
+              }
+
               // AdGroupを探す
               if (!ad.adgroup_id) {
-                this.logger.warn(`Smart+ ad ${adId} has no adgroup_id, skipping`);
+                this.logger.warn(`Smart+ ad ${adId} (${ad.ad_name}) has no adgroup_id, skipping`);
                 continue;
               }
 
@@ -278,7 +317,7 @@ export class SchedulerService implements OnModuleInit {
               });
 
               if (!adgroup) {
-                this.logger.warn(`AdGroup ${ad.adgroup_id} not found for Smart+ ad ${adId}, skipping`);
+                this.logger.warn(`AdGroup ${ad.adgroup_id} not found for Smart+ ad ${adId} (${ad.ad_name}), skipping`);
                 continue;
               }
 
@@ -345,14 +384,21 @@ export class SchedulerService implements OnModuleInit {
               }
 
               if (!creativeId) {
-                this.logger.warn(`No creative found for Smart+ ad ${adId}, skipping`);
+                // 詳細なログを出力して原因を特定しやすくする
+                this.logger.warn(`No creative found for Smart+ ad ${adId} (${ad.ad_name}), skipping`);
+                this.logger.warn(`  - creative_list length: ${creativeList.length}`);
+                this.logger.warn(`  - enabledCreative: ${enabledCreative ? 'found' : 'not found'}`);
+                if (enabledCreative?.creative_info) {
+                  const ci = enabledCreative.creative_info;
+                  this.logger.warn(`  - video_id: ${ci.video_info?.video_id || 'none'}`);
+                  this.logger.warn(`  - image_info: ${ci.image_info ? 'exists' : 'none'}`);
+                }
                 continue;
               }
 
-              // Smart+ Adをupsert（tiktokIdにはsmart_plus_ad_idを使用）
-              await this.prisma.ad.upsert({
-                where: { tiktokId: String(adId) },
-                create: {
+              // Smart+ Adを作成（tiktokIdにはsmart_plus_ad_idを使用）
+              await this.prisma.ad.create({
+                data: {
                   tiktokId: String(adId),
                   adgroupId: adgroup.id,
                   name: ad.ad_name,
@@ -364,19 +410,14 @@ export class SchedulerService implements OnModuleInit {
                   status: ad.operation_status,
                   reviewStatus: 'APPROVED',
                 },
-                update: {
-                  name: ad.ad_name,
-                  adText: ad.ad_text_list?.[0]?.ad_text,
-                  callToAction: ad.ad_configuration?.call_to_action_id,
-                  landingPageUrl: ad.landing_page_url_list?.[0]?.landing_page_url,
-                  displayName: enabledCreative?.creative_info?.identity_id,
-                  status: ad.operation_status,
-                },
               });
               smartPlusAdsSynced++;
+              this.logger.log(`Fallback synced Smart+ ad: ${ad.ad_name} (${adId})`);
             }
 
-            this.logger.log(`Synced ${smartPlusAdsSynced} Smart+ ads for ${token.advertiserId}`);
+            if (smartPlusAdsSynced > 0) {
+              this.logger.log(`Fallback synced ${smartPlusAdsSynced} Smart+ ads for ${token.advertiserId}`);
+            }
           } catch (error) {
             this.logger.error(`Failed to sync Smart+ ads for ${token.advertiserId}:`, error.message);
           }
