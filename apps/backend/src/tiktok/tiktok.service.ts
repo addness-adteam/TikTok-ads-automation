@@ -3,6 +3,35 @@ import { ConfigService } from '@nestjs/config';
 import axios, { AxiosInstance } from 'axios';
 import { PrismaService } from '../prisma/prisma.service';
 
+/**
+ * 日付文字列をUTC 00:00:00の日付に変換するヘルパー関数
+ * TikTok APIから返される日付（例: "2025-12-01"）を、タイムゾーンに依存しない形で保存
+ * @param dateString "YYYY-MM-DD" 形式の日付文字列
+ * @returns UTC 00:00:00 の Date オブジェクト
+ */
+function parseStatDate(dateString: string): Date {
+  // "2025-12-01" → "2025-12-01T00:00:00.000Z" としてパース
+  return new Date(dateString + 'T00:00:00.000Z');
+}
+
+/**
+ * JST基準で「昨日」の日付をUTC 00:00:00形式で取得
+ * @returns UTC 00:00:00 の Date オブジェクト（JSTでの昨日の日付）
+ */
+function getYesterdayJST(): Date {
+  const now = new Date();
+  const jstOffset = 9 * 60 * 60 * 1000; // JST = UTC+9
+  const jstNow = new Date(now.getTime() + jstOffset);
+
+  // JSTで昨日を計算
+  const yesterdayJST = new Date(jstNow);
+  yesterdayJST.setUTCDate(yesterdayJST.getUTCDate() - 1);
+
+  // 日付部分だけ取り出してUTC 00:00:00形式に変換
+  const dateString = yesterdayJST.toISOString().split('T')[0];
+  return new Date(dateString + 'T00:00:00.000Z');
+}
+
 @Injectable()
 export class TiktokService {
   private readonly logger = new Logger(TiktokService.name);
@@ -1382,7 +1411,8 @@ export class TiktokService {
       this.logger.log(`Saving ${reportData.length} ${dataLevel} metrics to database`);
 
       for (const record of reportData) {
-        const statDate = new Date(record.dimensions?.stat_time_day || record.stat_time_day);
+        const dateString = record.dimensions?.stat_time_day || record.stat_time_day;
+        const statDate = parseStatDate(dateString);
         const metrics = record.metrics || {};
 
         // データレベルに応じて処理を分岐
@@ -2045,10 +2075,8 @@ export class TiktokService {
 
       this.logger.log(`Aggregated metrics for ${adMetricsMap.size} Smart+ ads`);
 
-      // ステップ2: 統計日時を計算（昨日）
-      const yesterday = new Date();
-      yesterday.setDate(yesterday.getDate() - 1);
-      yesterday.setHours(0, 0, 0, 0);
+      // ステップ2: 統計日時を計算（昨日）- JST基準でUTC 00:00:00形式
+      const yesterday = getYesterdayJST();
 
       // ステップ3: 各広告の集計メトリクスをDBに保存
       let savedCount = 0;
