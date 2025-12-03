@@ -3,6 +3,16 @@ import { PrismaService } from '../prisma/prisma.service';
 import { TiktokService } from '../tiktok/tiktok.service';
 import { GoogleSheetsService } from '../google-sheets/google-sheets.service';
 import { AppealService } from '../appeal/appeal.service';
+import {
+  validateAppealSettings,
+  validateAdNameFormat,
+  classifyOptimizationError,
+  logOptimizationError,
+  OptimizationErrorType,
+  withDatabaseRetry,
+  classifyDatabaseError,
+  logDatabaseError,
+} from '../common/utils';
 
 interface AdPerformance {
   adId: string;
@@ -132,14 +142,31 @@ export class OptimizationService {
     });
 
     if (!advertiser) {
-      throw new Error(`Advertiser ${advertiserId} not found`);
+      // O-03: Advertiser未検出
+      const error = new Error(`Advertiser ${advertiserId} not found`);
+      const errorInfo = classifyOptimizationError(error, { entityId: advertiserId });
+      logOptimizationError(this.logger, errorInfo, 'optimizeAdvertiser');
+      throw error;
     }
 
     if (!advertiser.appeal) {
-      throw new Error(`No appeal assigned to advertiser ${advertiserId}`);
+      // O-02: Appeal未設定
+      const error = new Error(`No appeal assigned to advertiser ${advertiserId}`);
+      const errorInfo = classifyOptimizationError(error, { entityId: advertiserId });
+      logOptimizationError(this.logger, errorInfo, 'optimizeAdvertiser');
+      throw error;
     }
 
     const appeal = advertiser.appeal;
+
+    // O-04: 目標CPA/CPO設定の検証
+    const appealValidation = validateAppealSettings(appeal);
+    if (!appealValidation.isValid) {
+      this.logger.warn(
+        `[O-04] Appeal設定不完全 (advertiserId: ${advertiserId}): 未設定フィールド: ${appealValidation.missingFields.join(', ')}`,
+      );
+      // 警告を出力するが処理は継続（デフォルト値が使用される可能性あり）
+    }
 
     // ========================================
     // Phase 1: 広告レベルの予算調整（広告名がある広告）
@@ -528,36 +555,23 @@ export class OptimizationService {
   }
 
   /**
-   * 広告名をパース
+   * 広告名をパース（O-01対応: エラー検出強化）
    * 形式: 出稿日/制作者名/CR名/LP名-番号
    * CR名は複数パートに分かれることがある（例: 問題ないです/ひったくりVer_リール投稿）
    */
   private parseAdName(adName: string): { date: string; creator: string; creativeName: string; lpName: string } | null {
-    const parts = adName.split('/');
+    // O-01: 広告名形式検証
+    const validation = validateAdNameFormat(adName);
 
-    // 最低4パート必要（出稿日/制作者名/CR名/LP名）
-    if (parts.length < 4) {
+    if (!validation.isValid) {
+      // 警告ログを出力（validateAdNameFormatが詳細なエラー情報を提供）
+      if (validation.warning) {
+        logOptimizationError(this.logger, validation.warning, 'parseAdName');
+      }
       return null;
     }
 
-    // 最初のパート: 出稿日
-    const date = parts[0];
-
-    // 2番目のパート: 制作者名
-    const creator = parts[1];
-
-    // 最後のパート: LP名-番号
-    const lpName = parts[parts.length - 1];
-
-    // 3番目から最後の手前まで: CR名（複数パートの場合は "/" で結合）
-    const creativeName = parts.slice(2, parts.length - 1).join('/');
-
-    return {
-      date,
-      creator,
-      creativeName,
-      lpName,
-    };
+    return validation.parsed!;
   }
 
   /**
@@ -838,7 +852,7 @@ export class OptimizationService {
   }
 
   /**
-   * 広告セットの予算を増額
+   * 広告セットの予算を増額（O-06対応: リトライ機能付き）
    */
   private async increaseBudget(
     adgroupId: string,
@@ -865,14 +879,18 @@ export class OptimizationService {
 
         this.logger.log(`AdGroup budget update response: ${JSON.stringify(response)}`);
 
-        await this.logChange(
-          'ADGROUP',
-          adgroupId,
-          'UPDATE_BUDGET',
-          'OPTIMIZATION',
-          { budget: currentBudget },
-          { budget: newBudget },
-          `予算を${increaseRate * 100}%増額（${currentBudget} → ${newBudget}）`,
+        // DB操作にリトライを適用（D-01, D-03対応）
+        await withDatabaseRetry(
+          () => this.logChange(
+            'ADGROUP',
+            adgroupId,
+            'UPDATE_BUDGET',
+            'OPTIMIZATION',
+            { budget: currentBudget },
+            { budget: newBudget },
+            `予算を${increaseRate * 100}%増額（${currentBudget} → ${newBudget}）`,
+          ),
+          { logger: this.logger, context: 'logChange(ADGROUP)' },
         );
 
         return { success: true, adgroupId, action: 'BUDGET_INCREASED', oldBudget: currentBudget, newBudget };
@@ -891,20 +909,26 @@ export class OptimizationService {
 
         this.logger.log(`Campaign budget update response: ${JSON.stringify(response)}`);
 
-        await this.logChange(
-          'CAMPAIGN',
-          adgroup.campaign_id,
-          'UPDATE_BUDGET',
-          'OPTIMIZATION',
-          { budget: currentCampaignBudget },
-          { budget: newCampaignBudget },
-          `予算を${increaseRate * 100}%増額（${currentCampaignBudget} → ${newCampaignBudget}）`,
+        // DB操作にリトライを適用（D-01, D-03対応）
+        await withDatabaseRetry(
+          () => this.logChange(
+            'CAMPAIGN',
+            adgroup.campaign_id,
+            'UPDATE_BUDGET',
+            'OPTIMIZATION',
+            { budget: currentCampaignBudget },
+            { budget: newCampaignBudget },
+            `予算を${increaseRate * 100}%増額（${currentCampaignBudget} → ${newCampaignBudget}）`,
+          ),
+          { logger: this.logger, context: 'logChange(CAMPAIGN)' },
         );
 
         return { success: true, campaignId: adgroup.campaign_id, action: 'BUDGET_INCREASED', oldBudget: currentCampaignBudget, newBudget: newCampaignBudget };
       }
     } catch (error) {
-      this.logger.error(`Failed to increase budget for adgroup ${adgroupId}:`, error);
+      // O-06: 予算更新API失敗
+      const errorInfo = classifyOptimizationError(error, { entityId: adgroupId });
+      logOptimizationError(this.logger, errorInfo, 'increaseBudget');
       throw new Error(`予算増額に失敗: ${error.message}`);
     }
   }

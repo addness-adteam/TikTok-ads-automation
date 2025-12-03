@@ -3,6 +3,13 @@ import { ConfigService } from '@nestjs/config';
 import { Cron } from '@nestjs/schedule';
 import { PrismaService } from '../prisma/prisma.service';
 import { TiktokService } from '../tiktok/tiktok.service';
+import {
+  BatchExecutionTracker,
+  logBatchExecutionResult,
+  batchJobLock,
+  BatchErrorType,
+  withDatabaseRetry,
+} from '../common/utils';
 
 @Injectable()
 export class SchedulerService implements OnModuleInit {
@@ -30,8 +37,20 @@ export class SchedulerService implements OnModuleInit {
     timeZone: 'Asia/Tokyo',
   })
   async scheduleDailyEntitySync() {
+    const jobName = 'daily-entity-sync';
+
+    // S-01: 同時実行競合チェック（ロック機能強化）
+    if (!batchJobLock.acquire(jobName, 600000)) { // 10分タイムアウト
+      const lockStartTime = batchJobLock.getLockStartTime(jobName);
+      this.logger.warn(
+        `[S-01] Previous entity sync job is still running (started: ${lockStartTime?.toISOString()}). Skipping...`
+      );
+      return;
+    }
+
     if (this.isSyncRunning) {
-      this.logger.warn('Previous entity sync job is still running. Skipping...');
+      this.logger.warn('[S-01] Previous entity sync job is still running (flag). Skipping...');
+      batchJobLock.release(jobName);
       return;
     }
 
@@ -442,6 +461,7 @@ export class SchedulerService implements OnModuleInit {
       this.logger.error('Failed to execute daily entity sync:', error);
     } finally {
       this.isSyncRunning = false;
+      batchJobLock.release('daily-entity-sync');
     }
   }
 
@@ -454,8 +474,20 @@ export class SchedulerService implements OnModuleInit {
     timeZone: 'Asia/Tokyo',
   })
   async scheduleDailyReportFetch() {
+    const jobName = 'daily-report-fetch';
+
+    // S-01: 同時実行競合チェック（ロック機能強化）
+    if (!batchJobLock.acquire(jobName, 600000)) { // 10分タイムアウト
+      const lockStartTime = batchJobLock.getLockStartTime(jobName);
+      this.logger.warn(
+        `[S-01] Previous report fetch job is still running (started: ${lockStartTime?.toISOString()}). Skipping...`
+      );
+      return;
+    }
+
     if (this.isReportRunning) {
-      this.logger.warn('Previous report fetch job is still running. Skipping...');
+      this.logger.warn('[S-01] Previous report fetch job is still running (flag). Skipping...');
+      batchJobLock.release(jobName);
       return;
     }
 
@@ -582,10 +614,18 @@ export class SchedulerService implements OnModuleInit {
       this.logger.log(
         `Daily report fetch completed. Success: ${successCount}, Errors: ${errorCount}`,
       );
+
+      // S-03: 部分的同期失敗の警告
+      if (errorCount > 0 && successCount > 0) {
+        this.logger.warn(
+          `[S-03] Partial sync failure: ${errorCount} out of ${successCount + errorCount} operations failed`,
+        );
+      }
     } catch (error) {
       this.logger.error('Failed to execute daily report fetch:', error);
     } finally {
       this.isReportRunning = false;
+      batchJobLock.release('daily-report-fetch');
     }
   }
 

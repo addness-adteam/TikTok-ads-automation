@@ -1,7 +1,14 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import axios, { AxiosInstance } from 'axios';
+import axios, { AxiosInstance, AxiosRequestConfig, AxiosResponse } from 'axios';
 import { PrismaService } from '../prisma/prisma.service';
+import {
+  withRetry,
+  isTikTokErrorRetryable,
+  classifyTikTokError,
+  logTikTokError,
+  TikTokErrorType,
+} from '../common/utils';
 
 /**
  * 日付文字列をUTC 00:00:00の日付に変換するヘルパー関数
@@ -57,6 +64,92 @@ export class TiktokService {
         'Content-Type': 'application/json',
       },
     });
+  }
+
+  // ============================================================================
+  // リトライ対応のHTTPクライアントメソッド
+  // 要件定義: リトライ回数3回、間隔1秒→2秒→4秒（指数バックオフ）
+  // ============================================================================
+
+  /**
+   * リトライ対応のGETリクエスト
+   * @param url エンドポイントURL
+   * @param config Axiosリクエスト設定
+   * @param context ログ出力用のコンテキスト名
+   */
+  private async httpGetWithRetry<T = any>(
+    url: string,
+    config?: AxiosRequestConfig,
+    context?: string,
+  ): Promise<AxiosResponse<T>> {
+    return withRetry(
+      () => this.httpClient.get<T>(url, config),
+      {
+        maxRetries: 3,
+        initialDelayMs: 1000,
+        backoffMultiplier: 2,
+        retryableErrors: isTikTokErrorRetryable,
+        onRetry: (error, attempt, delayMs) => {
+          const errorInfo = classifyTikTokError(error);
+          logTikTokError(this.logger, errorInfo, context);
+          this.logger.warn(
+            `[${context || 'TikTok API'}] Attempt ${attempt}/3 failed. Retrying in ${delayMs}ms...`,
+          );
+        },
+      },
+      this.logger,
+    );
+  }
+
+  /**
+   * リトライ対応のPOSTリクエスト
+   * @param url エンドポイントURL
+   * @param data リクエストボディ
+   * @param config Axiosリクエスト設定
+   * @param context ログ出力用のコンテキスト名
+   */
+  private async httpPostWithRetry<T = any>(
+    url: string,
+    data?: any,
+    config?: AxiosRequestConfig,
+    context?: string,
+  ): Promise<AxiosResponse<T>> {
+    return withRetry(
+      () => this.httpClient.post<T>(url, data, config),
+      {
+        maxRetries: 3,
+        initialDelayMs: 1000,
+        backoffMultiplier: 2,
+        retryableErrors: isTikTokErrorRetryable,
+        onRetry: (error, attempt, delayMs) => {
+          const errorInfo = classifyTikTokError(error);
+          logTikTokError(this.logger, errorInfo, context);
+          this.logger.warn(
+            `[${context || 'TikTok API'}] Attempt ${attempt}/3 failed. Retrying in ${delayMs}ms...`,
+          );
+        },
+      },
+      this.logger,
+    );
+  }
+
+  /**
+   * TikTok APIエラーを分類してログ出力し、適切なエラーをスロー
+   * @param error キャッチしたエラー
+   * @param context エラーコンテキスト
+   */
+  private handleTikTokError(error: any, context: string): never {
+    const errorInfo = classifyTikTokError(error);
+    logTikTokError(this.logger, errorInfo, context);
+
+    // エラータイプに応じて適切なエラーメッセージを設定
+    const enhancedError = new Error(`[${context}] ${errorInfo.message}`);
+    (enhancedError as any).type = errorInfo.type;
+    (enhancedError as any).code = errorInfo.code;
+    (enhancedError as any).isRetryable = errorInfo.isRetryable;
+    (enhancedError as any).originalError = error;
+
+    throw enhancedError;
   }
 
   /**
@@ -326,6 +419,7 @@ export class TiktokService {
   /**
    * Campaign一覧を取得
    * GET /v1.3/campaign/get/
+   * リトライ対応: タイムアウト、レート制限、サーバーエラー時に自動リトライ
    */
   async getCampaigns(advertiserId: string, accessToken: string, campaignIds?: string[]) {
     try {
@@ -342,31 +436,24 @@ export class TiktokService {
         };
       }
 
-      const response = await this.httpClient.get('/v1.3/campaign/get/', {
+      const response = await this.httpGetWithRetry('/v1.3/campaign/get/', {
         headers: {
           'Access-Token': accessToken,
         },
         params: requestBody,
-      });
+      }, 'getCampaigns');
 
       this.logger.log(`Retrieved ${response.data.data?.list?.length || 0} campaigns`);
       return response.data;
     } catch (error) {
-      this.logger.error('Failed to get campaigns');
-      this.logger.error(`Error details: ${JSON.stringify({
-        message: error.message,
-        status: error.response?.status,
-        statusText: error.response?.statusText,
-        data: error.response?.data,
-        code: error.code,
-      })}`);
-      throw error;
+      this.handleTikTokError(error, 'getCampaigns');
     }
   }
 
   /**
    * 全Campaign一覧を取得（ページネーション対応）
    * GET /v1.3/campaign/get/
+   * リトライ対応: 各ページ取得時に自動リトライ
    */
   async getAllCampaigns(advertiserId: string, accessToken: string) {
     const allData: any[] = [];
@@ -378,7 +465,7 @@ export class TiktokService {
 
     while (hasMorePages) {
       try {
-        const response = await this.httpClient.get('/v1.3/campaign/get/', {
+        const response = await this.httpGetWithRetry('/v1.3/campaign/get/', {
           headers: {
             'Access-Token': accessToken,
           },
@@ -387,7 +474,7 @@ export class TiktokService {
             page_size: pageSize,
             page: currentPage,
           },
-        });
+        }, `getAllCampaigns(page=${currentPage})`);
 
         const list = response.data.data?.list || [];
         if (list.length > 0) {
@@ -405,8 +492,7 @@ export class TiktokService {
           hasMorePages = false;
         }
       } catch (error) {
-        this.logger.error(`Failed to get campaigns page ${currentPage}: ${error.message}`);
-        throw error;
+        this.handleTikTokError(error, `getAllCampaigns(page=${currentPage})`);
       }
     }
 
@@ -417,6 +503,7 @@ export class TiktokService {
   /**
    * Ad Group（広告セット）一覧を取得
    * GET /v1.3/adgroup/get/
+   * リトライ対応: タイムアウト、レート制限、サーバーエラー時に自動リトライ
    */
   async getAdGroups(advertiserId: string, accessToken: string, campaignIds?: string[]) {
     try {
@@ -435,31 +522,24 @@ export class TiktokService {
 
       this.logger.log(`Request params: ${JSON.stringify(params)}`);
 
-      const response = await this.httpClient.get('/v1.3/adgroup/get/', {
+      const response = await this.httpGetWithRetry('/v1.3/adgroup/get/', {
         headers: {
           'Access-Token': accessToken,
         },
         params,
-      });
+      }, 'getAdGroups');
 
       this.logger.log(`Retrieved ${response.data.data?.list?.length || 0} ad groups`);
       return response.data;
     } catch (error) {
-      this.logger.error('Failed to get ad groups');
-      this.logger.error(`Error details: ${JSON.stringify({
-        message: error.message,
-        status: error.response?.status,
-        statusText: error.response?.statusText,
-        data: error.response?.data,
-        code: error.code,
-      })}`);
-      throw error;
+      this.handleTikTokError(error, 'getAdGroups');
     }
   }
 
   /**
    * 全Ad Group一覧を取得（ページネーション対応）
    * GET /v1.3/adgroup/get/
+   * リトライ対応: 各ページ取得時に自動リトライ
    */
   async getAllAdGroups(advertiserId: string, accessToken: string) {
     const allData: any[] = [];
@@ -471,7 +551,7 @@ export class TiktokService {
 
     while (hasMorePages) {
       try {
-        const response = await this.httpClient.get('/v1.3/adgroup/get/', {
+        const response = await this.httpGetWithRetry('/v1.3/adgroup/get/', {
           headers: {
             'Access-Token': accessToken,
           },
@@ -480,7 +560,7 @@ export class TiktokService {
             page_size: pageSize,
             page: currentPage,
           },
-        });
+        }, `getAllAdGroups(page=${currentPage})`);
 
         const list = response.data.data?.list || [];
         if (list.length > 0) {
@@ -498,8 +578,7 @@ export class TiktokService {
           hasMorePages = false;
         }
       } catch (error) {
-        this.logger.error(`Failed to get ad groups page ${currentPage}: ${error.message}`);
-        throw error;
+        this.handleTikTokError(error, `getAllAdGroups(page=${currentPage})`);
       }
     }
 
@@ -594,6 +673,7 @@ export class TiktokService {
   /**
    * Ad（広告）一覧を取得
    * GET /v1.3/ad/get/
+   * リトライ対応: タイムアウト、レート制限、サーバーエラー時に自動リトライ
    */
   async getAds(advertiserId: string, accessToken: string, adgroupIds?: string[]) {
     try {
@@ -612,31 +692,24 @@ export class TiktokService {
 
       this.logger.log(`Request params: ${JSON.stringify(params)}`);
 
-      const response = await this.httpClient.get('/v1.3/ad/get/', {
+      const response = await this.httpGetWithRetry('/v1.3/ad/get/', {
         headers: {
           'Access-Token': accessToken,
         },
         params,
-      });
+      }, 'getAds');
 
       this.logger.log(`Retrieved ${response.data.data?.list?.length || 0} ads`);
       return response.data;
     } catch (error) {
-      this.logger.error('Failed to get ads');
-      this.logger.error(`Error details: ${JSON.stringify({
-        message: error.message,
-        status: error.response?.status,
-        statusText: error.response?.statusText,
-        data: error.response?.data,
-        code: error.code,
-      })}`);
-      throw error;
+      this.handleTikTokError(error, 'getAds');
     }
   }
 
   /**
    * 全Ad一覧を取得（ページネーション対応）
    * GET /v1.3/ad/get/
+   * リトライ対応: 各ページ取得時に自動リトライ
    */
   async getAllAds(advertiserId: string, accessToken: string) {
     const allData: any[] = [];
@@ -648,7 +721,7 @@ export class TiktokService {
 
     while (hasMorePages) {
       try {
-        const response = await this.httpClient.get('/v1.3/ad/get/', {
+        const response = await this.httpGetWithRetry('/v1.3/ad/get/', {
           headers: {
             'Access-Token': accessToken,
           },
@@ -657,7 +730,7 @@ export class TiktokService {
             page_size: pageSize,
             page: currentPage,
           },
-        });
+        }, `getAllAds(page=${currentPage})`);
 
         const list = response.data.data?.list || [];
         if (list.length > 0) {
@@ -675,8 +748,7 @@ export class TiktokService {
           hasMorePages = false;
         }
       } catch (error) {
-        this.logger.error(`Failed to get ads page ${currentPage}: ${error.message}`);
-        throw error;
+        this.handleTikTokError(error, `getAllAds(page=${currentPage})`);
       }
     }
 
@@ -1327,26 +1399,18 @@ export class TiktokService {
         params.filtering = JSON.stringify(filtering);
       }
 
-      const response = await this.httpClient.get('/v1.3/report/integrated/get/', {
+      const response = await this.httpGetWithRetry('/v1.3/report/integrated/get/', {
         headers: {
           'Access-Token': accessToken,
         },
         params,
-      });
+      }, `getReport(${dataLevel})`);
 
       this.logger.log(`Retrieved report data: ${response.data.data?.list?.length || 0} records`);
       this.logger.log(`Full API response: ${JSON.stringify(response.data, null, 2)}`);
       return response.data;
     } catch (error) {
-      this.logger.error('Failed to get report');
-      this.logger.error(`Error details: ${JSON.stringify({
-        message: error.message,
-        status: error.response?.status,
-        statusText: error.response?.statusText,
-        data: error.response?.data,
-        code: error.code,
-      })}`);
-      throw error;
+      this.handleTikTokError(error, `getReport(${options.dataLevel})`);
     }
   }
 
@@ -1673,6 +1737,7 @@ export class TiktokService {
   /**
    * Upgraded Smart+ 広告一覧を取得
    * GET /v1.3/smart_plus/ad/get/
+   * リトライ対応: タイムアウト、レート制限、サーバーエラー時に自動リトライ
    */
   async getSmartPlusAds(advertiserId: string, accessToken: string, smartPlusAdIds?: string[]) {
     try {
@@ -1691,31 +1756,24 @@ export class TiktokService {
 
       this.logger.log(`Request params: ${JSON.stringify(params)}`);
 
-      const response = await this.httpClient.get('/v1.3/smart_plus/ad/get/', {
+      const response = await this.httpGetWithRetry('/v1.3/smart_plus/ad/get/', {
         headers: {
           'Access-Token': accessToken,
         },
         params,
-      });
+      }, 'getSmartPlusAds');
 
       this.logger.log(`Retrieved ${response.data.data?.list?.length || 0} Smart+ ads`);
       return response.data;
     } catch (error) {
-      this.logger.error('Failed to get Smart+ ads');
-      this.logger.error(`Error details: ${JSON.stringify({
-        message: error.message,
-        status: error.response?.status,
-        statusText: error.response?.statusText,
-        data: error.response?.data,
-        code: error.code,
-      })}`);
-      throw error;
+      this.handleTikTokError(error, 'getSmartPlusAds');
     }
   }
 
   /**
    * 全Smart+ Ad一覧を取得（ページネーション対応）
    * GET /v1.3/smart_plus/ad/get/
+   * リトライ対応: 各ページ取得時に自動リトライ
    */
   async getAllSmartPlusAds(advertiserId: string, accessToken: string) {
     const allData: any[] = [];
@@ -1727,7 +1785,7 @@ export class TiktokService {
 
     while (hasMorePages) {
       try {
-        const response = await this.httpClient.get('/v1.3/smart_plus/ad/get/', {
+        const response = await this.httpGetWithRetry('/v1.3/smart_plus/ad/get/', {
           headers: {
             'Access-Token': accessToken,
           },
@@ -1736,7 +1794,7 @@ export class TiktokService {
             page_size: pageSize,
             page: currentPage,
           },
-        });
+        }, `getAllSmartPlusAds(page=${currentPage})`);
 
         const list = response.data.data?.list || [];
         if (list.length > 0) {
@@ -1754,8 +1812,7 @@ export class TiktokService {
           hasMorePages = false;
         }
       } catch (error) {
-        this.logger.error(`Failed to get Smart+ ads page ${currentPage}: ${error.message}`);
-        throw error;
+        this.handleTikTokError(error, `getAllSmartPlusAds(page=${currentPage})`);
       }
     }
 
