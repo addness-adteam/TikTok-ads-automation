@@ -857,9 +857,29 @@ export class OptimizationService {
     }
   }
 
+  // TikTok API 予算制限値（円）
+  private readonly BUDGET_MIN = 50; // 最小予算（TikTok APIの制限）
+  private readonly BUDGET_MAX = 50000000; // 最大予算（5000万円、TikTok APIの制限）
+
+  /**
+   * 予算値を検証し、制限範囲内に収める
+   */
+  private validateBudget(budget: number, context: string): { valid: boolean; adjustedBudget: number; message?: string } {
+    if (budget < this.BUDGET_MIN) {
+      this.logger.warn(`[Budget Validation] ${context}: Budget ${budget} is below minimum ${this.BUDGET_MIN}, adjusting`);
+      return { valid: true, adjustedBudget: this.BUDGET_MIN, message: `最小予算${this.BUDGET_MIN}円に調整` };
+    }
+    if (budget > this.BUDGET_MAX) {
+      this.logger.warn(`[Budget Validation] ${context}: Budget ${budget} exceeds maximum ${this.BUDGET_MAX}, adjusting`);
+      return { valid: true, adjustedBudget: this.BUDGET_MAX, message: `最大予算${this.BUDGET_MAX}円に調整` };
+    }
+    return { valid: true, adjustedBudget: budget };
+  }
+
   /**
    * 広告セットの予算を増額（O-06対応: リトライ機能付き）
    * 上限日予算チェック機能付き
+   * 予算バリデーション機能付き
    */
   private async increaseBudget(
     adgroupId: string,
@@ -877,6 +897,13 @@ export class OptimizationService {
       const currentBudget = adgroup.budget;
       // 小数点以下を切り捨て（TikTok APIは整数のみ受け付けるため）
       let newBudget = Math.floor(currentBudget * (1 + increaseRate));
+
+      // 予算バリデーション（最小値・最大値チェック）
+      const budgetValidation = this.validateBudget(newBudget, `AdGroup ${adgroupId}`);
+      if (budgetValidation.adjustedBudget !== newBudget) {
+        this.logger.log(`Budget adjusted: ${newBudget} -> ${budgetValidation.adjustedBudget} (${budgetValidation.message})`);
+        newBudget = budgetValidation.adjustedBudget;
+      }
 
       // ===== 上限日予算チェック（新機能） =====
       const budgetCapEnabled = this.configService.get('FEATURE_AD_PERFORMANCE_ENABLED') === 'true';
@@ -930,6 +957,13 @@ export class OptimizationService {
         const currentCampaignBudget = campaign.budget;
         // 小数点以下を切り捨て（TikTok APIは整数のみ受け付けるため）
         let newCampaignBudget = Math.floor(currentCampaignBudget * (1 + increaseRate));
+
+        // 予算バリデーション（最小値・最大値チェック）
+        const campaignBudgetValidation = this.validateBudget(newCampaignBudget, `Campaign ${adgroup.campaign_id}`);
+        if (campaignBudgetValidation.adjustedBudget !== newCampaignBudget) {
+          this.logger.log(`Campaign budget adjusted: ${newCampaignBudget} -> ${campaignBudgetValidation.adjustedBudget} (${campaignBudgetValidation.message})`);
+          newCampaignBudget = campaignBudgetValidation.adjustedBudget;
+        }
 
         // キャンペーン予算の場合も上限チェック
         if (budgetCapEnabled) {

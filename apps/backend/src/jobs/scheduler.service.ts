@@ -15,8 +15,8 @@ import {
 @Injectable()
 export class SchedulerService implements OnModuleInit {
   private readonly logger = new Logger(SchedulerService.name);
-  private isSyncRunning = false;
-  private isReportRunning = false;
+  // 注意: ロック機構は batchJobLock に統一（二重管理の問題を解消）
+  // isSyncRunning, isReportRunning フラグは削除済み
 
   constructor(
     private readonly prisma: PrismaService,
@@ -42,8 +42,9 @@ export class SchedulerService implements OnModuleInit {
   async scheduleDailyEntitySync() {
     const jobName = 'daily-entity-sync';
 
-    // S-01: 同時実行競合チェック（ロック機能強化）
-    if (!batchJobLock.acquire(jobName, 600000)) { // 10分タイムアウト
+    // S-01: 同時実行競合チェック（ロック機能統一 - batchJobLockのみ使用）
+    // タイムアウトを30分に延長（大量データ処理対応）
+    if (!batchJobLock.acquire(jobName, 1800000)) { // 30分タイムアウト
       const lockStartTime = batchJobLock.getLockStartTime(jobName);
       this.logger.warn(
         `[S-01] Previous entity sync job is still running (started: ${lockStartTime?.toISOString()}). Skipping...`
@@ -51,13 +52,6 @@ export class SchedulerService implements OnModuleInit {
       return;
     }
 
-    if (this.isSyncRunning) {
-      this.logger.warn('[S-01] Previous entity sync job is still running (flag). Skipping...');
-      batchJobLock.release(jobName);
-      return;
-    }
-
-    this.isSyncRunning = true;
     this.logger.log('Starting daily entity sync batch job');
 
     try {
@@ -475,8 +469,8 @@ export class SchedulerService implements OnModuleInit {
     } catch (error) {
       this.logger.error('Failed to execute daily entity sync:', error);
     } finally {
-      this.isSyncRunning = false;
       batchJobLock.release('daily-entity-sync');
+      this.logger.log('Entity sync job lock released');
     }
   }
 
@@ -491,8 +485,9 @@ export class SchedulerService implements OnModuleInit {
   async scheduleDailyReportFetch() {
     const jobName = 'daily-report-fetch';
 
-    // S-01: 同時実行競合チェック（ロック機能強化）
-    if (!batchJobLock.acquire(jobName, 600000)) { // 10分タイムアウト
+    // S-01: 同時実行競合チェック（ロック機能統一 - batchJobLockのみ使用）
+    // タイムアウトを30分に延長（大量データ処理対応）
+    if (!batchJobLock.acquire(jobName, 1800000)) { // 30分タイムアウト
       const lockStartTime = batchJobLock.getLockStartTime(jobName);
       this.logger.warn(
         `[S-01] Previous report fetch job is still running (started: ${lockStartTime?.toISOString()}). Skipping...`
@@ -500,13 +495,6 @@ export class SchedulerService implements OnModuleInit {
       return;
     }
 
-    if (this.isReportRunning) {
-      this.logger.warn('[S-01] Previous report fetch job is still running (flag). Skipping...');
-      batchJobLock.release(jobName);
-      return;
-    }
-
-    this.isReportRunning = true;
     this.logger.log('Starting daily report fetch batch job');
 
     try {
@@ -654,8 +642,8 @@ export class SchedulerService implements OnModuleInit {
     } catch (error) {
       this.logger.error('Failed to execute daily report fetch:', error);
     } finally {
-      this.isReportRunning = false;
       batchJobLock.release('daily-report-fetch');
+      this.logger.log('Report fetch job lock released');
     }
   }
 

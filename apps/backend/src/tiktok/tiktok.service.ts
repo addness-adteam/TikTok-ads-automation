@@ -1524,18 +1524,21 @@ export class TiktokService {
           // デバッグ: パース後のメトリクスデータをログ出力
           this.logger.debug(`Parsed metric data: ${JSON.stringify(metricData)}`);
 
-          // 既存のメトリクスを削除（重複防止）
-          await this.prisma.metric.deleteMany({
-            where: {
-              entityType: 'AD',
-              adId: ad.id,
-              statDate: statDate,
-            },
-          });
+          // トランザクションで削除と作成を実行（データ消失防止）
+          await this.prisma.$transaction(async (tx) => {
+            // 既存のメトリクスを削除（重複防止）
+            await tx.metric.deleteMany({
+              where: {
+                entityType: 'AD',
+                adId: ad.id,
+                statDate: statDate,
+              },
+            });
 
-          // 新しいメトリクスを作成
-          await this.prisma.metric.create({
-            data: metricData,
+            // 新しいメトリクスを作成
+            await tx.metric.create({
+              data: metricData,
+            });
           });
           this.logger.debug(`Saved metric for ad ${adId}`);
 
@@ -1573,18 +1576,21 @@ export class TiktokService {
             cpa: parseFloat(metrics.cost_per_conversion || '0'),
           };
 
-          // 既存のメトリクスを削除（重複防止）
-          await this.prisma.metric.deleteMany({
-            where: {
-              entityType: 'ADGROUP',
-              adgroupId: adgroup.id,
-              statDate: statDate,
-            },
-          });
+          // トランザクションで削除と作成を実行（データ消失防止）
+          await this.prisma.$transaction(async (tx) => {
+            // 既存のメトリクスを削除（重複防止）
+            await tx.metric.deleteMany({
+              where: {
+                entityType: 'ADGROUP',
+                adgroupId: adgroup.id,
+                statDate: statDate,
+              },
+            });
 
-          // 新しいメトリクスを作成
-          await this.prisma.metric.create({
-            data: metricData,
+            // 新しいメトリクスを作成
+            await tx.metric.create({
+              data: metricData,
+            });
           });
 
         } else if (dataLevel === 'AUCTION_CAMPAIGN') {
@@ -1679,18 +1685,21 @@ export class TiktokService {
             }
           }
 
-          // 既存のメトリクスを削除（重複防止）
-          await this.prisma.metric.deleteMany({
-            where: {
-              entityType: 'CAMPAIGN',
-              campaignId: campaign.id,
-              statDate: statDate,
-            },
-          });
+          // トランザクションで削除と作成を実行（データ消失防止）
+          await this.prisma.$transaction(async (tx) => {
+            // 既存のメトリクスを削除（重複防止）
+            await tx.metric.deleteMany({
+              where: {
+                entityType: 'CAMPAIGN',
+                campaignId: campaign.id,
+                statDate: statDate,
+              },
+            });
 
-          // 新しいメトリクスを作成
-          await this.prisma.metric.create({
-            data: metricData,
+            // 新しいメトリクスを作成
+            await tx.metric.create({
+              data: metricData,
+            });
           });
         }
       }
@@ -2173,17 +2182,20 @@ export class TiktokService {
           videoWatched6s: aggregated.videoWatched6s,
         };
 
-        // 既存のメトリクスを削除してから新しいデータを挿入（上書き）
-        await this.prisma.metric.deleteMany({
-          where: {
-            entityType: 'AD',
-            adId: ad.id,
-            statDate: yesterday,
-          },
-        });
+        // トランザクションで削除と作成を実行（データ消失防止）
+        await this.prisma.$transaction(async (tx) => {
+          // 既存のメトリクスを削除してから新しいデータを挿入（上書き）
+          await tx.metric.deleteMany({
+            where: {
+              entityType: 'AD',
+              adId: ad.id,
+              statDate: yesterday,
+            },
+          });
 
-        await this.prisma.metric.create({
-          data: metricData,
+          await tx.metric.create({
+            data: metricData,
+          });
         });
 
         this.logger.debug(`Saved aggregated metrics for Smart+ ad ${smartPlusAdId} (${aggregated.creativeCount} creatives)`);
