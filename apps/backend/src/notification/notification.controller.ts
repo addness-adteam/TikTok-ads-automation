@@ -17,7 +17,7 @@ import {
   NotificationStatus,
 } from './notification.service';
 
-@Controller('notifications')
+@Controller('api/notifications')
 export class NotificationController {
   constructor(private readonly notificationService: NotificationService) {}
 

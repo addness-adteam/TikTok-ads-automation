@@ -1,7 +1,7 @@
 import { Controller, Get, Query, Param } from '@nestjs/common';
 import { AdPerformanceService } from './ad-performance.service';
 
-@Controller('ad-performances')
+@Controller('api/ad-performances')
 export class AdPerformanceController {
   constructor(private readonly adPerformanceService: AdPerformanceService) {}
 

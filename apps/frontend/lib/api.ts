@@ -149,19 +149,19 @@ export async function getNotifications(
   if (options?.limit) params.append('limit', String(options.limit));
   if (options?.offset) params.append('offset', String(options.offset));
 
-  const response = await apiClient.get(`/notifications?${params.toString()}`);
+  const response = await apiClient.get(`/api/notifications?${params.toString()}`);
   return response.data;
 }
 
 // 未読通知数取得
 export async function getUnreadCount(advertiserId: string): Promise<{ unreadCount: number }> {
-  const response = await apiClient.get(`/notifications/unread-count?advertiserId=${advertiserId}`);
+  const response = await apiClient.get(`/api/notifications/unread-count?advertiserId=${advertiserId}`);
   return response.data;
 }
 
 // 通知を既読にする
 export async function markNotificationAsRead(notificationId: string): Promise<void> {
-  await apiClient.patch(`/notifications/${notificationId}/read`);
+  await apiClient.patch(`/api/notifications/${notificationId}/read`);
 }
 
 // 一括既読
@@ -169,12 +169,12 @@ export async function markAllNotificationsAsRead(
   advertiserId: string,
   notificationIds?: string[]
 ): Promise<void> {
-  await apiClient.post('/notifications/mark-read', { advertiserId, notificationIds });
+  await apiClient.post('/api/notifications/mark-read', { advertiserId, notificationIds });
 }
 
 // 通知を削除（対応済み）
 export async function deleteNotification(notificationId: string): Promise<void> {
-  await apiClient.delete(`/notifications/${notificationId}`);
+  await apiClient.delete(`/api/notifications/${notificationId}`);
 }
 
 // ============================================================================
@@ -233,13 +233,13 @@ export async function getAdPerformances(
     params.append('hasDeviation', String(options.hasDeviation));
   }
 
-  const response = await apiClient.get(`/ad-performances?${params.toString()}`);
+  const response = await apiClient.get(`/api/ad-performances?${params.toString()}`);
   return response.data;
 }
 
 // 広告パフォーマンス詳細取得
 export async function getAdPerformanceDetail(adId: string): Promise<any> {
-  const response = await apiClient.get(`/ad-performances/${adId}`);
+  const response = await apiClient.get(`/api/ad-performances/${adId}`);
   return response.data;
 }
 
@@ -274,7 +274,7 @@ export async function getAdBudgetCaps(
     params.append('enabled', String(options.enabled));
   }
 
-  const response = await apiClient.get(`/ad-budget-caps?${params.toString()}`);
+  const response = await apiClient.get(`/api/ad-budget-caps?${params.toString()}`);
   return response.data;
 }
 
@@ -287,7 +287,7 @@ export async function createAdBudgetCap(data: {
   startDate?: string;
   endDate?: string;
 }): Promise<AdBudgetCap> {
-  const response = await apiClient.post('/ad-budget-caps', data);
+  const response = await apiClient.post('/api/ad-budget-caps', data);
   return response.data;
 }
 
@@ -301,11 +301,11 @@ export async function updateAdBudgetCap(
     endDate?: string | null;
   }
 ): Promise<AdBudgetCap> {
-  const response = await apiClient.patch(`/ad-budget-caps/${id}`, data);
+  const response = await apiClient.patch(`/api/ad-budget-caps/${id}`, data);
   return response.data;
 }
 
 // 上限日予算削除
 export async function deleteAdBudgetCap(id: string): Promise<void> {
-  await apiClient.delete(`/ad-budget-caps/${id}`);
+  await apiClient.delete(`/api/ad-budget-caps/${id}`);
 }

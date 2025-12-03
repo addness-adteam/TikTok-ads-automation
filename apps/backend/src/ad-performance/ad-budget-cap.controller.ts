@@ -12,7 +12,7 @@ import {
 } from '@nestjs/common';
 import { AdBudgetCapService } from './ad-budget-cap.service';
 
-@Controller('ad-budget-caps')
+@Controller('api/ad-budget-caps')
 export class AdBudgetCapController {
   constructor(private readonly adBudgetCapService: AdBudgetCapService) {}
 
