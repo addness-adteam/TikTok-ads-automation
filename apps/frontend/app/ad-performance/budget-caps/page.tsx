@@ -1,9 +1,8 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Loader2, AlertCircle, Plus, Edit2, Trash2, Check, X, DollarSign, Calendar, Power } from 'lucide-react';
+import { Loader2, AlertCircle, Plus, Edit2, Trash2, Check, X, DollarSign, Power } from 'lucide-react';
 import { AppLayout } from '@/components/layout/AppLayout';
-import { useAuth } from '@/lib/context/AuthContext';
 import {
   getAdBudgetCaps,
   createAdBudgetCap,
@@ -20,6 +19,14 @@ const getApiUrl = () => {
     : 'https://tik-tok-ads-automation-backend.vercel.app';
 };
 
+interface Advertiser {
+  id: string;
+  tiktokAdvertiserId: string;
+  name: string;
+  status: string;
+  appealId: string | null;
+}
+
 interface Ad {
   id: string;
   name: string;
@@ -27,10 +34,14 @@ interface Ad {
 }
 
 export default function BudgetCapsPage() {
-  const { advertiserId } = useAuth();
+  // アカウント選択関連
+  const [advertisers, setAdvertisers] = useState<Advertiser[]>([]);
+  const [selectedAdvertiserId, setSelectedAdvertiserId] = useState<string | null>(null);
+  const [isLoadingAdvertisers, setIsLoadingAdvertisers] = useState(true);
+
   const [budgetCaps, setBudgetCaps] = useState<AdBudgetCap[]>([]);
   const [ads, setAds] = useState<Ad[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
   const [isLoadingAds, setIsLoadingAds] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -58,15 +69,55 @@ export default function BudgetCapsPage() {
   const [deletingCapId, setDeletingCapId] = useState<string | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
 
+  // アカウント一覧を取得
+  useEffect(() => {
+    fetchAdvertisers();
+  }, []);
+
+  const fetchAdvertisers = async () => {
+    try {
+      setIsLoadingAdvertisers(true);
+      const response = await fetch(`${getApiUrl()}/api/advertisers`);
+      if (!response.ok) {
+        throw new Error('Failed to fetch advertisers');
+      }
+      const result = await response.json();
+
+      let advertisersData = [];
+      if (result.success && result.data) {
+        advertisersData = result.data;
+      } else if (Array.isArray(result)) {
+        advertisersData = result;
+      } else {
+        throw new Error(result.error || 'Failed to fetch advertisers');
+      }
+
+      // アクティブなアカウントのみフィルタ
+      const activeAdvertisers = advertisersData.filter(
+        (adv: Advertiser) => adv.status === 'ACTIVE'
+      );
+      setAdvertisers(activeAdvertisers);
+
+      // 最初のアカウントを自動選択
+      if (activeAdvertisers.length > 0 && !selectedAdvertiserId) {
+        setSelectedAdvertiserId(activeAdvertisers[0].tiktokAdvertiserId);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'アカウントの取得に失敗しました');
+    } finally {
+      setIsLoadingAdvertisers(false);
+    }
+  };
+
   // データ取得
   const fetchBudgetCaps = async () => {
-    if (!advertiserId) return;
+    if (!selectedAdvertiserId) return;
 
     setIsLoading(true);
     setError(null);
 
     try {
-      const data = await getAdBudgetCaps(advertiserId);
+      const data = await getAdBudgetCaps(selectedAdvertiserId);
       setBudgetCaps(data);
     } catch (err) {
       setError(err instanceof Error ? err.message : '予算上限の取得に失敗しました');
@@ -77,11 +128,11 @@ export default function BudgetCapsPage() {
 
   // 広告一覧取得
   const fetchAds = async () => {
-    if (!advertiserId) return;
+    if (!selectedAdvertiserId) return;
 
     setIsLoadingAds(true);
     try {
-      const response = await fetch(`${getApiUrl()}/api/advertisers/${advertiserId}/ads`);
+      const response = await fetch(`${getApiUrl()}/api/advertisers/${selectedAdvertiserId}/ads`);
       if (!response.ok) throw new Error('Failed to fetch ads');
       const result = await response.json();
       setAds(result.data || []);
@@ -93,12 +144,14 @@ export default function BudgetCapsPage() {
   };
 
   useEffect(() => {
-    fetchBudgetCaps();
-  }, [advertiserId]);
+    if (selectedAdvertiserId) {
+      fetchBudgetCaps();
+    }
+  }, [selectedAdvertiserId]);
 
   // 新規作成
   const handleCreate = async () => {
-    if (!advertiserId || !createForm.adId || createForm.maxDailyBudget <= 0) {
+    if (!selectedAdvertiserId || !createForm.adId || createForm.maxDailyBudget <= 0) {
       setError('広告と予算上限を入力してください');
       return;
     }
@@ -109,7 +162,7 @@ export default function BudgetCapsPage() {
     try {
       const newCap = await createAdBudgetCap({
         adId: createForm.adId,
-        advertiserId,
+        advertiserId: selectedAdvertiserId,
         maxDailyBudget: createForm.maxDailyBudget,
         startDate: createForm.startDate || undefined,
         endDate: createForm.endDate || undefined,
@@ -212,13 +265,14 @@ export default function BudgetCapsPage() {
     (ad) => !budgetCaps.some((cap) => cap.adId === ad.id)
   );
 
-  if (!advertiserId) {
+  // ローディング中
+  if (isLoadingAdvertisers) {
     return (
       <AppLayout>
         <div className="min-h-screen bg-gray-50 flex items-center justify-center">
           <div className="text-center">
-            <AlertCircle className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-            <p className="text-gray-600">広告アカウントを選択してください</p>
+            <Loader2 className="w-12 h-12 text-blue-600 animate-spin mx-auto mb-4" />
+            <p className="text-gray-600">アカウント情報を読み込み中...</p>
           </div>
         </div>
       </AppLayout>
@@ -240,7 +294,8 @@ export default function BudgetCapsPage() {
               </div>
               <button
                 onClick={openCreateModal}
-                className="flex items-center gap-2 px-4 py-2 bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition-colors"
+                disabled={!selectedAdvertiserId}
+                className="flex items-center gap-2 px-4 py-2 bg-gray-900 text-white rounded-lg hover:bg-gray-800 disabled:bg-gray-300 transition-colors"
               >
                 <Plus className="w-4 h-4" />
                 新規作成
@@ -250,6 +305,31 @@ export default function BudgetCapsPage() {
         </header>
 
         <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          {/* アカウント選択 */}
+          <div className="bg-white rounded-lg border border-gray-200 p-4 mb-6">
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              広告アカウント
+            </label>
+            {advertisers.length === 0 ? (
+              <div className="text-center py-4">
+                <AlertCircle className="w-8 h-8 text-gray-400 mx-auto mb-2" />
+                <p className="text-gray-600 text-sm">アクティブな広告アカウントがありません</p>
+              </div>
+            ) : (
+              <select
+                value={selectedAdvertiserId || ''}
+                onChange={(e) => setSelectedAdvertiserId(e.target.value)}
+                className="w-full md:w-auto min-w-[300px] px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              >
+                {advertisers.map((adv) => (
+                  <option key={adv.id} value={adv.tiktokAdvertiserId}>
+                    {adv.name} ({adv.tiktokAdvertiserId})
+                  </option>
+                ))}
+              </select>
+            )}
+          </div>
+
           {/* エラー表示 */}
           {error && (
             <div className="mb-6 bg-red-50 border border-red-200 rounded-lg p-4 flex items-start gap-3">
