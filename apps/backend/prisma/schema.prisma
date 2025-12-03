@@ -70,6 +70,9 @@ model Advertiser {
   creatives           Creative[]
   experiments         Experiment[]
   userAdvertisers     UserAdvertiser[]
+  adPerformances      AdPerformance[]
+  adBudgetCaps        AdBudgetCap[]
+  notifications       Notification[]
 
   @@map("advertisers")
 }
@@ -166,6 +169,8 @@ model Ad {
   adGroup         AdGroup     @relation(fields: [adgroupId], references: [id], onDelete: Cascade)
   creative        Creative    @relation(fields: [creativeId], references: [id], onDelete: Restrict)
   metrics         Metric[]
+  performance     AdPerformance?
+  budgetCap       AdBudgetCap?
 
   @@map("ads")
 }
@@ -415,4 +420,93 @@ model APILog {
   @@index([responseStatus], name: "apilog_status_idx")
   @@index([createdAt], name: "apilog_created_idx")
   @@map("api_logs")
+}
+
+// ============================================================================
+// 広告パフォーマンス最適化機能
+// ============================================================================
+
+// 広告パフォーマンス追跡
+model AdPerformance {
+  id                        String    @id @default(uuid())
+  adId                      String    @unique
+  advertiserId              String
+
+  // 累計メトリクス
+  totalSpend                Float     @default(0)      // 累計消化額
+  totalImpressions          Int       @default(0)      // 累計インプレッション（リーチとして使用）
+  totalClicks               Int       @default(0)      // 累計クリック数
+  totalConversions          Int       @default(0)      // 累計CV数（Google Sheets基準）
+  totalFrontSales           Int       @default(0)      // 累計フロント販売数
+
+  // 過去最高パフォーマンス（インプレッション10万達成後に記録開始）
+  bestCPA                   Float?                     // 過去最高CPA（低いほど良い）
+  bestCPADate               DateTime?                  // 過去最高CPA記録日
+  bestFrontCPO              Float?                     // 過去最高フロントCPO
+  bestFrontCPODate          DateTime?                  // 過去最高フロントCPO記録日
+  bestCTR                   Float?                     // 過去最高CTR
+  bestCTRDate               DateTime?                  // 過去最高CTR記録日
+
+  // 見直しトリガー用
+  spendAtLastReview         Float     @default(0)      // 前回見直し時点の累計消化額
+  lastReviewDate            DateTime?                  // 前回見直し日
+  reviewCount               Int       @default(0)      // 見直し回数
+
+  // インプレッション条件達成フラグ
+  impressionThresholdMet    Boolean   @default(false)  // 累計インプレッション10万達成フラグ
+  impressionThresholdMetAt  DateTime?                  // 達成日時
+
+  createdAt                 DateTime  @default(now())
+  updatedAt                 DateTime  @updatedAt
+
+  ad                        Ad        @relation(fields: [adId], references: [id], onDelete: Cascade)
+  advertiser                Advertiser @relation(fields: [advertiserId], references: [id], onDelete: Cascade)
+
+  @@index([advertiserId])
+  @@index([impressionThresholdMet])
+  @@map("ad_performances")
+}
+
+// 広告上限日予算設定
+model AdBudgetCap {
+  id                String    @id @default(uuid())
+  adId              String    @unique
+  advertiserId      String
+  maxDailyBudget    Float                          // 上限日予算（円）
+  enabled           Boolean   @default(true)       // 有効/無効
+  startDate         DateTime?                      // 適用開始日
+  endDate           DateTime?                      // 適用終了日
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  ad                Ad        @relation(fields: [adId], references: [id], onDelete: Cascade)
+  advertiser        Advertiser @relation(fields: [advertiserId], references: [id], onDelete: Cascade)
+
+  @@index([advertiserId])
+  @@index([enabled])
+  @@map("ad_budget_caps")
+}
+
+// 通知
+model Notification {
+  id                String    @id @default(uuid())
+  type              String                          // 通知タイプ: CPA_DEVIATION, AD_REVIEW, BUDGET_CAP_APPLIED, BUDGET_CAP_REACHED, PERFORMANCE_DEGRADATION
+  severity          String    @default("INFO")      // INFO, WARNING, CRITICAL
+  advertiserId      String
+  entityType        String?                         // AD, ADGROUP, CAMPAIGN
+  entityId          String?                         // 対象エンティティID
+  title             String                          // 通知タイトル
+  message           String    @db.Text              // 通知本文
+  metadata          Json?                           // 追加データ（パフォーマンス数値等）
+  status            String    @default("UNREAD")    // UNREAD, READ（対応済みは物理削除）
+  readAt            DateTime?                       // 既読日時
+  createdAt         DateTime  @default(now())
+
+  advertiser        Advertiser @relation(fields: [advertiserId], references: [id], onDelete: Cascade)
+
+  @@index([advertiserId, status])
+  @@index([type])
+  @@index([severity])
+  @@index([createdAt])
+  @@map("notifications")
 }

@@ -1,8 +1,9 @@
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit, Inject, forwardRef } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Cron } from '@nestjs/schedule';
 import { PrismaService } from '../prisma/prisma.service';
 import { TiktokService } from '../tiktok/tiktok.service';
+import { AdPerformanceService } from '../ad-performance/ad-performance.service';
 import {
   BatchExecutionTracker,
   logBatchExecutionResult,
@@ -21,6 +22,8 @@ export class SchedulerService implements OnModuleInit {
     private readonly prisma: PrismaService,
     private readonly tiktokService: TiktokService,
     private readonly configService: ConfigService,
+    @Inject(forwardRef(() => AdPerformanceService))
+    private readonly adPerformanceService: AdPerformanceService,
   ) {}
 
   async onModuleInit() {
@@ -457,6 +460,18 @@ export class SchedulerService implements OnModuleInit {
       this.logger.log(
         `Daily entity sync completed. Total: ${totalCampaigns} campaigns, ${totalAdgroups} adgroups, ${totalAds} ads. Errors: ${errorCount}`,
       );
+
+      // ===== 新機能: AdPerformance 初期化 =====
+      if (this.configService.get('FEATURE_AD_PERFORMANCE_ENABLED') === 'true') {
+        try {
+          this.logger.log('Starting AdPerformance initialization...');
+          await this.adPerformanceService.initializeAllNewAdPerformances();
+          this.logger.log('AdPerformance initialization completed');
+        } catch (error) {
+          // 新機能のエラーは既存処理に影響させない
+          this.logger.error('AdPerformance initialization failed:', error.message);
+        }
+      }
     } catch (error) {
       this.logger.error('Failed to execute daily entity sync:', error);
     } finally {
@@ -620,6 +635,21 @@ export class SchedulerService implements OnModuleInit {
         this.logger.warn(
           `[S-03] Partial sync failure: ${errorCount} out of ${successCount + errorCount} operations failed`,
         );
+      }
+
+      // ===== 新機能: 広告パフォーマンス分析 =====
+      if (this.configService.get('FEATURE_AD_PERFORMANCE_ENABLED') === 'true') {
+        try {
+          this.logger.log('Starting AdPerformance analysis...');
+          // 累計パフォーマンスを更新
+          await this.adPerformanceService.updateAllAdPerformances();
+          // CPA乖離と消化額トリガーをチェック
+          await this.adPerformanceService.checkAllDeviationsAndTriggers();
+          this.logger.log('AdPerformance analysis completed');
+        } catch (error) {
+          // 新機能のエラーは既存処理に影響させない
+          this.logger.error('AdPerformance analysis failed:', error.message);
+        }
       }
     } catch (error) {
       this.logger.error('Failed to execute daily report fetch:', error);

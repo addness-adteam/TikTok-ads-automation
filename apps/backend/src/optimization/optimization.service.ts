@@ -3,6 +3,9 @@ import { PrismaService } from '../prisma/prisma.service';
 import { TiktokService } from '../tiktok/tiktok.service';
 import { GoogleSheetsService } from '../google-sheets/google-sheets.service';
 import { AppealService } from '../appeal/appeal.service';
+import { AdBudgetCapService } from '../ad-performance/ad-budget-cap.service';
+import { NotificationService } from '../notification/notification.service';
+import { ConfigService } from '@nestjs/config';
 import {
   validateAppealSettings,
   validateAdNameFormat,
@@ -79,6 +82,9 @@ export class OptimizationService {
     private tiktokService: TiktokService,
     private googleSheetsService: GoogleSheetsService,
     private appealService: AppealService,
+    private adBudgetCapService: AdBudgetCapService,
+    private notificationService: NotificationService,
+    private configService: ConfigService,
   ) {}
 
   /**
@@ -853,6 +859,7 @@ export class OptimizationService {
 
   /**
    * 広告セットの予算を増額（O-06対応: リトライ機能付き）
+   * 上限日予算チェック機能付き
    */
   private async increaseBudget(
     adgroupId: string,
@@ -869,7 +876,28 @@ export class OptimizationService {
 
       const currentBudget = adgroup.budget;
       // 小数点以下を切り捨て（TikTok APIは整数のみ受け付けるため）
-      const newBudget = Math.floor(currentBudget * (1 + increaseRate));
+      let newBudget = Math.floor(currentBudget * (1 + increaseRate));
+
+      // ===== 上限日予算チェック（新機能） =====
+      const budgetCapEnabled = this.configService.get('FEATURE_AD_PERFORMANCE_ENABLED') === 'true';
+      if (budgetCapEnabled) {
+        const budgetCapResult = await this.applyBudgetCapCheck(
+          adgroupId,
+          adgroup.campaign_id,
+          advertiserId,
+          currentBudget,
+          newBudget,
+          adgroup.budget_mode === 'BUDGET_MODE_DAY', // 広告セット予算かどうか
+        );
+
+        if (budgetCapResult.skipped) {
+          return { success: true, adgroupId, action: 'SKIPPED_DUE_TO_CAP', reason: budgetCapResult.reason };
+        }
+
+        if (budgetCapResult.adjustedBudget !== null) {
+          newBudget = budgetCapResult.adjustedBudget;
+        }
+      }
 
       // 予算が広告セットに設定されている場合
       if (adgroup.budget_mode && adgroup.budget) {
@@ -901,7 +929,27 @@ export class OptimizationService {
 
         const currentCampaignBudget = campaign.budget;
         // 小数点以下を切り捨て（TikTok APIは整数のみ受け付けるため）
-        const newCampaignBudget = Math.floor(currentCampaignBudget * (1 + increaseRate));
+        let newCampaignBudget = Math.floor(currentCampaignBudget * (1 + increaseRate));
+
+        // キャンペーン予算の場合も上限チェック
+        if (budgetCapEnabled) {
+          const budgetCapResult = await this.applyBudgetCapCheck(
+            adgroupId,
+            adgroup.campaign_id,
+            advertiserId,
+            currentCampaignBudget,
+            newCampaignBudget,
+            false, // キャンペーン予算
+          );
+
+          if (budgetCapResult.skipped) {
+            return { success: true, campaignId: adgroup.campaign_id, action: 'SKIPPED_DUE_TO_CAP', reason: budgetCapResult.reason };
+          }
+
+          if (budgetCapResult.adjustedBudget !== null) {
+            newCampaignBudget = budgetCapResult.adjustedBudget;
+          }
+        }
 
         const response = await this.tiktokService.updateCampaign(advertiserId, accessToken, adgroup.campaign_id, {
           budget: newCampaignBudget,
@@ -930,6 +978,85 @@ export class OptimizationService {
       const errorInfo = classifyOptimizationError(error, { entityId: adgroupId });
       logOptimizationError(this.logger, errorInfo, 'increaseBudget');
       throw new Error(`予算増額に失敗: ${error.message}`);
+    }
+  }
+
+  /**
+   * 上限日予算チェックを適用
+   * @returns skipped: true の場合は増額をスキップ、adjustedBudget: 調整後の予算（上限適用時）
+   */
+  private async applyBudgetCapCheck(
+    adgroupId: string,
+    campaignId: string,
+    advertiserId: string,
+    currentBudget: number,
+    proposedNewBudget: number,
+    isAdGroupBudget: boolean,
+  ): Promise<{
+    skipped: boolean;
+    adjustedBudget: number | null;
+    reason?: string;
+  }> {
+    try {
+      // 広告セット/キャンペーン内の有効な上限日予算を取得
+      const budgetCapInfo = isAdGroupBudget
+        ? await this.adBudgetCapService.getEffectiveBudgetCapForAdGroup(adgroupId)
+        : await this.adBudgetCapService.getEffectiveBudgetCapForCampaign(campaignId);
+
+      // 上限設定がない場合は通常処理
+      if (budgetCapInfo.maxBudget === null || budgetCapInfo.limitingAd === null) {
+        return { skipped: false, adjustedBudget: null };
+      }
+
+      const { maxBudget, limitingAd } = budgetCapInfo;
+
+      // 現在の予算が既に上限以上の場合は増額スキップ
+      if (currentBudget >= maxBudget) {
+        this.logger.log(
+          `Budget cap reached: current budget (${currentBudget}) >= max budget (${maxBudget}). Skipping increase.`,
+        );
+
+        // 通知を作成
+        await this.notificationService.createBudgetCapReachedNotification(
+          advertiserId,
+          adgroupId,
+          limitingAd.adName,
+          currentBudget,
+          maxBudget,
+        );
+
+        return {
+          skipped: true,
+          adjustedBudget: null,
+          reason: `上限日予算（¥${maxBudget.toLocaleString()}）に到達済み`,
+        };
+      }
+
+      // 増額後の予算が上限を超える場合は上限に調整
+      if (proposedNewBudget > maxBudget) {
+        this.logger.log(
+          `Budget cap applied: proposed budget (${proposedNewBudget}) > max budget (${maxBudget}). Adjusting to ${maxBudget}.`,
+        );
+
+        // 通知を作成
+        await this.notificationService.createBudgetCapAppliedNotification(
+          advertiserId,
+          adgroupId,
+          limitingAd.adName,
+          limitingAd.maxDailyBudget,
+          proposedNewBudget,
+          maxBudget,
+        );
+
+        return { skipped: false, adjustedBudget: maxBudget };
+      }
+
+      // 上限内なのでそのまま
+      return { skipped: false, adjustedBudget: null };
+    } catch (error) {
+      this.logger.error(`Failed to check budget cap: ${error.message}`, error);
+      // エラーが発生しても既存処理を止めない
+      return { skipped: false, adjustedBudget: null };
     }
   }
 
