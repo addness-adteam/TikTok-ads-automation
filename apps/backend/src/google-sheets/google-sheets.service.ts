@@ -27,8 +27,8 @@ interface SheetCacheEntry {
  * date: 登録日時列
  */
 const EXPECTED_COLUMNS = {
-  registrationPath: ['登録経路', '流入経路', 'registration_path', 'path'],
-  date: ['登録日時', '登録日', 'date', 'created_at', 'timestamp'],
+  registrationPath: ['登録経路', '流入経路', 'registration_path', 'path', 'ファネル登録経路'],
+  date: ['登録日時', '登録日', 'date', 'created_at', 'timestamp', 'アクション実行日時', '実行日時'],
 };
 
 @Injectable()
