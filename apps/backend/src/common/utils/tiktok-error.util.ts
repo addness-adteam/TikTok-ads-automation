@@ -219,3 +219,150 @@ export function isTikTokErrorRetryable(error: any): boolean {
   const errorInfo = classifyTikTokError(error);
   return errorInfo.isRetryable;
 }
+
+/**
+ * M-05: TikTok APIレスポンス構造を検証し、安全にデータを取得
+ * 不正なレスポンスでundefinedエラーを防止
+ */
+export interface TikTokApiResponse<T = any> {
+  code: number;
+  message: string;
+  data?: {
+    list?: T[];
+    page_info?: {
+      total_number?: number;
+      total_page?: number;
+      page?: number;
+      page_size?: number;
+    };
+  };
+  request_id?: string;
+}
+
+/**
+ * TikTok APIレスポンスを検証
+ * @param response Axiosレスポンス
+ * @param context ログ用コンテキスト
+ * @returns 検証結果とデータ
+ */
+export function validateTikTokResponse<T = any>(
+  response: any,
+  context?: string,
+): {
+  isValid: boolean;
+  list: T[];
+  pageInfo: { totalNumber: number; totalPage: number; page: number; pageSize: number };
+  code: number;
+  message: string;
+  warning?: string;
+} {
+  const prefix = context ? `[${context}] ` : '';
+
+  // レスポンス自体の存在確認
+  if (!response) {
+    return {
+      isValid: false,
+      list: [],
+      pageInfo: { totalNumber: 0, totalPage: 0, page: 0, pageSize: 0 },
+      code: -1,
+      message: 'No response received',
+      warning: `${prefix}[M-05] レスポンスが空です`,
+    };
+  }
+
+  // response.dataの存在確認
+  if (!response.data) {
+    return {
+      isValid: false,
+      list: [],
+      pageInfo: { totalNumber: 0, totalPage: 0, page: 0, pageSize: 0 },
+      code: -1,
+      message: 'No data in response',
+      warning: `${prefix}[M-05] response.dataが存在しません`,
+    };
+  }
+
+  const apiResponse = response.data as TikTokApiResponse<T>;
+
+  // TikTok APIのcodeを確認（0が成功）
+  if (apiResponse.code !== 0) {
+    return {
+      isValid: false,
+      list: [],
+      pageInfo: { totalNumber: 0, totalPage: 0, page: 0, pageSize: 0 },
+      code: apiResponse.code,
+      message: apiResponse.message || 'Unknown API error',
+      warning: `${prefix}[M-05] API応答コードがエラー: ${apiResponse.code} - ${apiResponse.message}`,
+    };
+  }
+
+  // data.dataの存在確認
+  if (!apiResponse.data) {
+    return {
+      isValid: true, // code=0だがdataがない場合は空リストとして扱う
+      list: [],
+      pageInfo: { totalNumber: 0, totalPage: 0, page: 0, pageSize: 0 },
+      code: 0,
+      message: 'Success but no data',
+      warning: `${prefix}[M-05] response.data.dataが存在しません（空データとして処理）`,
+    };
+  }
+
+  // listの取得（存在しない場合は空配列）
+  const list = Array.isArray(apiResponse.data.list) ? apiResponse.data.list : [];
+
+  // pageInfoの取得（存在しない場合はデフォルト値）
+  const pageInfo = {
+    totalNumber: apiResponse.data.page_info?.total_number ?? 0,
+    totalPage: apiResponse.data.page_info?.total_page ?? 0,
+    page: apiResponse.data.page_info?.page ?? 0,
+    pageSize: apiResponse.data.page_info?.page_size ?? 0,
+  };
+
+  return {
+    isValid: true,
+    list,
+    pageInfo,
+    code: 0,
+    message: apiResponse.message || 'Success',
+  };
+}
+
+/**
+ * TikTok APIのlist型レスポンスから安全にリストを取得
+ * @param response Axiosレスポンス
+ * @param defaultValue デフォルト値（空配列）
+ * @returns リストデータ
+ */
+export function safeGetList<T = any>(response: any, defaultValue: T[] = []): T[] {
+  try {
+    const list = response?.data?.data?.list;
+    return Array.isArray(list) ? list : defaultValue;
+  } catch {
+    return defaultValue;
+  }
+}
+
+/**
+ * TikTok APIのページ情報を安全に取得
+ * @param response Axiosレスポンス
+ * @returns ページ情報
+ */
+export function safeGetPageInfo(response: any): {
+  totalNumber: number;
+  totalPage: number;
+  page: number;
+  pageSize: number;
+} {
+  try {
+    const pageInfo = response?.data?.data?.page_info;
+    return {
+      totalNumber: pageInfo?.total_number ?? 0,
+      totalPage: pageInfo?.total_page ?? 0,
+      page: pageInfo?.page ?? 0,
+      pageSize: pageInfo?.page_size ?? 0,
+    };
+  } catch {
+    return { totalNumber: 0, totalPage: 0, page: 0, pageSize: 0 };
+  }
+}

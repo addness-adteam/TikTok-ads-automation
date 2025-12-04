@@ -226,3 +226,86 @@ export function validateAdNameFormat(adName: string): {
     },
   };
 }
+
+/**
+ * M-06: 日付範囲バリデーション
+ * startDate < endDate を検証
+ * @param startDate 開始日
+ * @param endDate 終了日
+ * @param context ログ用コンテキスト
+ * @returns 検証結果
+ */
+export function validateDateRange(
+  startDate: Date,
+  endDate: Date,
+  context?: string,
+): {
+  isValid: boolean;
+  warning?: OptimizationErrorInfo;
+  correctedStartDate?: Date;
+  correctedEndDate?: Date;
+} {
+  const prefix = context ? `[${context}] ` : '';
+
+  // 日付オブジェクトの検証
+  if (!(startDate instanceof Date) || isNaN(startDate.getTime())) {
+    return {
+      isValid: false,
+      warning: {
+        type: OptimizationErrorType.UNKNOWN,
+        message: `${prefix}[M-06] 開始日が不正な日付です`,
+        isRetryable: false,
+        details: { startDate },
+      },
+    };
+  }
+
+  if (!(endDate instanceof Date) || isNaN(endDate.getTime())) {
+    return {
+      isValid: false,
+      warning: {
+        type: OptimizationErrorType.UNKNOWN,
+        message: `${prefix}[M-06] 終了日が不正な日付です`,
+        isRetryable: false,
+        details: { endDate },
+      },
+    };
+  }
+
+  // 開始日 > 終了日 の場合は自動補正
+  if (startDate > endDate) {
+    return {
+      isValid: false,
+      warning: {
+        type: OptimizationErrorType.UNKNOWN,
+        message: `${prefix}[M-06] 日付範囲が不正です（開始日 > 終了日）。自動補正しました。`,
+        isRetryable: false,
+        details: {
+          originalStartDate: startDate.toISOString(),
+          originalEndDate: endDate.toISOString(),
+        },
+      },
+      // 日付を入れ替えて補正
+      correctedStartDate: endDate,
+      correctedEndDate: startDate,
+    };
+  }
+
+  // 期間が極端に長い場合の警告（90日以上）
+  const daysDiff = Math.floor((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
+  if (daysDiff > 90) {
+    return {
+      isValid: true, // 処理は継続するが警告
+      warning: {
+        type: OptimizationErrorType.UNKNOWN,
+        message: `${prefix}[M-06] 日付範囲が${daysDiff}日と長期間です。パフォーマンスに影響する可能性があります。`,
+        isRetryable: false,
+        details: { daysDiff },
+      },
+    };
+  }
+
+  return {
+    isValid: true,
+  };
+}

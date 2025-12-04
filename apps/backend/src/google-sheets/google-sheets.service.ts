@@ -38,6 +38,7 @@ export class GoogleSheetsService {
   private readonly auth;
   private readonly sheetCache: Map<string, SheetCacheEntry> = new Map();
   private readonly CACHE_TTL_MS = 5 * 60 * 1000; // 5分間キャッシュ
+  private readonly MAX_CACHE_SIZE = 50; // M-03: キャッシュエントリ上限
 
   constructor(private configService: ConfigService) {
     // サービスアカウント認証
@@ -104,6 +105,9 @@ export class GoogleSheetsService {
       );
 
       const data = response.data?.values || [];
+
+      // M-03: キャッシュサイズ上限チェック
+      this.enforceMaxCacheSize();
 
       // キャッシュに保存
       this.sheetCache.set(cacheKey, {
@@ -203,6 +207,30 @@ export class GoogleSheetsService {
   clearCache(): void {
     this.sheetCache.clear();
     this.logger.log('Sheet cache cleared');
+  }
+
+  /**
+   * M-03: キャッシュサイズ上限を強制
+   * 最大サイズを超えた場合、最も古いエントリを削除
+   */
+  private enforceMaxCacheSize(): void {
+    if (this.sheetCache.size >= this.MAX_CACHE_SIZE) {
+      // 最も古いエントリを見つけて削除
+      let oldestKey: string | null = null;
+      let oldestTimestamp = Infinity;
+
+      for (const [key, entry] of this.sheetCache.entries()) {
+        if (entry.timestamp < oldestTimestamp) {
+          oldestTimestamp = entry.timestamp;
+          oldestKey = key;
+        }
+      }
+
+      if (oldestKey) {
+        this.sheetCache.delete(oldestKey);
+        this.logger.log(`[M-03] キャッシュ上限到達: 最古のエントリを削除 (${oldestKey})`);
+      }
+    }
   }
 
   /**

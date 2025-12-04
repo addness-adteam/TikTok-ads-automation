@@ -594,7 +594,8 @@ export class TiktokService {
     try {
       this.logger.log(`Fetching adgroup: ${adgroupId}`);
 
-      const response = await this.httpClient.get('/v1.3/adgroup/get/', {
+      // M-01: リトライ対応に変更
+      const response = await this.httpGetWithRetry('/v1.3/adgroup/get/', {
         headers: {
           'Access-Token': accessToken,
         },
@@ -604,7 +605,7 @@ export class TiktokService {
             adgroup_ids: [adgroupId],
           }),
         },
-      });
+      }, `getAdGroup(${adgroupId})`);
 
       const adgroups = response.data.data?.list || [];
       if (adgroups.length === 0) {
@@ -2244,7 +2245,8 @@ export class TiktokService {
         budget: budgetUpdates,
       };
 
-      const response = await this.httpClient.post(
+      // M-01: リトライ対応に変更
+      const response = await this.httpPostWithRetry(
         '/v1.3/smart_plus/adgroup/budget/update/',
         requestBody,
         {
@@ -2253,6 +2255,7 @@ export class TiktokService {
             'Content-Type': 'application/json',
           },
         },
+        'updateSmartPlusAdGroupBudgets',
       );
 
       this.logger.log(`Smart+ adgroup budget update response: ${JSON.stringify(response.data)}`);
