@@ -6,6 +6,10 @@ import axios from 'axios';
 import FormData from 'form-data';
 import * as crypto from 'crypto';
 
+// ファイルサイズ制限（TikTok API制限に基づく）
+const MAX_VIDEO_SIZE = 500 * 1024 * 1024; // 500MB
+const MAX_IMAGE_SIZE = 20 * 1024 * 1024;  // 20MB
+
 @Injectable()
 export class CreativeService {
   private readonly logger = new Logger(CreativeService.name);
@@ -47,6 +51,22 @@ export class CreativeService {
 
       if (!isVideo && !isImage) {
         throw new BadRequestException('Only video and image files are supported');
+      }
+
+      // C-04: ファイルサイズチェック
+      if (isVideo && file.size > MAX_VIDEO_SIZE) {
+        const sizeMB = (file.size / (1024 * 1024)).toFixed(1);
+        const maxMB = (MAX_VIDEO_SIZE / (1024 * 1024)).toFixed(0);
+        throw new BadRequestException(
+          `動画ファイルサイズが大きすぎます（${sizeMB}MB）。最大${maxMB}MBまでアップロード可能です。`
+        );
+      }
+      if (isImage && file.size > MAX_IMAGE_SIZE) {
+        const sizeMB = (file.size / (1024 * 1024)).toFixed(1);
+        const maxMB = (MAX_IMAGE_SIZE / (1024 * 1024)).toFixed(0);
+        throw new BadRequestException(
+          `画像ファイルサイズが大きすぎます（${sizeMB}MB）。最大${maxMB}MBまでアップロード可能です。`
+        );
       }
 
       // Vercel Blob Storageにアップロード
@@ -400,6 +420,22 @@ export class CreativeService {
 
       if (!isVideo && !isImage) {
         throw new BadRequestException('Only video and image files are supported');
+      }
+
+      // C-04: ファイルサイズチェック
+      if (isVideo && fileBuffer.length > MAX_VIDEO_SIZE) {
+        const sizeMB = (fileBuffer.length / (1024 * 1024)).toFixed(1);
+        const maxMB = (MAX_VIDEO_SIZE / (1024 * 1024)).toFixed(0);
+        throw new BadRequestException(
+          `動画ファイルサイズが大きすぎます（${sizeMB}MB）。最大${maxMB}MBまでアップロード可能です。`
+        );
+      }
+      if (isImage && fileBuffer.length > MAX_IMAGE_SIZE) {
+        const sizeMB = (fileBuffer.length / (1024 * 1024)).toFixed(1);
+        const maxMB = (MAX_IMAGE_SIZE / (1024 * 1024)).toFixed(0);
+        throw new BadRequestException(
+          `画像ファイルサイズが大きすぎます（${sizeMB}MB）。最大${maxMB}MBまでアップロード可能です。`
+        );
       }
 
       // TikTok APIにアップロード
