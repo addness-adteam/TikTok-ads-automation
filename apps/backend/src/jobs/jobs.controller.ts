@@ -529,6 +529,24 @@ export class JobsController {
           );
           let adsSynced = 0;
 
+          // Smart+ 広告の手動設定名を取得するためのマップを作成
+          // ad/get APIが返すsmart_plus_ad_idをキーに、正しい広告名を取得
+          const smartPlusAdNameMap = new Map<string, string>();
+          try {
+            const smartPlusAdsForNames = await this.tiktokService.getAllSmartPlusAds(
+              token.advertiserId,
+              token.accessToken,
+            );
+            for (const spAd of smartPlusAdsForNames) {
+              if (spAd.smart_plus_ad_id && spAd.ad_name) {
+                smartPlusAdNameMap.set(String(spAd.smart_plus_ad_id), spAd.ad_name);
+              }
+            }
+            this.logger.log(`Built Smart+ ad name map with ${smartPlusAdNameMap.size} entries`);
+          } catch (error) {
+            this.logger.warn(`Failed to fetch Smart+ ads for name mapping: ${error.message}`);
+          }
+
           for (const ad of ads) {
             // まずAdGroupが存在するか確認
             const adgroup = await this.prisma.adGroup.findUnique({
@@ -591,12 +609,24 @@ export class JobsController {
               continue;
             }
 
+            // Smart+ 広告の場合: smart_plus_ad_idをtiktokIdとして使用し、手動設定名を使用
+            // これにより、予算最適化で正しい広告名（日付/制作者/CR名/LP名）が使われる
+            const isSmartPlusAd = !!ad.smart_plus_ad_id;
+            const tiktokIdToUse = isSmartPlusAd ? String(ad.smart_plus_ad_id) : String(ad.ad_id);
+            const adNameToUse = isSmartPlusAd
+              ? (smartPlusAdNameMap.get(String(ad.smart_plus_ad_id)) || ad.ad_name)
+              : ad.ad_name;
+
+            if (isSmartPlusAd) {
+              this.logger.debug(`Smart+ ad detected: ad_id=${ad.ad_id}, smart_plus_ad_id=${ad.smart_plus_ad_id}, name=${adNameToUse}`);
+            }
+
             await this.prisma.ad.upsert({
-              where: { tiktokId: String(ad.ad_id) },
+              where: { tiktokId: tiktokIdToUse },
               create: {
-                tiktokId: String(ad.ad_id),
+                tiktokId: tiktokIdToUse,
                 adgroupId: adgroup.id,
-                name: ad.ad_name,
+                name: adNameToUse,
                 creativeId,
                 adText: ad.ad_text,
                 callToAction: ad.call_to_action,
@@ -606,7 +636,7 @@ export class JobsController {
                 reviewStatus: ad.app_download_status || 'APPROVED',
               },
               update: {
-                name: ad.ad_name,
+                name: adNameToUse,
                 adText: ad.ad_text,
                 callToAction: ad.call_to_action,
                 landingPageUrl: ad.landing_page_url,
