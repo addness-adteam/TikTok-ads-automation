@@ -76,7 +76,34 @@ jobs:
 
             if [ "$http_code" -eq 200 ]; then
               echo "✅ Success for ${{ matrix.advertiser_id }}"
-              echo "$body" | jq .
+              echo ""
+
+              # サマリー情報を出力
+              echo "=== 📊 実行サマリー ==="
+              echo "$body" | jq -r '.data | "総広告数: \(.totalAds // 0) | 評価済み: \(.evaluated // 0) | 判定数: \(.decisions // 0) | 実行数: \(.executed // 0)"'
+              echo ""
+
+              # 各広告の判定結果を表形式で出力
+              echo "=== 📋 広告別判定結果 ==="
+              echo "$body" | jq -r '.data.detailedLogs[]? | "[\(.action // "N/A")] \(.adName // .adId) - \(.reason // "理由なし")"'
+              echo ""
+
+              # Smart+キャンペーンの結果
+              smart_plus_count=$(echo "$body" | jq -r '.data.smartPlusCampaigns.total // 0')
+              if [ "$smart_plus_count" -gt 0 ]; then
+                echo "=== 🚀 Smart+キャンペーン結果 ==="
+                echo "$body" | jq -r '.data.smartPlusCampaigns.results[]? | "[\(.action // "N/A")] Campaign: \(.campaignId // .adgroupId) - 予算: \(.oldBudget // "?") → \(.newBudget // "?")"'
+                echo ""
+              fi
+
+              # エラーがあれば出力
+              has_errors=$(echo "$body" | jq -r '.data.results[]? | select(.success == false) | .adgroupId' | head -1)
+              if [ -n "$has_errors" ]; then
+                echo "=== ⚠️ エラー詳細 ==="
+                echo "$body" | jq -r '.data.results[]? | select(.success == false) | "AdGroup: \(.adgroupId) - \(.error // "不明なエラー")"'
+                echo ""
+              fi
+
               success=true
               break
             elif [ "$http_code" -eq 429 ]; then
