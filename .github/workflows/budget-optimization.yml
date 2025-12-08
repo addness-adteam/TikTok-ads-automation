@@ -1,0 +1,114 @@
+name: Daily Budget Optimization
+
+on:
+  schedule:
+    # 毎日3時（日本時間）= 18時（UTC前日）
+    - cron: '0 18 * * *'
+  workflow_dispatch:
+    inputs:
+      advertiser_ids:
+        description: '特定のAdvertiser IDsをカンマ区切りで指定（空欄で全アカウント）'
+        required: false
+        type: string
+
+env:
+  API_BASE_URL: https://tik-tok-ads-automation-backend.vercel.app
+  WAIT_BETWEEN_ACCOUNTS_SEC: 60
+
+jobs:
+  # Step 1: アクティブなAdvertiser IDを取得
+  get-advertisers:
+    runs-on: ubuntu-latest
+    outputs:
+      advertiser_ids: ${{ steps.get_ids.outputs.ids }}
+    steps:
+      - name: Get Active Advertiser IDs
+        id: get_ids
+        run: |
+          if [ -n "${{ github.event.inputs.advertiser_ids }}" ]; then
+            # 手動実行時は指定されたIDを使用
+            ids=$(echo "${{ github.event.inputs.advertiser_ids }}" | jq -R -c 'split(",")')
+            echo "Using manually specified advertiser IDs: $ids"
+          else
+            # 自動実行時はAPIから取得
+            echo "Fetching active advertiser IDs..."
+            response=$(curl -s "${{ env.API_BASE_URL }}/jobs/diagnostics")
+            ids=$(echo "$response" | jq -c '[.oauthTokens.tokens[].advertiserId]')
+            echo "Found advertiser IDs: $ids"
+          fi
+
+          echo "ids=$ids" >> $GITHUB_OUTPUT
+
+  # Step 2: 各アカウントの予算最適化を順次実行
+  optimize-budgets:
+    runs-on: ubuntu-latest
+    needs: get-advertisers
+    strategy:
+      fail-fast: false
+      max-parallel: 1  # 重要: 順次実行でレート制限を回避
+      matrix:
+        advertiser_id: ${{ fromJson(needs.get-advertisers.outputs.advertiser_ids) }}
+    steps:
+      - name: Wait before processing
+        run: |
+          echo "Waiting ${{ env.WAIT_BETWEEN_ACCOUNTS_SEC }} seconds before processing..."
+          sleep ${{ env.WAIT_BETWEEN_ACCOUNTS_SEC }}
+
+      - name: Optimize Budget for ${{ matrix.advertiser_id }}
+        id: optimize
+        run: |
+          echo "Starting budget optimization for: ${{ matrix.advertiser_id }}"
+
+          # 最大3回リトライ
+          max_retries=3
+          retry_count=0
+          success=false
+
+          while [ $retry_count -lt $max_retries ]; do
+            response=$(curl -s -w "\n%{http_code}" --max-time 600 -X POST \
+              "${{ env.API_BASE_URL }}/api/optimization/execute/${{ matrix.advertiser_id }}" \
+              -H "Content-Type: application/json")
+
+            http_code=$(echo "$response" | tail -n1)
+            body=$(echo "$response" | sed '$d')
+
+            echo "HTTP Status: $http_code"
+
+            if [ "$http_code" -eq 200 ]; then
+              echo "✅ Success for ${{ matrix.advertiser_id }}"
+              echo "$body" | jq .
+              success=true
+              break
+            elif [ "$http_code" -eq 429 ]; then
+              # レート制限: 指数バックオフでリトライ
+              retry_count=$((retry_count + 1))
+              wait_time=$((60 * retry_count))
+              echo "⚠️ Rate limited. Waiting ${wait_time}s before retry $retry_count/$max_retries..."
+              sleep $wait_time
+            else
+              echo "❌ Error for ${{ matrix.advertiser_id }}: $http_code"
+              echo "$body"
+              break
+            fi
+          done
+
+          if [ "$success" = true ]; then
+            echo "result=success" >> $GITHUB_OUTPUT
+          else
+            echo "result=failed" >> $GITHUB_OUTPUT
+          fi
+
+  # Step 3: 結果サマリー
+  summary:
+    runs-on: ubuntu-latest
+    needs: [get-advertisers, optimize-budgets]
+    if: always()
+    steps:
+      - name: Generate Summary
+        run: |
+          echo "## Budget Optimization Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Execution Time**: $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_STEP_SUMMARY
+          echo "- **Accounts Processed**: ${{ needs.get-advertisers.outputs.advertiser_ids }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "See job logs for detailed results." >> $GITHUB_STEP_SUMMARY
