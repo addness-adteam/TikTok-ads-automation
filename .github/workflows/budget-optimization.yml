@@ -74,7 +74,7 @@ jobs:
 
             echo "HTTP Status: $http_code"
 
-            if [ "$http_code" -eq 200 ]; then
+            if [ "$http_code" -eq 200 ] || [ "$http_code" -eq 201 ]; then
               echo "✅ Success for ${{ matrix.advertiser_id }}"
               echo ""
 
