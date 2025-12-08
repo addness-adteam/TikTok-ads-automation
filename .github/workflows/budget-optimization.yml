@@ -83,9 +83,20 @@ jobs:
               echo "$body" | jq -r '.data | "総広告数: \(.totalAds // 0) | 評価済み: \(.evaluated // 0) | 判定数: \(.decisions // 0) | 実行数: \(.executed // 0)"'
               echo ""
 
-              # 各広告の判定結果を表形式で出力
-              echo "=== 📋 広告別判定結果 ==="
-              echo "$body" | jq -r '.data.detailedLogs[]? | "[\(.action // "N/A")] \(.adName // .adId) - \(.reason // "理由なし")"'
+              # 目標値を出力
+              echo "=== 🎯 目標値 ==="
+              echo "$body" | jq -r '.data.detailedLogs[0]?.targets | "目標CPA: \(.targetCPA // "未設定")円 | 許容CPA: \(.allowableCPA // "未設定")円 | 目標フロントCPO: \(.targetFrontCPO // "未設定")円 | 許容フロントCPO: \(.allowableFrontCPO // "未設定")円"'
+              echo ""
+
+              # 各広告の詳細判定結果を出力
+              echo "=== 📋 広告別判定結果（詳細） ==="
+              echo "────────────────────────────────────────────────────────────────"
+              echo "$body" | jq -r '.data.detailedLogs[]? |
+                "広告名: \(.adName // .adId)\n" +
+                "  📈 指標: 広告費=\(.metrics.spend // 0)円 | CV数=\(.metrics.cvCount // 0) | フロント販売=\(.metrics.frontSalesCount // 0)本\n" +
+                "  💰 実績: CPA=\(.metrics.cpa // "N/A")円 | フロントCPO=\(.metrics.frontCpo // "N/A")円\n" +
+                "  🎬 判定: [\(.action // "N/A")] \(.reason // "理由なし")\n" +
+                "────────────────────────────────────────────────────────────────"'
               echo ""
 
               # Smart+キャンペーンの結果
