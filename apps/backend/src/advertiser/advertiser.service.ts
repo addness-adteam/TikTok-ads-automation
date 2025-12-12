@@ -44,6 +44,59 @@ export class AdvertiserService {
   }
 
   /**
+   * 広告アカウントに紐づく広告一覧を取得
+   * tiktokAdvertiserId から Campaign → AdGroup → Ad のリレーションを辿る
+   */
+  async findAdsByAdvertiserId(tiktokAdvertiserId: string) {
+    this.logger.log(`Finding ads for advertiser: ${tiktokAdvertiserId}`);
+
+    // tiktokAdvertiserIdでAdvertiserを検索
+    const advertiser = await this.prisma.advertiser.findUnique({
+      where: { tiktokAdvertiserId },
+    });
+
+    if (!advertiser) {
+      throw new NotFoundException(
+        `Advertiser with TikTok ID ${tiktokAdvertiserId} not found`,
+      );
+    }
+
+    // Campaign → AdGroup → Ad のリレーションを辿って広告を取得
+    const ads = await this.prisma.ad.findMany({
+      where: {
+        adGroup: {
+          campaign: {
+            advertiserId: advertiser.id,
+          },
+        },
+      },
+      select: {
+        id: true,
+        tiktokId: true,
+        name: true,
+        status: true,
+        adGroup: {
+          select: {
+            id: true,
+            name: true,
+            campaign: {
+              select: {
+                id: true,
+                name: true,
+              },
+            },
+          },
+        },
+      },
+      orderBy: {
+        name: 'asc',
+      },
+    });
+
+    return ads;
+  }
+
+  /**
    * Advertiserに訴求を紐付け
    */
   async assignAppeal(advertiserId: string, appealId: string | null) {

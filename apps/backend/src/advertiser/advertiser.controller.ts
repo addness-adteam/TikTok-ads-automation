@@ -40,6 +40,32 @@ export class AdvertiserController {
   }
 
   /**
+   * Advertiserに紐づく広告一覧取得
+   * GET /api/advertisers/:advertiserId/ads
+   */
+  @Get(':advertiserId/ads')
+  async findAds(@Param('advertiserId') advertiserId: string) {
+    this.logger.log(`Getting ads for advertiser: ${advertiserId}`);
+
+    try {
+      const ads = await this.advertiserService.findAdsByAdvertiserId(advertiserId);
+      return {
+        success: true,
+        data: ads,
+      };
+    } catch (error) {
+      this.logger.error('Failed to get ads for advertiser');
+      this.logger.error(`Error message: ${error.message}`);
+      this.logger.error(`Error stack: ${error.stack}`);
+      return {
+        success: false,
+        error: error.message || 'Failed to fetch ads',
+        data: [],
+      };
+    }
+  }
+
+  /**
    * Advertiser取得
    * GET /api/advertisers/:id
    */
