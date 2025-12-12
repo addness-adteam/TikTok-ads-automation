@@ -73,9 +73,13 @@ interface OptimizationResult {
   };
 }
 
+// 最適化モード
+type OptimizationMode = 'ROAS_MAXIMIZE' | 'ACQUISITION_MAXIMIZE' | null;
+
 export default function OptimizationPage() {
   const [advertisers, setAdvertisers] = useState<Advertiser[]>([]);
   const [selectedAdvertiserIds, setSelectedAdvertiserIds] = useState<string[]>([]);
+  const [selectedMode, setSelectedMode] = useState<OptimizationMode>(null);
   const [isLoadingAdvertisers, setIsLoadingAdvertisers] = useState(true);
   const [isExecuting, setIsExecuting] = useState(false);
   const [executionResults, setExecutionResults] = useState<OptimizationResult | null>(null);
@@ -145,6 +149,11 @@ export default function OptimizationPage() {
       return;
     }
 
+    if (!selectedMode) {
+      setError('最適化モードを選択してください');
+      return;
+    }
+
     setIsExecuting(true);
     setExecutionResults(null);
     setError(null);
@@ -158,7 +167,10 @@ export default function OptimizationPage() {
           headers: {
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({ advertiserIds: selectedAdvertiserIds }),
+          body: JSON.stringify({
+            advertiserIds: selectedAdvertiserIds,
+            mode: selectedMode,
+          }),
         }
       );
 
@@ -181,6 +193,11 @@ export default function OptimizationPage() {
   };
 
   const executeAllOptimization = async () => {
+    if (!selectedMode) {
+      setError('最適化モードを選択してください');
+      return;
+    }
+
     setIsExecuting(true);
     setExecutionResults(null);
     setError(null);
@@ -192,7 +209,7 @@ export default function OptimizationPage() {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({}),
+        body: JSON.stringify({ mode: selectedMode }),
       });
 
       if (!response.ok) {
@@ -518,11 +535,81 @@ export default function OptimizationPage() {
                   </div>
                 </div>
 
+                {/* モード選択 */}
+                <div className="border-t border-gray-200 pt-4">
+                  <label className="block text-sm font-medium text-gray-700 mb-3">
+                    最適化モード選択 <span className="text-red-500">*</span>
+                  </label>
+                  <div className="space-y-3">
+                    <label
+                      className={`flex items-start gap-3 p-4 border rounded-lg cursor-pointer transition-colors ${
+                        selectedMode === 'ROAS_MAXIMIZE'
+                          ? 'border-blue-500 bg-blue-50'
+                          : 'border-gray-200 hover:bg-gray-50'
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name="optimizationMode"
+                        value="ROAS_MAXIMIZE"
+                        checked={selectedMode === 'ROAS_MAXIMIZE'}
+                        onChange={() => setSelectedMode('ROAS_MAXIMIZE')}
+                        disabled={isExecuting}
+                        className="mt-1 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300"
+                      />
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm font-medium text-gray-900">
+                            ROAS最大化モード
+                          </span>
+                          <span className="text-xs bg-green-100 text-green-800 px-2 py-0.5 rounded">
+                            推奨
+                          </span>
+                        </div>
+                        <p className="text-xs text-gray-600 mt-1">
+                          広告費効率を重視し、慎重に予算を調整します。複数広告で判定が分かれた場合、予算維持を優先します。
+                        </p>
+                      </div>
+                    </label>
+
+                    <label
+                      className={`flex items-start gap-3 p-4 border rounded-lg cursor-pointer transition-colors ${
+                        selectedMode === 'ACQUISITION_MAXIMIZE'
+                          ? 'border-blue-500 bg-blue-50'
+                          : 'border-gray-200 hover:bg-gray-50'
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name="optimizationMode"
+                        value="ACQUISITION_MAXIMIZE"
+                        checked={selectedMode === 'ACQUISITION_MAXIMIZE'}
+                        onChange={() => setSelectedMode('ACQUISITION_MAXIMIZE')}
+                        disabled={isExecuting}
+                        className="mt-1 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300"
+                      />
+                      <div className="flex-1">
+                        <div className="text-sm font-medium text-gray-900">
+                          集客数増加モード
+                        </div>
+                        <p className="text-xs text-gray-600 mt-1">
+                          集客数を重視し、積極的に予算を増額します。複数広告で判定が分かれた場合、予算増額を優先します。
+                        </p>
+                      </div>
+                    </label>
+                  </div>
+                  {!selectedMode && (
+                    <p className="text-xs text-amber-600 mt-2">
+                      ※ モードを選択してください
+                    </p>
+                  )}
+                </div>
+
                 <div className="flex gap-3">
                   <div className="flex-1">
                     <button
                       onClick={executeOptimization}
-                      disabled={selectedAdvertiserIds.length === 0 || isExecuting}
+                      disabled={selectedAdvertiserIds.length === 0 || !selectedMode || isExecuting}
                       className="w-full flex items-center justify-center gap-2 px-6 py-3 bg-gray-900 text-white rounded-lg font-medium hover:bg-gray-800 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
                     >
                       {isExecuting ? (
@@ -542,7 +629,7 @@ export default function OptimizationPage() {
                   <div className="flex-1">
                     <button
                       onClick={executeAllOptimization}
-                      disabled={isExecuting}
+                      disabled={!selectedMode || isExecuting}
                       className="w-full flex items-center justify-center gap-2 px-6 py-3 bg-gray-900 text-white rounded-lg font-medium hover:bg-gray-800 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
                     >
                       {isExecuting ? (

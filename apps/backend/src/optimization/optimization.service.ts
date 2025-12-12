@@ -73,6 +73,28 @@ interface CampaignOptimizationDecision {
   performance?: CampaignPerformance;
 }
 
+/**
+ * 最適化モード
+ * - ROAS_MAXIMIZE: ROAS最大化モード（予算維持を優先）
+ * - ACQUISITION_MAXIMIZE: 集客数増加モード（予算増額を優先）
+ */
+export type OptimizationMode = 'ROAS_MAXIMIZE' | 'ACQUISITION_MAXIMIZE';
+
+/**
+ * 広告セット単位の最適化結果
+ */
+export interface AdGroupOptimizationResult {
+  adgroupId: string;
+  campaignId: string;
+  action: 'PAUSE' | 'CONTINUE' | 'INCREASE_BUDGET' | 'NO_CHANGE' | 'ERROR' | 'SKIPPED_DUE_TO_CAP';
+  reason: string;
+  isCBO: boolean; // キャンペーン予算（CBO）かどうか
+  isSmartPlus?: boolean;
+  oldBudget?: number;
+  newBudget?: number;
+  error?: string;
+}
+
 @Injectable()
 export class OptimizationService {
   private readonly logger = new Logger(OptimizationService.name);
@@ -103,16 +125,18 @@ export class OptimizationService {
 
   /**
    * 予算調整を実行（全Advertiser対象）
+   * @param accessToken TikTok APIアクセストークン
+   * @param mode 最適化モード（デフォルト: ROAS_MAXIMIZE）
    */
-  async executeOptimization(accessToken: string) {
-    this.logger.log('Starting budget optimization for all advertisers');
+  async executeOptimization(accessToken: string, mode: OptimizationMode = 'ROAS_MAXIMIZE') {
+    this.logger.log(`Starting budget optimization for all advertisers (mode: ${mode})`);
 
     const advertiserIds = await this.getActiveAdvertiserIds();
     const results: any[] = [];
 
     for (const advertiserId of advertiserIds) {
       try {
-        const result = await this.optimizeAdvertiser(advertiserId, accessToken);
+        const result = await this.optimizeAdvertiser(advertiserId, accessToken, mode);
         results.push(result);
       } catch (error) {
         this.logger.error(`Failed to optimize advertiser ${advertiserId}:`, error);
@@ -126,15 +150,19 @@ export class OptimizationService {
 
     return {
       success: true,
+      mode,
       results,
     };
   }
 
   /**
    * 特定Advertiserの予算調整を実行
+   * @param advertiserId TikTok Advertiser ID
+   * @param accessToken TikTok APIアクセストークン
+   * @param mode 最適化モード（デフォルト: ROAS_MAXIMIZE）
    */
-  async optimizeAdvertiser(advertiserId: string, accessToken: string) {
-    this.logger.log(`Optimizing advertiser: ${advertiserId}`);
+  async optimizeAdvertiser(advertiserId: string, accessToken: string, mode: OptimizationMode = 'ROAS_MAXIMIZE') {
+    this.logger.log(`Optimizing advertiser: ${advertiserId} (mode: ${mode})`);
 
     // Google Sheetsのキャッシュをクリアして最新データを取得
     this.googleSheetsService.clearCache();
@@ -229,27 +257,68 @@ export class OptimizationService {
       decisions.push(decision);
     }
 
-    // 広告セットごとにグループ化して実行
+    // 広告セットごとにグループ化
     const adgroupDecisions = this.groupDecisionsByAdGroup(decisions);
-    const executionResults: any[] = [];
+    const executionResults: AdGroupOptimizationResult[] = [];
 
+    // Step 1: 各広告セットの判定を決定（まだ実行しない）
+    const adgroupResults: AdGroupOptimizationResult[] = [];
     for (const [adgroupId, adDecisions] of Object.entries(adgroupDecisions)) {
       try {
-        const result = await this.executeAdGroupOptimization(
+        const result = await this.determineAdGroupOptimization(
           adgroupId,
           adDecisions,
           advertiserId,
           accessToken,
+          mode,
         );
-        executionResults.push(result);
+        adgroupResults.push(result);
       } catch (error) {
-        this.logger.error(`Failed to optimize adgroup ${adgroupId}:`, error);
-        executionResults.push({
+        this.logger.error(`Failed to determine optimization for adgroup ${adgroupId}:`, error);
+        adgroupResults.push({
           adgroupId,
+          campaignId: adDecisions[0]?.campaignId || '',
           action: 'ERROR',
-          reason: `実行エラー: ${error.message}`,
+          reason: `判定エラー: ${error.message}`,
+          isCBO: false,
           error: error.message,
         });
+      }
+    }
+
+    // Step 2: CBO/非CBOでグループ化
+    const nonCBOResults = adgroupResults.filter(r => !r.isCBO);
+    const cboResults = adgroupResults.filter(r => r.isCBO);
+
+    this.logger.log(`AdGroup results: ${nonCBOResults.length} non-CBO, ${cboResults.length} CBO`);
+
+    // Step 3: 非CBO（広告セット予算）は直接実行
+    for (const result of nonCBOResults) {
+      const executed = await this.executeAdGroupBudgetChange(result, advertiserId, accessToken);
+      executionResults.push(executed);
+    }
+
+    // Step 4: CBO（キャンペーン予算）はキャンペーンごとに集約して実行
+    if (cboResults.length > 0) {
+      // キャンペーンIDでグループ化
+      const cboByCampaign: Record<string, AdGroupOptimizationResult[]> = {};
+      for (const result of cboResults) {
+        if (!cboByCampaign[result.campaignId]) {
+          cboByCampaign[result.campaignId] = [];
+        }
+        cboByCampaign[result.campaignId].push(result);
+      }
+
+      // 各キャンペーンで集約判定・実行
+      for (const [campaignId, campaignAdgroupResults] of Object.entries(cboByCampaign)) {
+        const cboExecutedResults = await this.executeCBOCampaignOptimization(
+          campaignId,
+          campaignAdgroupResults,
+          advertiserId,
+          accessToken,
+          mode,
+        );
+        executionResults.push(...cboExecutedResults);
       }
     }
 
@@ -434,6 +503,7 @@ export class OptimizationService {
     return {
       advertiserId,
       success: true,
+      mode, // 使用した最適化モード
       totalAds: activeAds.length,
       evaluated: adPerformances.length,
       decisions: decisions.length,
@@ -792,15 +862,31 @@ export class OptimizationService {
   }
 
   /**
-   * 広告セット単位で最適化を実行
+   * 広告セット単位で最適化判定を行う（実行は別途）
+   * @param mode 最適化モード
+   * @returns 判定結果（CBO情報含む）
    */
-  private async executeAdGroupOptimization(
+  private async determineAdGroupOptimization(
     adgroupId: string,
     decisions: OptimizationDecision[],
     advertiserId: string,
     accessToken: string,
-  ) {
-    this.logger.log(`Executing optimization for adgroup: ${adgroupId}`);
+    mode: OptimizationMode = 'ROAS_MAXIMIZE',
+  ): Promise<AdGroupOptimizationResult> {
+    this.logger.log(`Determining optimization for adgroup: ${adgroupId} (mode: ${mode})`);
+
+    const campaignId = decisions[0]?.campaignId || '';
+
+    // 広告セット情報を取得してCBO判定
+    let isCBO = false;
+    try {
+      const adgroup = await this.tiktokService.getAdGroup(advertiserId, accessToken, adgroupId);
+      // budget_mode が設定されていて budget > 0 の場合は広告セット予算
+      isCBO = !(adgroup.budget_mode && adgroup.budget && adgroup.budget > 0);
+      this.logger.log(`AdGroup ${adgroupId}: budget_mode=${adgroup.budget_mode}, budget=${adgroup.budget}, isCBO=${isCBO}`);
+    } catch (error) {
+      this.logger.warn(`Failed to get adgroup info for CBO check: ${error.message}`);
+    }
 
     // まず配信停止の広告を処理
     const pauseDecisions = decisions.filter((d) => d.action === 'PAUSE');
@@ -814,39 +900,188 @@ export class OptimizationService {
     if (remainingDecisions.length === 0) {
       return {
         adgroupId,
+        campaignId,
         action: 'NO_CHANGE',
         reason: '全ての広告が停止されました',
+        isCBO,
       };
     }
 
-    // 予算増額の広告が1つでもあれば予算を増額
-    const increaseBudgetDecisions = remainingDecisions.filter((d) => d.action === 'INCREASE_BUDGET');
+    // 判定ロジック
+    const hasIncreaseBudget = remainingDecisions.some((d) => d.action === 'INCREASE_BUDGET');
+    const hasContinue = remainingDecisions.some((d) => d.action === 'CONTINUE');
+    const isSmartPlus = remainingDecisions.some((d) => d.isSmartPlus);
 
-    if (increaseBudgetDecisions.length > 0) {
-      // 新スマートプラス広告かどうかを判定（1つでもスマプラ広告があればスマプラとして処理）
-      const isSmartPlus = increaseBudgetDecisions.some((d) => d.isSmartPlus);
-      const campaignId = increaseBudgetDecisions[0].campaignId;
-
-      if (isSmartPlus) {
-        this.logger.log(`Smart+ ad detected for adgroup ${adgroupId}, using Smart+ budget update API`);
-        await this.increaseSmartPlusBudget(adgroupId, campaignId, advertiserId, accessToken, 0.3);
+    // モードに応じた判定
+    if (hasIncreaseBudget && hasContinue) {
+      // 混在ケース: モードで判断
+      if (mode === 'ROAS_MAXIMIZE') {
+        this.logger.log(`Mode: ROAS_MAXIMIZE - Mixed decisions, choosing CONTINUE`);
+        return {
+          adgroupId,
+          campaignId,
+          action: 'CONTINUE',
+          reason: 'ROAS最大化モード: 判定が分かれたため予算維持',
+          isCBO,
+          isSmartPlus,
+        };
       } else {
-        await this.increaseBudget(adgroupId, advertiserId, accessToken, 0.3);
+        // ACQUISITION_MAXIMIZE: 予算増額を選択
+        this.logger.log(`Mode: ACQUISITION_MAXIMIZE - Mixed decisions, choosing INCREASE_BUDGET`);
+        return {
+          adgroupId,
+          campaignId,
+          action: 'INCREASE_BUDGET',
+          reason: '集客数増加モード: 判定が分かれたため予算増額',
+          isCBO,
+          isSmartPlus,
+        };
       }
-
+    } else if (hasIncreaseBudget) {
+      // 全てINCREASE_BUDGET
       return {
         adgroupId,
+        campaignId,
         action: 'INCREASE_BUDGET',
-        reason: `予算増額対象の広告が存在するため、広告セットの予算を30%増額${isSmartPlus ? '（Smart+ API使用）' : ''}`,
+        reason: '予算増額対象の広告が存在するため、予算を30%増額',
+        isCBO,
+        isSmartPlus,
       };
     }
 
     // それ以外は継続
     return {
       adgroupId,
+      campaignId,
       action: 'CONTINUE',
       reason: '配信継続',
+      isCBO,
+      isSmartPlus,
     };
+  }
+
+  /**
+   * 広告セット単位で最適化を実行（判定済みの結果を実行）
+   */
+  private async executeAdGroupBudgetChange(
+    result: AdGroupOptimizationResult,
+    advertiserId: string,
+    accessToken: string,
+  ): Promise<AdGroupOptimizationResult> {
+    if (result.action !== 'INCREASE_BUDGET') {
+      return result;
+    }
+
+    try {
+      if (result.isSmartPlus) {
+        this.logger.log(`Smart+ ad detected for adgroup ${result.adgroupId}, using Smart+ budget update API`);
+        await this.increaseSmartPlusBudget(result.adgroupId, result.campaignId, advertiserId, accessToken, 0.3);
+      } else {
+        await this.increaseBudget(result.adgroupId, advertiserId, accessToken, 0.3);
+      }
+      return {
+        ...result,
+        reason: `${result.reason}${result.isSmartPlus ? '（Smart+ API使用）' : ''}`,
+      };
+    } catch (error) {
+      this.logger.error(`Failed to increase budget for adgroup ${result.adgroupId}:`, error);
+      return {
+        ...result,
+        action: 'ERROR',
+        error: error.message,
+      };
+    }
+  }
+
+  /**
+   * CBO有効キャンペーンの判定を集約して実行
+   */
+  private async executeCBOCampaignOptimization(
+    campaignId: string,
+    adgroupResults: AdGroupOptimizationResult[],
+    advertiserId: string,
+    accessToken: string,
+    mode: OptimizationMode,
+  ): Promise<AdGroupOptimizationResult[]> {
+    this.logger.log(`Executing CBO campaign optimization for campaign: ${campaignId} (mode: ${mode})`);
+
+    // 増額判定と継続判定をカウント
+    const increaseResults = adgroupResults.filter(r => r.action === 'INCREASE_BUDGET');
+    const continueResults = adgroupResults.filter(r => r.action === 'CONTINUE');
+
+    const hasIncreaseBudget = increaseResults.length > 0;
+    const hasContinue = continueResults.length > 0;
+
+    this.logger.log(`CBO Campaign ${campaignId}: INCREASE_BUDGET=${increaseResults.length}, CONTINUE=${continueResults.length}`);
+
+    // モードに応じた最終判定
+    let finalAction: 'INCREASE_BUDGET' | 'CONTINUE' = 'CONTINUE';
+    let finalReason = '';
+
+    if (hasIncreaseBudget && hasContinue) {
+      if (mode === 'ROAS_MAXIMIZE') {
+        finalAction = 'CONTINUE';
+        finalReason = 'ROAS最大化モード: キャンペーン内の広告セット判定が分かれたため予算維持';
+      } else {
+        finalAction = 'INCREASE_BUDGET';
+        finalReason = '集客数増加モード: キャンペーン内の広告セット判定が分かれたため予算増額';
+      }
+    } else if (hasIncreaseBudget) {
+      finalAction = 'INCREASE_BUDGET';
+      finalReason = 'キャンペーン内の全広告セットが予算増額判定のため、キャンペーン予算を30%増額';
+    } else {
+      finalAction = 'CONTINUE';
+      finalReason = 'キャンペーン予算維持';
+    }
+
+    this.logger.log(`CBO Campaign ${campaignId}: Final decision = ${finalAction}`);
+
+    // 予算増額の場合、キャンペーン予算を更新（最初の広告セットのincreaseBudgetを使用）
+    if (finalAction === 'INCREASE_BUDGET' && increaseResults.length > 0) {
+      const firstResult = increaseResults[0];
+      try {
+        if (firstResult.isSmartPlus) {
+          await this.increaseSmartPlusBudget(firstResult.adgroupId, campaignId, advertiserId, accessToken, 0.3);
+        } else {
+          await this.increaseBudget(firstResult.adgroupId, advertiserId, accessToken, 0.3);
+        }
+      } catch (error) {
+        this.logger.error(`Failed to increase CBO campaign budget:`, error);
+        return adgroupResults.map(r => ({
+          ...r,
+          action: 'ERROR' as const,
+          error: error.message,
+        }));
+      }
+    }
+
+    // 全ての広告セット結果を最終判定で上書き
+    return adgroupResults.map(r => ({
+      ...r,
+      action: finalAction,
+      reason: finalReason,
+    }));
+  }
+
+  /**
+   * 広告セット単位で最適化を実行（後方互換性のため残す）
+   * @deprecated Use determineAdGroupOptimization + executeAdGroupBudgetChange instead
+   */
+  private async executeAdGroupOptimization(
+    adgroupId: string,
+    decisions: OptimizationDecision[],
+    advertiserId: string,
+    accessToken: string,
+    mode: OptimizationMode = 'ROAS_MAXIMIZE',
+  ) {
+    const result = await this.determineAdGroupOptimization(adgroupId, decisions, advertiserId, accessToken, mode);
+
+    // CBOでない場合のみ直接実行
+    if (!result.isCBO && result.action === 'INCREASE_BUDGET') {
+      return await this.executeAdGroupBudgetChange(result, advertiserId, accessToken);
+    }
+
+    return result;
   }
 
   /**

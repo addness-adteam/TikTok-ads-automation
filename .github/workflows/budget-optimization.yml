@@ -66,10 +66,12 @@ jobs:
 
           while [ $retry_count -lt $max_retries ]; do
             # curlを実行し、終了コードをキャプチャ
+            # mode: ROAS_MAXIMIZE（ROAS最大化モード）を使用
             set +e  # エラーでスクリプトを終了しない
             response=$(curl -s -w "\n%{http_code}" --max-time 600 --retry 3 --retry-delay 10 --retry-connrefused -X POST \
               "${{ env.API_BASE_URL }}/api/optimization/execute/${{ matrix.advertiser_id }}" \
-              -H "Content-Type: application/json")
+              -H "Content-Type: application/json" \
+              -d '{"mode": "ROAS_MAXIMIZE"}')
             curl_exit_code=$?
             set -e
 
