@@ -750,13 +750,27 @@ export class OptimizationService {
 
   /**
    * 広告の累積広告費を取得
+   * @param tiktokAdId TikTok APIの広告ID
    */
-  private async getTotalAdSpend(adId: string): Promise<number> {
-    const metrics = await this.prisma.metric.findMany({
-      where: { adId },
+  private async getTotalAdSpend(tiktokAdId: string): Promise<number> {
+    // まずTikTok IDからAdレコードを検索（getAdMetricsと同じ方法）
+    const ad = await this.prisma.ad.findUnique({
+      where: { tiktokId: tiktokAdId },
     });
 
-    return metrics.reduce((sum, m) => sum + m.spend, 0);
+    if (!ad) {
+      this.logger.warn(`Ad not found in DB for tiktokId: ${tiktokAdId}, returning 0 for total spend`);
+      return 0;
+    }
+
+    const metrics = await this.prisma.metric.findMany({
+      where: { adId: ad.id },
+    });
+
+    const totalSpend = metrics.reduce((sum, m) => sum + m.spend, 0);
+    this.logger.debug(`Total spend for ad ${tiktokAdId} (${ad.id}): ¥${totalSpend}`);
+
+    return totalSpend;
   }
 
   /**
