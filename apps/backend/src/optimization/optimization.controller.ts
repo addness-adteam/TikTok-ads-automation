@@ -28,15 +28,17 @@ export class OptimizationController {
   /**
    * 予算調整を実行
    * POST /api/optimization/execute
-   * Body: { accessToken?: string, mode?: 'ROAS_MAXIMIZE' | 'ACQUISITION_MAXIMIZE' }
+   * Body: { accessToken?: string, mode?: 'ROAS_MAXIMIZE' | 'ACQUISITION_MAXIMIZE', dryRun?: boolean }
    */
   @Post('execute')
   async executeOptimization(
     @Body('accessToken') accessToken?: string,
     @Body('mode') mode?: string,
+    @Body('dryRun') dryRun?: boolean,
   ) {
     const validatedMode = this.validateMode(mode);
-    this.logger.log(`Budget optimization execution requested (mode: ${validatedMode})`);
+    const isDryRun = dryRun === true;
+    this.logger.log(`Budget optimization execution requested (mode: ${validatedMode}, dryRun: ${isDryRun})`);
 
     try {
       // アクセストークンが指定されていない場合は環境変数から取得
@@ -49,10 +51,11 @@ export class OptimizationController {
         };
       }
 
-      const result = await this.optimizationService.executeOptimization(token, validatedMode);
+      const result = await this.optimizationService.executeOptimization(token, validatedMode, isDryRun);
 
       return {
         success: true,
+        dryRun: isDryRun,
         data: result,
       };
     } catch (error) {
@@ -67,16 +70,18 @@ export class OptimizationController {
   /**
    * 特定Advertiserの予算調整を実行
    * POST /api/optimization/execute/:advertiserId
-   * Body: { accessToken?: string, mode?: 'ROAS_MAXIMIZE' | 'ACQUISITION_MAXIMIZE' }
+   * Body: { accessToken?: string, mode?: 'ROAS_MAXIMIZE' | 'ACQUISITION_MAXIMIZE', dryRun?: boolean }
    */
   @Post('execute/:advertiserId')
   async executeAdvertiserOptimization(
     @Param('advertiserId') advertiserId: string,
     @Body('accessToken') accessToken?: string,
     @Body('mode') mode?: string,
+    @Body('dryRun') dryRun?: boolean,
   ) {
     const validatedMode = this.validateMode(mode);
-    this.logger.log(`Budget optimization execution requested for advertiser: ${advertiserId} (mode: ${validatedMode})`);
+    const isDryRun = dryRun === true;
+    this.logger.log(`Budget optimization execution requested for advertiser: ${advertiserId} (mode: ${validatedMode}, dryRun: ${isDryRun})`);
 
     try {
       const token = accessToken || this.configService.get<string>('TIKTOK_ACCESS_TOKEN');
@@ -88,10 +93,11 @@ export class OptimizationController {
         };
       }
 
-      const result = await this.optimizationService.optimizeAdvertiser(advertiserId, token, validatedMode);
+      const result = await this.optimizationService.optimizeAdvertiser(advertiserId, token, validatedMode, isDryRun);
 
       return {
         success: true,
+        dryRun: isDryRun,
         data: result,
       };
     } catch (error) {
@@ -106,16 +112,18 @@ export class OptimizationController {
   /**
    * 選択した複数Advertiserの予算調整を実行
    * POST /api/optimization/execute-selected
-   * Body: { advertiserIds: string[], accessToken?: string, mode?: 'ROAS_MAXIMIZE' | 'ACQUISITION_MAXIMIZE' }
+   * Body: { advertiserIds: string[], accessToken?: string, mode?: 'ROAS_MAXIMIZE' | 'ACQUISITION_MAXIMIZE', dryRun?: boolean }
    */
   @Post('execute-selected')
   async executeSelectedAdvertisersOptimization(
     @Body('advertiserIds') advertiserIds: string[],
     @Body('accessToken') accessToken?: string,
     @Body('mode') mode?: string,
+    @Body('dryRun') dryRun?: boolean,
   ) {
     const validatedMode = this.validateMode(mode);
-    this.logger.log(`Budget optimization execution requested for ${advertiserIds?.length || 0} advertisers (mode: ${validatedMode})`);
+    const isDryRun = dryRun === true;
+    this.logger.log(`Budget optimization execution requested for ${advertiserIds?.length || 0} advertisers (mode: ${validatedMode}, dryRun: ${isDryRun})`);
 
     try {
       if (!advertiserIds || advertiserIds.length === 0) {
@@ -138,8 +146,8 @@ export class OptimizationController {
       const results: any[] = [];
       for (const advertiserId of advertiserIds) {
         try {
-          this.logger.log(`Executing optimization for advertiser: ${advertiserId}`);
-          const result = await this.optimizationService.optimizeAdvertiser(advertiserId, token, validatedMode);
+          this.logger.log(`Executing optimization for advertiser: ${advertiserId}${isDryRun ? ' (DRY RUN)' : ''}`);
+          const result = await this.optimizationService.optimizeAdvertiser(advertiserId, token, validatedMode, isDryRun);
           results.push(result);
         } catch (error) {
           this.logger.error(`Failed to optimize advertiser ${advertiserId}:`, error);
@@ -153,7 +161,8 @@ export class OptimizationController {
 
       // 全体の結果を集計
       const totalResults = {
-        mode: validatedMode, // 使用したモードを追加
+        mode: validatedMode,
+        dryRun: isDryRun,
         totalAdvertisers: advertiserIds.length,
         successCount: results.filter(r => r.success).length,
         failureCount: results.filter(r => !r.success).length,
@@ -168,6 +177,7 @@ export class OptimizationController {
 
       return {
         success: true,
+        dryRun: isDryRun,
         data: totalResults,
       };
     } catch (error) {

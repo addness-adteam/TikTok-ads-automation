@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Loader2, PlayCircle, CheckCircle, XCircle, AlertCircle } from 'lucide-react';
+import { Loader2, PlayCircle, CheckCircle, XCircle, AlertCircle, Eye } from 'lucide-react';
 import { AppLayout } from '@/components/layout/AppLayout';
 
 // API URLを取得（本番環境では固定URL、開発環境ではlocalhost）
@@ -82,7 +82,9 @@ export default function OptimizationPage() {
   const [selectedMode, setSelectedMode] = useState<OptimizationMode>(null);
   const [isLoadingAdvertisers, setIsLoadingAdvertisers] = useState(true);
   const [isExecuting, setIsExecuting] = useState(false);
+  const [isDryRunning, setIsDryRunning] = useState(false);
   const [executionResults, setExecutionResults] = useState<OptimizationResult | null>(null);
+  const [isDryRunResult, setIsDryRunResult] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // Advertiser一覧を取得
@@ -143,7 +145,7 @@ export default function OptimizationPage() {
     setSelectedAdvertiserIds([]);
   };
 
-  const executeOptimization = async () => {
+  const executeOptimization = async (dryRun: boolean = false) => {
     if (selectedAdvertiserIds.length === 0) {
       setError('少なくとも1つのアカウントを選択してください');
       return;
@@ -154,8 +156,13 @@ export default function OptimizationPage() {
       return;
     }
 
-    setIsExecuting(true);
+    if (dryRun) {
+      setIsDryRunning(true);
+    } else {
+      setIsExecuting(true);
+    }
     setExecutionResults(null);
+    setIsDryRunResult(dryRun);
     setError(null);
 
     try {
@@ -170,6 +177,7 @@ export default function OptimizationPage() {
           body: JSON.stringify({
             advertiserIds: selectedAdvertiserIds,
             mode: selectedMode,
+            dryRun,
           }),
         }
       );
@@ -188,18 +196,27 @@ export default function OptimizationPage() {
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to execute optimization');
     } finally {
-      setIsExecuting(false);
+      if (dryRun) {
+        setIsDryRunning(false);
+      } else {
+        setIsExecuting(false);
+      }
     }
   };
 
-  const executeAllOptimization = async () => {
+  const executeAllOptimization = async (dryRun: boolean = false) => {
     if (!selectedMode) {
       setError('最適化モードを選択してください');
       return;
     }
 
-    setIsExecuting(true);
+    if (dryRun) {
+      setIsDryRunning(true);
+    } else {
+      setIsExecuting(true);
+    }
     setExecutionResults(null);
+    setIsDryRunResult(dryRun);
     setError(null);
 
     try {
@@ -209,7 +226,7 @@ export default function OptimizationPage() {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ mode: selectedMode }),
+        body: JSON.stringify({ mode: selectedMode, dryRun }),
       });
 
       if (!response.ok) {
@@ -241,7 +258,11 @@ export default function OptimizationPage() {
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to execute optimization');
     } finally {
-      setIsExecuting(false);
+      if (dryRun) {
+        setIsDryRunning(false);
+      } else {
+        setIsExecuting(false);
+      }
     }
   };
 
@@ -285,11 +306,21 @@ export default function OptimizationPage() {
 
           {/* 成功表示 */}
           {executionResults && executionResults.success && (
-            <div className="mb-6 bg-green-50 border border-green-200 rounded-lg p-4 flex items-start gap-3">
-              <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
+            <div className={`mb-6 border rounded-lg p-4 flex items-start gap-3 ${
+              isDryRunResult
+                ? 'bg-amber-50 border-amber-200'
+                : 'bg-green-50 border-green-200'
+            }`}>
+              {isDryRunResult ? (
+                <Eye className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+              ) : (
+                <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
+              )}
               <div className="flex-1">
-                <h3 className="text-sm font-semibold text-green-900 mb-1">
-                  予算調整が完了しました
+                <h3 className={`text-sm font-semibold mb-1 ${
+                  isDryRunResult ? 'text-amber-900' : 'text-green-900'
+                }`}>
+                  {isDryRunResult ? 'ドライラン完了（実際の変更は行われていません）' : '予算調整が完了しました'}
                   {(executionResults as any).totalAdvertisers && (
                     <span className="ml-2 text-xs font-normal">
                       ({(executionResults as any).totalAdvertisers}アカウント)
@@ -605,11 +636,55 @@ export default function OptimizationPage() {
                   )}
                 </div>
 
+                {/* ドライランボタン */}
+                <div className="flex gap-3 mb-3">
+                  <div className="flex-1">
+                    <button
+                      onClick={() => executeOptimization(true)}
+                      disabled={selectedAdvertiserIds.length === 0 || !selectedMode || isExecuting || isDryRunning}
+                      className="w-full flex items-center justify-center gap-2 px-6 py-3 bg-amber-500 text-white rounded-lg font-medium hover:bg-amber-600 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
+                    >
+                      {isDryRunning ? (
+                        <>
+                          <Loader2 className="w-5 h-5 animate-spin" />
+                          テスト実行中...
+                        </>
+                      ) : (
+                        <>
+                          <Eye className="w-5 h-5" />
+                          選択アカウントでテスト（ドライラン）
+                        </>
+                      )}
+                    </button>
+                  </div>
+
+                  <div className="flex-1">
+                    <button
+                      onClick={() => executeAllOptimization(true)}
+                      disabled={!selectedMode || isExecuting || isDryRunning}
+                      className="w-full flex items-center justify-center gap-2 px-6 py-3 bg-amber-500 text-white rounded-lg font-medium hover:bg-amber-600 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
+                    >
+                      {isDryRunning ? (
+                        <>
+                          <Loader2 className="w-5 h-5 animate-spin" />
+                          テスト実行中...
+                        </>
+                      ) : (
+                        <>
+                          <Eye className="w-5 h-5" />
+                          全アカウントでテスト（ドライラン）
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </div>
+
+                {/* 実行ボタン */}
                 <div className="flex gap-3">
                   <div className="flex-1">
                     <button
-                      onClick={executeOptimization}
-                      disabled={selectedAdvertiserIds.length === 0 || !selectedMode || isExecuting}
+                      onClick={() => executeOptimization(false)}
+                      disabled={selectedAdvertiserIds.length === 0 || !selectedMode || isExecuting || isDryRunning}
                       className="w-full flex items-center justify-center gap-2 px-6 py-3 bg-gray-900 text-white rounded-lg font-medium hover:bg-gray-800 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
                     >
                       {isExecuting ? (
@@ -628,8 +703,8 @@ export default function OptimizationPage() {
 
                   <div className="flex-1">
                     <button
-                      onClick={executeAllOptimization}
-                      disabled={!selectedMode || isExecuting}
+                      onClick={() => executeAllOptimization(false)}
+                      disabled={!selectedMode || isExecuting || isDryRunning}
                       className="w-full flex items-center justify-center gap-2 px-6 py-3 bg-gray-900 text-white rounded-lg font-medium hover:bg-gray-800 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
                     >
                       {isExecuting ? (

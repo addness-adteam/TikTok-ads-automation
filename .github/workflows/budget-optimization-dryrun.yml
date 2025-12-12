@@ -1,0 +1,171 @@
+name: Budget Optimization Dry Run
+
+on:
+  workflow_dispatch:
+    inputs:
+      advertiser_ids:
+        description: '特定のAdvertiser IDsをカンマ区切りで指定（空欄で全スケジュール対象アカウント）'
+        required: false
+        type: string
+      mode:
+        description: '最適化モード'
+        required: true
+        type: choice
+        options:
+          - ROAS_MAXIMIZE
+          - ACQUISITION_MAXIMIZE
+        default: ROAS_MAXIMIZE
+
+env:
+  API_BASE_URL: https://tik-tok-ads-automation-backend.vercel.app
+  WAIT_BETWEEN_ACCOUNTS_SEC: 30
+  # スケジュール実行時の対象アカウント（カンマ区切り）
+  SCHEDULED_ADVERTISER_IDS: '["7247073333517238273","7543540100849156112","7543540381615800337","7468288053866561553","7523128243466551303","7543540647266074641"]'
+
+jobs:
+  # Step 1: アクティブなAdvertiser IDを取得
+  get-advertisers:
+    runs-on: ubuntu-latest
+    outputs:
+      advertiser_ids: ${{ steps.get_ids.outputs.ids }}
+    steps:
+      - name: Get Active Advertiser IDs
+        id: get_ids
+        run: |
+          if [ -n "${{ github.event.inputs.advertiser_ids }}" ]; then
+            # 手動実行時は指定されたIDを使用
+            ids=$(echo "${{ github.event.inputs.advertiser_ids }}" | jq -R -c 'split(",")')
+            echo "Using manually specified advertiser IDs: $ids"
+          else
+            # デフォルトは固定のアカウントリストを使用
+            ids='${{ env.SCHEDULED_ADVERTISER_IDS }}'
+            echo "Using scheduled advertiser IDs: $ids"
+          fi
+
+          echo "ids=$ids" >> $GITHUB_OUTPUT
+
+  # Step 2: 各アカウントの予算最適化をドライラン
+  dryrun-budgets:
+    runs-on: ubuntu-latest
+    needs: get-advertisers
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        advertiser_id: ${{ fromJson(needs.get-advertisers.outputs.advertiser_ids) }}
+    steps:
+      - name: Wait before processing
+        run: |
+          echo "Waiting ${{ env.WAIT_BETWEEN_ACCOUNTS_SEC }} seconds before processing..."
+          sleep ${{ env.WAIT_BETWEEN_ACCOUNTS_SEC }}
+
+      - name: Dry Run for ${{ matrix.advertiser_id }}
+        id: dryrun
+        run: |
+          echo "=============================================="
+          echo "DRY RUN: Budget optimization for: ${{ matrix.advertiser_id }}"
+          echo "Mode: ${{ github.event.inputs.mode }}"
+          echo "=============================================="
+
+          # 最大3回リトライ
+          max_retries=3
+          retry_count=0
+          success=false
+
+          while [ $retry_count -lt $max_retries ]; do
+            set +e
+            response=$(curl -s -w "\n%{http_code}" --max-time 600 --retry 3 --retry-delay 10 --retry-connrefused -X POST \
+              "${{ env.API_BASE_URL }}/api/optimization/execute/${{ matrix.advertiser_id }}" \
+              -H "Content-Type: application/json" \
+              -d '{"mode": "${{ github.event.inputs.mode }}", "dryRun": true}')
+            curl_exit_code=$?
+            set -e
+
+            if [ $curl_exit_code -ne 0 ]; then
+              retry_count=$((retry_count + 1))
+              echo "curl failed with exit code $curl_exit_code. Retry $retry_count/$max_retries..."
+              if [ $retry_count -lt $max_retries ]; then
+                sleep $((30 * retry_count))
+                continue
+              else
+                echo "curl failed after $max_retries retries (exit code: $curl_exit_code)"
+                break
+              fi
+            fi
+
+            http_code=$(echo "$response" | tail -n1)
+            body=$(echo "$response" | sed '$d')
+
+            echo "HTTP Status: $http_code"
+
+            if [ "$http_code" -eq 200 ] || [ "$http_code" -eq 201 ]; then
+              echo ""
+              echo "=== DRY RUN SUCCESS for ${{ matrix.advertiser_id }} ==="
+              echo ""
+
+              # サマリー情報を出力
+              echo "=== 実行サマリー ==="
+              echo "$body" | jq -r '.data | "総広告数: \(.totalAds // 0) | 評価済み: \(.evaluated // 0) | 判定数: \(.decisions // 0) | 実行予定: \(.executed // 0)"'
+              echo ""
+
+              # 目標値を出力
+              echo "=== 目標値 ==="
+              echo "$body" | jq -r '.data.detailedLogs[0]?.targets | "目標CPA: \(.targetCPA // "未設定")円 | 許容CPA: \(.allowableCPA // "未設定")円 | 目標フロントCPO: \(.targetFrontCPO // "未設定")円 | 許容フロントCPO: \(.allowableFrontCPO // "未設定")円"'
+              echo ""
+
+              # 各広告の詳細判定結果を出力
+              echo "=== 広告別判定結果（ドライラン） ==="
+              echo "────────────────────────────────────────────────────────────────"
+              echo "$body" | jq -r '.data.detailedLogs[]? |
+                "広告名: \(.adName // .adId)\n" +
+                "  指標: 広告費=\(.metrics.spend // 0)円 | CV数=\(.metrics.cvCount // 0) | フロント販売=\(.metrics.frontSalesCount // 0)本\n" +
+                "  実績: CPA=\(.metrics.cpa // "N/A")円 | フロントCPO=\(.metrics.frontCpo // "N/A")円\n" +
+                "  判定: [\(.action // "N/A")] \(.reason // "理由なし")\n" +
+                "────────────────────────────────────────────────────────────────"'
+              echo ""
+
+              # Smart+キャンペーンの結果
+              smart_plus_count=$(echo "$body" | jq -r '.data.smartPlusCampaigns.total // 0')
+              if [ "$smart_plus_count" -gt 0 ]; then
+                echo "=== Smart+キャンペーン結果 ==="
+                echo "$body" | jq -r '.data.smartPlusCampaigns.results[]? | "[\(.action // "N/A")] Campaign: \(.campaignId // .adgroupId) - 予算: \(.oldBudget // "?") → \(.newBudget // "?")"'
+                echo ""
+              fi
+
+              success=true
+              break
+            elif [ "$http_code" -eq 429 ]; then
+              retry_count=$((retry_count + 1))
+              wait_time=$((60 * retry_count))
+              echo "Rate limited. Waiting ${wait_time}s before retry $retry_count/$max_retries..."
+              sleep $wait_time
+            else
+              echo "Error for ${{ matrix.advertiser_id }}: $http_code"
+              echo "$body"
+              break
+            fi
+          done
+
+          if [ "$success" = true ]; then
+            echo "result=success" >> $GITHUB_OUTPUT
+          else
+            echo "result=failed" >> $GITHUB_OUTPUT
+          fi
+
+  # Step 3: 結果サマリー
+  summary:
+    runs-on: ubuntu-latest
+    needs: [get-advertisers, dryrun-budgets]
+    if: always()
+    steps:
+      - name: Generate Summary
+        run: |
+          echo "## Budget Optimization Dry Run Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**This was a DRY RUN - no actual changes were made**" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Execution Time**: $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_STEP_SUMMARY
+          echo "- **Mode**: ${{ github.event.inputs.mode }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Accounts Processed**: ${{ needs.get-advertisers.outputs.advertiser_ids }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "See job logs for detailed results." >> $GITHUB_STEP_SUMMARY

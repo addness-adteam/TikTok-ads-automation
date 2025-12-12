@@ -127,16 +127,17 @@ export class OptimizationService {
    * 予算調整を実行（全Advertiser対象）
    * @param accessToken TikTok APIアクセストークン
    * @param mode 最適化モード（デフォルト: ROAS_MAXIMIZE）
+   * @param dryRun trueの場合、実際のAPI呼び出しをスキップ（テスト用）
    */
-  async executeOptimization(accessToken: string, mode: OptimizationMode = 'ROAS_MAXIMIZE') {
-    this.logger.log(`Starting budget optimization for all advertisers (mode: ${mode})`);
+  async executeOptimization(accessToken: string, mode: OptimizationMode = 'ROAS_MAXIMIZE', dryRun: boolean = false) {
+    this.logger.log(`Starting budget optimization for all advertisers (mode: ${mode}, dryRun: ${dryRun})`);
 
     const advertiserIds = await this.getActiveAdvertiserIds();
     const results: any[] = [];
 
     for (const advertiserId of advertiserIds) {
       try {
-        const result = await this.optimizeAdvertiser(advertiserId, accessToken, mode);
+        const result = await this.optimizeAdvertiser(advertiserId, accessToken, mode, dryRun);
         results.push(result);
       } catch (error) {
         this.logger.error(`Failed to optimize advertiser ${advertiserId}:`, error);
@@ -151,6 +152,7 @@ export class OptimizationService {
     return {
       success: true,
       mode,
+      dryRun,
       results,
     };
   }
@@ -160,9 +162,10 @@ export class OptimizationService {
    * @param advertiserId TikTok Advertiser ID
    * @param accessToken TikTok APIアクセストークン
    * @param mode 最適化モード（デフォルト: ROAS_MAXIMIZE）
+   * @param dryRun trueの場合、実際のAPI呼び出しをスキップ（テスト用）
    */
-  async optimizeAdvertiser(advertiserId: string, accessToken: string, mode: OptimizationMode = 'ROAS_MAXIMIZE') {
-    this.logger.log(`Optimizing advertiser: ${advertiserId} (mode: ${mode})`);
+  async optimizeAdvertiser(advertiserId: string, accessToken: string, mode: OptimizationMode = 'ROAS_MAXIMIZE', dryRun: boolean = false) {
+    this.logger.log(`Optimizing advertiser: ${advertiserId} (mode: ${mode}, dryRun: ${dryRun})`);
 
     // Google Sheetsのキャッシュをクリアして最新データを取得
     this.googleSheetsService.clearCache();
@@ -271,6 +274,7 @@ export class OptimizationService {
           advertiserId,
           accessToken,
           mode,
+          dryRun,
         );
         adgroupResults.push(result);
       } catch (error) {
@@ -294,7 +298,7 @@ export class OptimizationService {
 
     // Step 3: 非CBO（広告セット予算）は直接実行
     for (const result of nonCBOResults) {
-      const executed = await this.executeAdGroupBudgetChange(result, advertiserId, accessToken);
+      const executed = await this.executeAdGroupBudgetChange(result, advertiserId, accessToken, dryRun);
       executionResults.push(executed);
     }
 
@@ -317,6 +321,7 @@ export class OptimizationService {
           advertiserId,
           accessToken,
           mode,
+          dryRun,
         );
         executionResults.push(...cboExecutedResults);
       }
@@ -439,13 +444,14 @@ export class OptimizationService {
             campaign.campaign_id,
             advertiserId,
             accessToken,
-            decision.reason
+            decision.reason,
+            dryRun
           );
           campaignExecutionResults.push({
             campaignId: campaign.campaign_id,
             campaignName: campaign.campaign_name,
             action: 'PAUSE',
-            reason: decision.reason,
+            reason: dryRun ? `${decision.reason} [DRY RUN]` : decision.reason,
           });
         } else if (decision.action === 'INCREASE_BUDGET') {
           // キャンペーン配下の広告セットを取得
@@ -458,18 +464,22 @@ export class OptimizationService {
           if (adgroups.data?.list?.length > 0) {
             const adgroupId = adgroups.data.list[0].adgroup_id;
 
-            // 既存のincreaseBudgetメソッドが自動で判定
-            await this.increaseBudget(
-              adgroupId,
-              advertiserId,
-              accessToken,
-              0.3,  // 30%増額
-            );
+            if (dryRun) {
+              this.logger.log(`[DRY RUN] Would increase campaign ${campaign.campaign_id} budget by 30%`);
+            } else {
+              // 既存のincreaseBudgetメソッドが自動で判定
+              await this.increaseBudget(
+                adgroupId,
+                advertiserId,
+                accessToken,
+                0.3,  // 30%増額
+              );
+            }
             campaignExecutionResults.push({
               campaignId: campaign.campaign_id,
               campaignName: campaign.campaign_name,
               action: 'INCREASE_BUDGET',
-              reason: decision.reason,
+              reason: dryRun ? `${decision.reason} [DRY RUN]` : decision.reason,
             });
           } else {
             this.logger.warn(`No adgroups found for campaign ${campaign.campaign_id}, skipping budget increase`);
@@ -872,8 +882,9 @@ export class OptimizationService {
     advertiserId: string,
     accessToken: string,
     mode: OptimizationMode = 'ROAS_MAXIMIZE',
+    dryRun: boolean = false,
   ): Promise<AdGroupOptimizationResult> {
-    this.logger.log(`Determining optimization for adgroup: ${adgroupId} (mode: ${mode})`);
+    this.logger.log(`Determining optimization for adgroup: ${adgroupId} (mode: ${mode}, dryRun: ${dryRun})`);
 
     const campaignId = decisions[0]?.campaignId || '';
 
@@ -891,7 +902,7 @@ export class OptimizationService {
     // まず配信停止の広告を処理
     const pauseDecisions = decisions.filter((d) => d.action === 'PAUSE');
     for (const decision of pauseDecisions) {
-      await this.pauseAd(decision.adId, decision.adgroupId, advertiserId, accessToken, decision.reason);
+      await this.pauseAd(decision.adId, decision.adgroupId, advertiserId, accessToken, decision.reason, dryRun);
     }
 
     // 残りの判断を確認
@@ -962,17 +973,27 @@ export class OptimizationService {
 
   /**
    * 広告セット単位で最適化を実行（判定済みの結果を実行）
+   * @param dryRun trueの場合、実際のAPI呼び出しをスキップ
    */
   private async executeAdGroupBudgetChange(
     result: AdGroupOptimizationResult,
     advertiserId: string,
     accessToken: string,
+    dryRun: boolean = false,
   ): Promise<AdGroupOptimizationResult> {
     if (result.action !== 'INCREASE_BUDGET') {
       return result;
     }
 
     try {
+      if (dryRun) {
+        this.logger.log(`[DRY RUN] Would increase budget for adgroup ${result.adgroupId}${result.isSmartPlus ? ' (Smart+)' : ''} by 30%`);
+        return {
+          ...result,
+          reason: `${result.reason}${result.isSmartPlus ? '（Smart+ API使用）' : ''} [DRY RUN]`,
+        };
+      }
+
       if (result.isSmartPlus) {
         this.logger.log(`Smart+ ad detected for adgroup ${result.adgroupId}, using Smart+ budget update API`);
         await this.increaseSmartPlusBudget(result.adgroupId, result.campaignId, advertiserId, accessToken, 0.3);
@@ -995,6 +1016,7 @@ export class OptimizationService {
 
   /**
    * CBO有効キャンペーンの判定を集約して実行
+   * @param dryRun trueの場合、実際のAPI呼び出しをスキップ
    */
   private async executeCBOCampaignOptimization(
     campaignId: string,
@@ -1002,8 +1024,9 @@ export class OptimizationService {
     advertiserId: string,
     accessToken: string,
     mode: OptimizationMode,
+    dryRun: boolean = false,
   ): Promise<AdGroupOptimizationResult[]> {
-    this.logger.log(`Executing CBO campaign optimization for campaign: ${campaignId} (mode: ${mode})`);
+    this.logger.log(`Executing CBO campaign optimization for campaign: ${campaignId} (mode: ${mode}, dryRun: ${dryRun})`);
 
     // 増額判定と継続判定をカウント
     const increaseResults = adgroupResults.filter(r => r.action === 'INCREASE_BUDGET');
@@ -1038,20 +1061,25 @@ export class OptimizationService {
 
     // 予算増額の場合、キャンペーン予算を更新（最初の広告セットのincreaseBudgetを使用）
     if (finalAction === 'INCREASE_BUDGET' && increaseResults.length > 0) {
-      const firstResult = increaseResults[0];
-      try {
-        if (firstResult.isSmartPlus) {
-          await this.increaseSmartPlusBudget(firstResult.adgroupId, campaignId, advertiserId, accessToken, 0.3);
-        } else {
-          await this.increaseBudget(firstResult.adgroupId, advertiserId, accessToken, 0.3);
+      if (dryRun) {
+        this.logger.log(`[DRY RUN] Would increase CBO campaign ${campaignId} budget by 30%`);
+        finalReason = `${finalReason} [DRY RUN]`;
+      } else {
+        const firstResult = increaseResults[0];
+        try {
+          if (firstResult.isSmartPlus) {
+            await this.increaseSmartPlusBudget(firstResult.adgroupId, campaignId, advertiserId, accessToken, 0.3);
+          } else {
+            await this.increaseBudget(firstResult.adgroupId, advertiserId, accessToken, 0.3);
+          }
+        } catch (error) {
+          this.logger.error(`Failed to increase CBO campaign budget:`, error);
+          return adgroupResults.map(r => ({
+            ...r,
+            action: 'ERROR' as const,
+            error: error.message,
+          }));
         }
-      } catch (error) {
-        this.logger.error(`Failed to increase CBO campaign budget:`, error);
-        return adgroupResults.map(r => ({
-          ...r,
-          action: 'ERROR' as const,
-          error: error.message,
-        }));
       }
     }
 
@@ -1086,9 +1114,15 @@ export class OptimizationService {
 
   /**
    * 広告を停止
+   * @param dryRun trueの場合、実際のAPI呼び出しをスキップ
    */
-  private async pauseAd(adId: string, adgroupId: string, advertiserId: string, accessToken: string, reason: string) {
+  private async pauseAd(adId: string, adgroupId: string, advertiserId: string, accessToken: string, reason: string, dryRun: boolean = false) {
     try {
+      if (dryRun) {
+        this.logger.log(`[DRY RUN] Would pause ad: ${adId}, reason: ${reason}`);
+        return { success: true, adId, action: 'PAUSED', dryRun: true };
+      }
+
       this.logger.log(`Pausing ad: ${adId}, reason: ${reason}`);
 
       // TikTok APIで広告を停止（専用のステータス更新エンドポイントを使用）
@@ -1652,13 +1686,20 @@ export class OptimizationService {
 
   /**
    * キャンペーンを停止
+   * @param dryRun trueの場合、実際のAPI呼び出しをスキップ
    */
   private async pauseCampaign(
     campaignId: string,
     advertiserId: string,
     accessToken: string,
     reason: string,
+    dryRun: boolean = false,
   ) {
+    if (dryRun) {
+      this.logger.log(`[DRY RUN] Would pause campaign ${campaignId}: ${reason}`);
+      return;
+    }
+
     await this.tiktokService.updateCampaign(
       advertiserId,
       accessToken,
