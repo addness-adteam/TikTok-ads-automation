@@ -73,8 +73,17 @@ jobs:
           success=false
 
           while [ $retry_count -lt $max_retries ]; do
+            # --retry-all-errors: SSL接続エラー(exit code 35)を含む全エラーでリトライ
+            # --connect-timeout 30: 接続タイムアウトを30秒に設定
             set +e
-            response=$(curl -s -w "\n%{http_code}" --max-time 600 --retry 3 --retry-delay 10 --retry-connrefused -X POST \
+            response=$(curl -s -w "\n%{http_code}" \
+              --max-time 600 \
+              --connect-timeout 30 \
+              --retry 5 \
+              --retry-delay 15 \
+              --retry-max-time 300 \
+              --retry-all-errors \
+              -X POST \
               "${{ env.API_BASE_URL }}/api/optimization/execute/${{ matrix.advertiser_id }}" \
               -H "Content-Type: application/json" \
               -d '{"mode": "${{ github.event.inputs.mode }}", "dryRun": true}')
