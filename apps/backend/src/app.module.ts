@@ -17,6 +17,7 @@ import { PixelsModule } from './pixels/pixels.module';
 import { AdTextTemplateModule } from './ad-text-template/ad-text-template.module';
 import { NotificationModule } from './notification/notification.module';
 import { AdPerformanceModule } from './ad-performance/ad-performance.module';
+import { IntradayOptimizationModule } from './intraday-optimization/intraday-optimization.module';
 
 @Module({
   imports: [
@@ -39,6 +40,7 @@ import { AdPerformanceModule } from './ad-performance/ad-performance.module';
     AdTextTemplateModule,
     NotificationModule,
     AdPerformanceModule,
+    IntradayOptimizationModule,
   ],
   controllers: [AppController],
   providers: [AppService],

@@ -510,3 +510,50 @@ model Notification {
   @@index([createdAt])
   @@map("notifications")
 }
+
+// ============================================================================
+// 日中CPA最適化機能
+// ============================================================================
+
+// 日中チェックで停止した広告のログ（23:59に再開するため）
+model IntradayPauseLog {
+  id              String    @id @default(uuid())
+  adId            String                          // 広告ID（TikTok ID）
+  advertiserId    String                          // 広告主ID
+  pauseDate       DateTime                        // 停止日（日付のみ、時刻は00:00:00）
+  pauseTime       DateTime                        // 停止実行時刻
+  pauseReason     String                          // 停止理由（CPA_EXCEEDED, NO_CV_WITH_PREVIOUS_CV等）
+  todaySpend      Float                           // 停止時点の当日消化額
+  todayCPA        Float?                          // 停止時点の当日CPA（CV=0の場合null）
+  yesterdayCPA    Float?                          // 前日CPA（CV=0判定時の参考）
+  targetCPA       Float                           // 目標CPA（参考用）
+  allowableCPA    Float                           // 許容CPA（参考用）
+  resumed         Boolean   @default(false)       // 再開済みフラグ
+  resumeTime      DateTime?                       // 再開実行時刻
+  createdAt       DateTime  @default(now())
+
+  @@index([pauseDate, resumed])
+  @@index([adId, pauseDate])
+  @@map("intraday_pause_logs")
+}
+
+// 日中チェックで予算削減した広告セットのログ（翌0:00に復元するため）
+model IntradayBudgetReductionLog {
+  id              String    @id @default(uuid())
+  adgroupId       String                          // 広告セットID（TikTok ID）
+  campaignId      String?                         // キャンペーンID（CBO時）
+  advertiserId    String                          // 広告主ID
+  reductionDate   DateTime                        // 削減日（日付のみ、時刻は00:00:00）
+  reductionTime   DateTime                        // 削減実行時刻
+  originalBudget  Float                           // 削減前の予算
+  reducedBudget   Float                           // 削減後の予算（50%）
+  reductionRate   Float     @default(0.5)         // 削減率
+  isCBO           Boolean   @default(false)       // CBO（キャンペーン予算）かどうか
+  restored        Boolean   @default(false)       // 復元済みフラグ
+  restoreTime     DateTime?                       // 復元実行時刻
+  createdAt       DateTime  @default(now())
+
+  @@index([reductionDate, restored])
+  @@index([adgroupId, reductionDate])
+  @@map("intraday_budget_reduction_logs")
+}

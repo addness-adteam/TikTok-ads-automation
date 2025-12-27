@@ -2,6 +2,7 @@ import { Controller, Post, Get, Logger, Query } from '@nestjs/common';
 import { SchedulerService } from './scheduler.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { TiktokService } from '../tiktok/tiktok.service';
+import { IntradayOptimizationService } from '../intraday-optimization/intraday-optimization.service';
 
 @Controller('jobs')
 export class JobsController {
@@ -11,6 +12,7 @@ export class JobsController {
     private readonly schedulerService: SchedulerService,
     private readonly prisma: PrismaService,
     private readonly tiktokService: TiktokService,
+    private readonly intradayOptimizationService: IntradayOptimizationService,
   ) {}
 
   /**
@@ -676,6 +678,82 @@ export class JobsController {
       };
     } catch (error) {
       this.logger.error('Failed to sync entities', error);
+      return {
+        success: false,
+        error: error.message,
+      };
+    }
+  }
+
+  // ============================================================================
+  // 日中CPA最適化関連エンドポイント
+  // ============================================================================
+
+  /**
+   * 日中CPAチェックを実行（15:00用）
+   * POST /jobs/intraday-cpa-check
+   */
+  @Post('intraday-cpa-check')
+  async runIntradayCPACheck() {
+    this.logger.log('Manual trigger: Running intraday CPA check');
+
+    try {
+      const result = await this.intradayOptimizationService.executeIntradayCPACheck();
+      return {
+        success: true,
+        message: 'Intraday CPA check completed',
+        data: result,
+      };
+    } catch (error) {
+      this.logger.error('Intraday CPA check failed', error);
+      return {
+        success: false,
+        error: error.message,
+      };
+    }
+  }
+
+  /**
+   * 日中停止した広告の配信再開（23:59用）
+   * POST /jobs/intraday-resume
+   */
+  @Post('intraday-resume')
+  async runIntradayResume() {
+    this.logger.log('Manual trigger: Running intraday ad resume');
+
+    try {
+      const result = await this.intradayOptimizationService.executeIntradayResume();
+      return {
+        success: true,
+        message: 'Intraday ad resume completed',
+        data: result,
+      };
+    } catch (error) {
+      this.logger.error('Intraday ad resume failed', error);
+      return {
+        success: false,
+        error: error.message,
+      };
+    }
+  }
+
+  /**
+   * 日中削減した予算の復元（翌日0:00用）
+   * POST /jobs/intraday-budget-restore
+   */
+  @Post('intraday-budget-restore')
+  async runIntradayBudgetRestore() {
+    this.logger.log('Manual trigger: Running intraday budget restore');
+
+    try {
+      const result = await this.intradayOptimizationService.executeIntradayBudgetRestore();
+      return {
+        success: true,
+        message: 'Intraday budget restore completed',
+        data: result,
+      };
+    } catch (error) {
+      this.logger.error('Intraday budget restore failed', error);
       return {
         success: false,
         error: error.message,
