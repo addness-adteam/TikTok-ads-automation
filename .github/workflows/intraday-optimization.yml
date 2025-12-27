@@ -18,6 +18,11 @@ on:
           - cpa-check
           - resume
           - budget-restore
+      dry_run:
+        description: 'ドライラン（実際の変更なし）'
+        required: false
+        type: boolean
+        default: false
 
 env:
   API_BASE_URL: https://tik-tok-ads-automation-backend.vercel.app
@@ -29,6 +34,14 @@ jobs:
     steps:
       - name: Run Intraday CPA Check (15:00 JST)
         run: |
+          DRY_RUN="${{ github.event.inputs.dry_run }}"
+          if [ "$DRY_RUN" == "true" ]; then
+            echo "=== DRY RUN MODE: No actual changes will be made ==="
+            API_URL="${{ env.API_BASE_URL }}/jobs/intraday-cpa-check?dryRun=true"
+          else
+            API_URL="${{ env.API_BASE_URL }}/jobs/intraday-cpa-check"
+          fi
+
           echo "Starting intraday CPA check at $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
 
           max_retries=3
@@ -44,7 +57,7 @@ jobs:
               --retry-delay 10 \
               --retry-all-errors \
               -X POST \
-              "${{ env.API_BASE_URL }}/jobs/intraday-cpa-check")
+              "$API_URL")
             curl_exit_code=$?
             set -e
 

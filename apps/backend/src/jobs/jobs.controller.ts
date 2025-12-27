@@ -691,17 +691,18 @@ export class JobsController {
 
   /**
    * 日中CPAチェックを実行（15:00用）
-   * POST /jobs/intraday-cpa-check
+   * POST /jobs/intraday-cpa-check?dryRun=true でドライラン実行
    */
   @Post('intraday-cpa-check')
-  async runIntradayCPACheck() {
-    this.logger.log('Manual trigger: Running intraday CPA check');
+  async runIntradayCPACheck(@Query('dryRun') dryRun?: string) {
+    const isDryRun = dryRun === 'true';
+    this.logger.log(`Manual trigger: Running intraday CPA check${isDryRun ? ' (DRY RUN)' : ''}`);
 
     try {
-      const result = await this.intradayOptimizationService.executeIntradayCPACheck();
+      const result = await this.intradayOptimizationService.executeIntradayCPACheck(isDryRun);
       return {
         success: true,
-        message: 'Intraday CPA check completed',
+        message: isDryRun ? 'Intraday CPA check dry run completed' : 'Intraday CPA check completed',
         data: result,
       };
     } catch (error) {

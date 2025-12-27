@@ -21,7 +21,7 @@ import {
  */
 type IntradayDecision = 'PAUSE' | 'REDUCE_BUDGET' | 'CONTINUE';
 
-interface IntradayCheckResult {
+export interface IntradayCheckResult {
   adId: string;
   adName: string;
   adgroupId: string;
@@ -33,6 +33,20 @@ interface IntradayCheckResult {
   yesterdayCPA: number | null;
   todayCV: number;
   yesterdayCV: number;
+}
+
+export interface DryRunResult {
+  dryRun: boolean;
+  advertisers: {
+    advertiserId: string;
+    ads: IntradayCheckResult[];
+  }[];
+  summary: {
+    totalAds: number;
+    wouldPause: number;
+    wouldReduce: number;
+    wouldContinue: number;
+  };
 }
 
 @Injectable()
@@ -153,8 +167,13 @@ export class IntradayOptimizationService {
 
   /**
    * 日中CPAチェックの実行
+   * @param dryRun trueの場合、実際のAPI呼び出しをスキップして判定結果のみ返す
    */
-  async executeIntradayCPACheck() {
+  async executeIntradayCPACheck(dryRun = false): Promise<DryRunResult | void> {
+    if (dryRun) {
+      this.logger.log('=== DRY RUN MODE: No actual changes will be made ===');
+    }
+
     // 除外Advertiser設定を取得
     const excludedAdvertisers = this.getExcludedAdvertisers();
 
@@ -168,25 +187,53 @@ export class IntradayOptimizationService {
 
     if (oauthTokens.length === 0) {
       this.logger.warn('No active advertisers found for intraday check');
+      if (dryRun) {
+        return {
+          dryRun: true,
+          advertisers: [],
+          summary: { totalAds: 0, wouldPause: 0, wouldReduce: 0, wouldContinue: 0 },
+        };
+      }
       return;
     }
 
     let totalPaused = 0;
     let totalReduced = 0;
     let totalContinued = 0;
+    const dryRunResults: DryRunResult['advertisers'] = [];
 
     for (const token of oauthTokens) {
       try {
-        const result = await this.checkAdvertiser(token.advertiserId, token.accessToken);
+        const result = await this.checkAdvertiser(token.advertiserId, token.accessToken, dryRun);
         totalPaused += result.paused;
         totalReduced += result.reduced;
         totalContinued += result.continued;
+
+        if (dryRun && result.checkResults) {
+          dryRunResults.push({
+            advertiserId: token.advertiserId,
+            ads: result.checkResults,
+          });
+        }
       } catch (error) {
         this.logger.error(`[IC-01] Failed to check advertiser ${token.advertiserId}: ${error.message}`);
       }
     }
 
     this.logger.log(`Intraday CPA check completed. Paused: ${totalPaused}, Reduced: ${totalReduced}, Continued: ${totalContinued}`);
+
+    if (dryRun) {
+      return {
+        dryRun: true,
+        advertisers: dryRunResults,
+        summary: {
+          totalAds: totalPaused + totalReduced + totalContinued,
+          wouldPause: totalPaused,
+          wouldReduce: totalReduced,
+          wouldContinue: totalContinued,
+        },
+      };
+    }
   }
 
   /**
@@ -195,8 +242,9 @@ export class IntradayOptimizationService {
   private async checkAdvertiser(
     advertiserId: string,
     accessToken: string,
-  ): Promise<{ paused: number; reduced: number; continued: number }> {
-    this.logger.log(`Checking advertiser: ${advertiserId}`);
+    dryRun = false,
+  ): Promise<{ paused: number; reduced: number; continued: number; checkResults?: IntradayCheckResult[] }> {
+    this.logger.log(`Checking advertiser: ${advertiserId}${dryRun ? ' (DRY RUN)' : ''}`);
 
     // Advertiser情報とAppeal設定を取得
     const advertiser = await this.prisma.advertiser.findUnique({
@@ -206,14 +254,14 @@ export class IntradayOptimizationService {
 
     if (!advertiser || !advertiser.appeal) {
       this.logger.warn(`No appeal settings for advertiser ${advertiserId}`);
-      return { paused: 0, reduced: 0, continued: 0 };
+      return { paused: 0, reduced: 0, continued: 0, checkResults: [] };
     }
 
     const { targetCPA, allowableCPA } = advertiser.appeal;
 
     if (!targetCPA || !allowableCPA) {
       this.logger.warn(`CPA settings incomplete for advertiser ${advertiserId}`);
-      return { paused: 0, reduced: 0, continued: 0 };
+      return { paused: 0, reduced: 0, continued: 0, checkResults: [] };
     }
 
     // 配信中の広告を取得
@@ -221,7 +269,7 @@ export class IntradayOptimizationService {
 
     if (activeAds.length === 0) {
       this.logger.log(`No active ads for advertiser ${advertiserId}`);
-      return { paused: 0, reduced: 0, continued: 0 };
+      return { paused: 0, reduced: 0, continued: 0, checkResults: [] };
     }
 
     // 当日・前日のメトリクスを取得
@@ -240,6 +288,7 @@ export class IntradayOptimizationService {
     let paused = 0;
     let reduced = 0;
     let continued = 0;
+    const checkResults: IntradayCheckResult[] = [];
 
     // 各広告を評価
     for (const ad of activeAds) {
@@ -254,13 +303,26 @@ export class IntradayOptimizationService {
           accessToken,
         );
 
+        checkResults.push(result);
+
         if (result.decision === 'PAUSE') {
-          await this.pauseAd(result, advertiserId, accessToken, today);
+          if (!dryRun) {
+            await this.pauseAd(result, advertiserId, accessToken, today);
+          } else {
+            this.logger.log(`[DRY RUN] Would PAUSE ad ${result.adId}: ${result.reason}`);
+          }
           paused++;
         } else if (result.decision === 'REDUCE_BUDGET') {
-          await this.reduceBudget(result, advertiserId, accessToken, today);
+          if (!dryRun) {
+            await this.reduceBudget(result, advertiserId, accessToken, today);
+          } else {
+            this.logger.log(`[DRY RUN] Would REDUCE_BUDGET for ad ${result.adId}: ${result.reason}`);
+          }
           reduced++;
         } else {
+          if (dryRun) {
+            this.logger.log(`[DRY RUN] Would CONTINUE ad ${result.adId}: ${result.reason}`);
+          }
           continued++;
         }
 
@@ -272,7 +334,7 @@ export class IntradayOptimizationService {
       }
     }
 
-    return { paused, reduced, continued };
+    return { paused, reduced, continued, checkResults };
   }
 
   /**
