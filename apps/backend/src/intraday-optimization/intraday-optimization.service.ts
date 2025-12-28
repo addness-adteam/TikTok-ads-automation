@@ -386,12 +386,18 @@ export class IntradayOptimizationService {
       // 6. 全広告を結合
       const allActiveAds = [...regularAdsOnly, ...taggedSmartPlusAds];
 
-      // 7. クリエイティブ名（旧スマプラ等）の広告を除外
-      // 旧スマプラは広告名が自動でクリエイティブ名になるため、日中CPA最適化の対象外
-      const targetAds = allActiveAds.filter((ad: any) => !this.isCreativeName(ad.ad_name));
+      // 7. 正しい広告名フォーマット（日付/制作者/CR名/LP名）の広告のみを対象にする
+      // クリエイティブ名やフォーマット不正の広告（旧スマプラ等）は除外
+      const targetAds = allActiveAds.filter((ad: any) => {
+        // クリエイティブ名は除外
+        if (this.isCreativeName(ad.ad_name)) return false;
+        // 正しいフォーマットのみ対象
+        const validation = validateAdNameFormat(ad.ad_name);
+        return validation.isValid;
+      });
       const excludedCount = allActiveAds.length - targetAds.length;
 
-      this.logger.log(`Active ads: ${targetAds.length} (Regular: ${regularAdsOnly.length}, Smart+: ${taggedSmartPlusAds.length}, Excluded creative names: ${excludedCount})`);
+      this.logger.log(`Active ads: ${targetAds.length} (Total: ${allActiveAds.length}, Excluded: ${excludedCount})`);
 
       return targetAds;
     } catch (error) {
