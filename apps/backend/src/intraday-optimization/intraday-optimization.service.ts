@@ -339,25 +339,38 @@ export class IntradayOptimizationService {
 
   /**
    * 配信中広告を取得
+   * 通常広告とSmart+広告を取得し、Smart+広告は正しい広告名を持つAPIから取得
    */
   private async getActiveAds(advertiserId: string, accessToken: string): Promise<any[]> {
     try {
-      // 通常広告
-      const adsResponse = await this.tiktokService.getAds(advertiserId, accessToken);
-      const regularAds = adsResponse.data?.list?.filter((ad: any) => ad.operation_status === 'ENABLE') || [];
-
-      // Smart+広告
+      // 1. Smart+広告を先に取得（/smart_plus/ad/get/ からは正しいad_nameが返される）
       const smartPlusResponse = await this.tiktokService.getSmartPlusAds(advertiserId, accessToken);
       const smartPlusAds = smartPlusResponse.data?.list?.filter((ad: any) => ad.operation_status === 'ENABLE') || [];
 
-      // Smart+広告にフラグを付与
+      // 2. Smart+広告のIDセットを作成
+      const smartPlusAdIds = new Set(smartPlusAds.map((ad: any) => ad.smart_plus_ad_id));
+
+      // 3. 通常広告を取得
+      const adsResponse = await this.tiktokService.getAds(advertiserId, accessToken);
+      const allRegularAds = adsResponse.data?.list?.filter((ad: any) => ad.operation_status === 'ENABLE') || [];
+
+      // 4. 通常広告からSmart+広告を除外
+      // 通常の/ad/get/でもSmart+広告が返ってくるが、広告名がクリエイティブ名になっているため除外
+      const regularAdsOnly = allRegularAds.filter((ad: any) => {
+        return !smartPlusAdIds.has(ad.ad_id) && !smartPlusAdIds.has(ad.smart_plus_ad_id);
+      });
+
+      // 5. Smart+広告にフラグを付与
+      // /smart_plus/ad/get/ からの ad_name は正しい手動設定名なので、そのまま使う
       const taggedSmartPlusAds = smartPlusAds.map((ad: any) => ({
         ...ad,
         ad_id: ad.smart_plus_ad_id || ad.ad_id,
         isSmartPlus: true,
       }));
 
-      return [...regularAds, ...taggedSmartPlusAds];
+      this.logger.log(`Active ads count: ${regularAdsOnly.length + taggedSmartPlusAds.length} (Regular: ${regularAdsOnly.length}, Smart+: ${taggedSmartPlusAds.length})`);
+
+      return [...regularAdsOnly, ...taggedSmartPlusAds];
     } catch (error) {
       this.logger.error(`Failed to get active ads: ${error.message}`);
       return [];
