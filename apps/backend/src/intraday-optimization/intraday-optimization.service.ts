@@ -243,7 +243,7 @@ export class IntradayOptimizationService {
     advertiserId: string,
     accessToken: string,
     dryRun = false,
-  ): Promise<{ paused: number; reduced: number; continued: number; checkResults?: IntradayCheckResult[] }> {
+  ): Promise<{ paused: number; reduced: number; continued: number; checkResults?: IntradayCheckResult[]; debug?: any }> {
     this.logger.log(`Checking advertiser: ${advertiserId}${dryRun ? ' (DRY RUN)' : ''}`);
 
     // Advertiser情報とAppeal設定を取得
@@ -338,8 +338,23 @@ export class IntradayOptimizationService {
   }
 
   /**
+   * クリエイティブ名（旧スマプラ等）かどうかを判定
+   * 拡張子（.mp4, .jpg等）を含む広告名はクリエイティブ名とみなす
+   */
+  private isCreativeName(adName: string | null | undefined): boolean {
+    if (!adName) return false;
+
+    const videoExtensions = ['.mp4', '.MP4', '.mov', '.MOV', '.avi', '.AVI'];
+    const imageExtensions = ['.jpg', '.JPG', '.jpeg', '.JPEG', '.png', '.PNG', '.gif', '.GIF'];
+    const allExtensions = [...videoExtensions, ...imageExtensions];
+
+    return allExtensions.some(ext => adName.includes(ext));
+  }
+
+  /**
    * 配信中広告を取得
    * 通常広告とSmart+広告を取得し、Smart+広告は正しい広告名を持つAPIから取得
+   * クリエイティブ名（旧スマプラ等）の広告は除外
    */
   private async getActiveAds(advertiserId: string, accessToken: string): Promise<any[]> {
     try {
@@ -368,9 +383,17 @@ export class IntradayOptimizationService {
         isSmartPlus: true,
       }));
 
-      this.logger.log(`Active ads count: ${regularAdsOnly.length + taggedSmartPlusAds.length} (Regular: ${regularAdsOnly.length}, Smart+: ${taggedSmartPlusAds.length})`);
+      // 6. 全広告を結合
+      const allActiveAds = [...regularAdsOnly, ...taggedSmartPlusAds];
 
-      return [...regularAdsOnly, ...taggedSmartPlusAds];
+      // 7. クリエイティブ名（旧スマプラ等）の広告を除外
+      // 旧スマプラは広告名が自動でクリエイティブ名になるため、日中CPA最適化の対象外
+      const targetAds = allActiveAds.filter((ad: any) => !this.isCreativeName(ad.ad_name));
+      const excludedCount = allActiveAds.length - targetAds.length;
+
+      this.logger.log(`Active ads: ${targetAds.length} (Regular: ${regularAdsOnly.length}, Smart+: ${taggedSmartPlusAds.length}, Excluded creative names: ${excludedCount})`);
+
+      return targetAds;
     } catch (error) {
       this.logger.error(`Failed to get active ads: ${error.message}`);
       return [];
