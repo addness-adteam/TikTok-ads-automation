@@ -408,14 +408,16 @@ export class IntradayOptimizationService {
 
   /**
    * 当日メトリクス取得（TikTok API）
+   * 通常広告とSmart+広告の両方のメトリクスを取得してマージ
    */
   private async getTodayMetrics(
     advertiserId: string,
     accessToken: string,
     todayStr: string,
   ): Promise<Map<string, { spend: number; impressions: number; clicks: number }>> {
-    const metricsMap = new Map();
+    const metricsMap = new Map<string, { spend: number; impressions: number; clicks: number }>();
 
+    // 1. 通常広告のメトリクス取得（AUCTION_AD）
     try {
       const reportData = await this.tiktokService.getAllReportData(
         advertiserId,
@@ -437,9 +439,56 @@ export class IntradayOptimizationService {
           });
         }
       }
+      this.logger.debug(`Regular ad metrics: ${metricsMap.size} ads`);
     } catch (error) {
-      this.logger.error(`Failed to get today metrics: ${error.message}`);
+      this.logger.error(`Failed to get regular ad metrics: ${error.message}`);
     }
+
+    // 2. Smart+広告のメトリクス取得（/smart_plus/material_report/overview/）
+    try {
+      const smartPlusMetrics = await this.tiktokService.getSmartPlusAdMetrics(
+        advertiserId,
+        accessToken,
+        {
+          startDate: todayStr,
+          endDate: todayStr,
+        },
+      );
+
+      // Smart+メトリクスはsmart_plus_ad_idごとに集計
+      const smartPlusData = smartPlusMetrics.data?.list || [];
+      const smartPlusAggregated = new Map<string, { spend: number; impressions: number; clicks: number }>();
+
+      for (const row of smartPlusData) {
+        const smartPlusAdId = row.dimensions?.smart_plus_ad_id;
+        if (!smartPlusAdId) continue;
+
+        const spend = parseFloat(row.metrics?.spend || '0');
+        const impressions = parseInt(row.metrics?.impressions || '0', 10);
+        const clicks = parseInt(row.metrics?.clicks || '0', 10);
+
+        const existing = smartPlusAggregated.get(smartPlusAdId);
+        if (existing) {
+          // 同じsmart_plus_ad_idの複数レコード（クリエイティブ別）を集計
+          existing.spend += spend;
+          existing.impressions += impressions;
+          existing.clicks += clicks;
+        } else {
+          smartPlusAggregated.set(smartPlusAdId, { spend, impressions, clicks });
+        }
+      }
+
+      // Smart+メトリクスをメインのマップにマージ
+      for (const [adId, metrics] of smartPlusAggregated) {
+        metricsMap.set(adId, metrics);
+      }
+
+      this.logger.debug(`Smart+ ad metrics: ${smartPlusAggregated.size} ads`);
+    } catch (error) {
+      this.logger.error(`Failed to get Smart+ ad metrics: ${error.message}`);
+    }
+
+    this.logger.log(`Total metrics loaded: ${metricsMap.size} ads`);
 
     return metricsMap;
   }
