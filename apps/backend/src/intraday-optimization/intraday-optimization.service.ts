@@ -30,9 +30,11 @@ export interface IntradayCheckResult {
   reason: string;
   todaySpend: number;
   todayCPA: number | null;
-  yesterdayCPA: number | null;
+  /** 過去7日間平均CPA */
+  last7DaysCPA: number | null;
   todayCV: number;
-  yesterdayCV: number;
+  /** 過去7日間のCV数 */
+  last7DaysCV: number;
 }
 
 export interface DryRunResult {
@@ -272,18 +274,15 @@ export class IntradayOptimizationService {
       return { paused: 0, reduced: 0, continued: 0, checkResults: [] };
     }
 
-    // 当日・前日のメトリクスを取得
+    // 当日のメトリクスを取得
     const today = this.getTodayJST();
-    const yesterday = new Date(today);
-    yesterday.setDate(yesterday.getDate() - 1);
-
     const todayStr = this.formatDateStr(today);
 
     // 当日メトリクス取得（TikTok API）
     const todayMetrics = await this.getTodayMetrics(advertiserId, accessToken, todayStr);
 
-    // CV数取得（Google Sheets）
-    const cvData = await this.getCVDataForAds(advertiser.appeal, activeAds, today, yesterday);
+    // CV数取得（Google Sheets）- 当日と過去7日間
+    const cvData = await this.getCVDataForAds(advertiser.appeal, activeAds, today);
 
     let paused = 0;
     let reduced = 0;
@@ -495,31 +494,31 @@ export class IntradayOptimizationService {
 
   /**
    * Google SheetsからCV数を取得
-   * 登録経路ごとに当日・前日のCV数を取得
+   * 登録経路ごとに当日・過去7日間のCV数を取得
    */
   private async getCVDataForAds(
     appeal: any,
     ads: any[],
     today: Date,
-    yesterday: Date,
-  ): Promise<Map<string, { todayCV: number; yesterdayCV: number }>> {
-    const cvData = new Map<string, { todayCV: number; yesterdayCV: number }>();
+  ): Promise<Map<string, { todayCV: number; last7DaysCV: number }>> {
+    const cvData = new Map<string, { todayCV: number; last7DaysCV: number }>();
 
     if (!appeal.cvSpreadsheetUrl) {
       this.logger.warn('No CV spreadsheet URL configured');
       return cvData;
     }
 
-    // 当日と前日の日付範囲を設定
+    // 当日の日付範囲を設定
     const todayStart = new Date(today);
     todayStart.setHours(0, 0, 0, 0);
     const todayEnd = new Date(today);
     todayEnd.setHours(23, 59, 59, 999);
 
-    const yesterdayStart = new Date(yesterday);
-    yesterdayStart.setHours(0, 0, 0, 0);
-    const yesterdayEnd = new Date(yesterday);
-    yesterdayEnd.setHours(23, 59, 59, 999);
+    // 過去7日間の日付範囲を設定（今日を含まない過去7日間）
+    const last7DaysEnd = new Date(today);
+    last7DaysEnd.setHours(0, 0, 0, 0); // 今日の0:00まで
+    const last7DaysStart = new Date(last7DaysEnd);
+    last7DaysStart.setDate(last7DaysStart.getDate() - 7);
 
     // 各広告の登録経路に対してCV数を取得
     const processedPaths = new Set<string>();
@@ -547,23 +546,23 @@ export class IntradayOptimizationService {
           todayEnd,
         );
 
-        // 前日CV数
-        const yesterdayCV = await this.googleSheetsService.getCVCount(
+        // 過去7日間CV数
+        const last7DaysCV = await this.googleSheetsService.getCVCount(
           appeal.name,
           appeal.cvSpreadsheetUrl,
           registrationPath,
-          yesterdayStart,
-          yesterdayEnd,
+          last7DaysStart,
+          last7DaysEnd,
         );
 
-        cvData.set(lpName, { todayCV, yesterdayCV });
+        cvData.set(lpName, { todayCV, last7DaysCV });
 
         this.logger.debug(
-          `CV data for ${lpName}: today=${todayCV}, yesterday=${yesterdayCV}`,
+          `CV data for ${lpName}: today=${todayCV}, last7Days=${last7DaysCV}`,
         );
       } catch (error) {
         this.logger.warn(`Failed to get CV for ${registrationPath}: ${error.message}`);
-        cvData.set(lpName, { todayCV: 0, yesterdayCV: 0 });
+        cvData.set(lpName, { todayCV: 0, last7DaysCV: 0 });
       }
     }
 
@@ -577,7 +576,7 @@ export class IntradayOptimizationService {
     ad: any,
     advertiser: any,
     todayMetrics: Map<string, { spend: number; impressions: number; clicks: number }>,
-    cvData: Map<string, { todayCV: number; yesterdayCV: number }>,
+    cvData: Map<string, { todayCV: number; last7DaysCV: number }>,
     targetCPA: number,
     allowableCPA: number,
     accessToken: string,
@@ -599,9 +598,9 @@ export class IntradayOptimizationService {
         reason: '広告名フォーマット不正のためスキップ',
         todaySpend: 0,
         todayCPA: null,
-        yesterdayCPA: null,
+        last7DaysCPA: null,
         todayCV: 0,
-        yesterdayCV: 0,
+        last7DaysCV: 0,
       };
     }
 
@@ -611,13 +610,16 @@ export class IntradayOptimizationService {
 
     // LP名からCV数を取得
     const lpName = nameValidation.parsed?.lpName || '';
-    const cv = cvData.get(lpName) || { todayCV: 0, yesterdayCV: 0 };
+    const cv = cvData.get(lpName) || { todayCV: 0, last7DaysCV: 0 };
     const todayCV = cv.todayCV;
-    const yesterdayCV = cv.yesterdayCV;
+    const last7DaysCV = cv.last7DaysCV;
 
     // CPA計算
     const todayCPA = todayCV > 0 ? todaySpend / todayCV : null;
-    const yesterdayCPA = yesterdayCV > 0 ? await this.getYesterdaySpend(adId, advertiser.id) / yesterdayCV : null;
+
+    // 過去7日間平均CPA = 過去7日間消化額 ÷ 過去7日間CV数
+    const last7DaysSpend = await this.getLast7DaysSpend(adId);
+    const last7DaysCPA = last7DaysCV > 0 ? last7DaysSpend / last7DaysCV : null;
 
     // 判定ロジック
     let decision: IntradayDecision;
@@ -625,14 +627,14 @@ export class IntradayOptimizationService {
 
     if (todayCV === 0) {
       // CV未発生時の判定
-      if (yesterdayCPA === null || yesterdayCPA === 0) {
-        // 前日もCV=0 → 継続
+      if (last7DaysCPA === null || last7DaysCPA === 0) {
+        // 過去7日間もCV=0 → 継続
         decision = 'CONTINUE';
-        reason = '当日CV=0、前日もCV=0のため継続（元々CVが少ない広告）';
+        reason = '当日CV=0、過去7日間もCV=0のため継続（元々CVが少ない広告）';
       } else {
-        // 前日はCVあり → 停止
+        // 過去7日間はCVあり → 停止
         decision = 'PAUSE';
-        reason = `当日CV=0、前日CPA=¥${yesterdayCPA.toFixed(0)} → CVR悪化の兆候のため停止`;
+        reason = `当日CV=0、過去7日間平均CPA=¥${last7DaysCPA.toFixed(0)} → CVR悪化の兆候のため停止`;
       }
     } else if (todayCPA !== null) {
       if (todayCPA <= targetCPA) {
@@ -659,22 +661,27 @@ export class IntradayOptimizationService {
       reason,
       todaySpend,
       todayCPA,
-      yesterdayCPA,
+      last7DaysCPA,
       todayCV,
-      yesterdayCV,
+      last7DaysCV,
     };
   }
 
   /**
-   * 前日の消化額を取得
+   * 過去7日間の消化額を取得（今日を含まない）
    */
-  private async getYesterdaySpend(adId: string, advertiserId: string): Promise<number> {
-    const yesterday = new Date();
-    yesterday.setDate(yesterday.getDate() - 1);
-    yesterday.setHours(0, 0, 0, 0);
+  private async getLast7DaysSpend(adId: string): Promise<number> {
+    const now = new Date();
+    const jstOffset = 9 * 60 * 60 * 1000;
+    const jstNow = new Date(now.getTime() + jstOffset);
 
-    const nextDay = new Date(yesterday);
-    nextDay.setDate(nextDay.getDate() + 1);
+    // 今日の0:00 JST
+    const todayStart = new Date(jstNow);
+    todayStart.setUTCHours(0, 0, 0, 0);
+
+    // 7日前の0:00 JST
+    const last7DaysStart = new Date(todayStart);
+    last7DaysStart.setDate(last7DaysStart.getDate() - 7);
 
     const ad = await this.prisma.ad.findUnique({
       where: { tiktokId: adId },
@@ -686,8 +693,8 @@ export class IntradayOptimizationService {
       where: {
         adId: ad.id,
         statDate: {
-          gte: yesterday,
-          lt: nextDay,
+          gte: last7DaysStart,
+          lt: todayStart,
         },
       },
     });
@@ -709,6 +716,7 @@ export class IntradayOptimizationService {
       await this.tiktokService.updateAdStatus(advertiserId, accessToken, [result.adId], 'DISABLE');
 
       // IntradayPauseLogに記録
+      // 注: yesterdayCPAフィールドには過去7日間平均CPAを保存（後でDBフィールド名を更新予定）
       await withDatabaseRetry(
         () =>
           this.prisma.intradayPauseLog.create({
@@ -720,7 +728,7 @@ export class IntradayOptimizationService {
               pauseReason: result.todayCPA === null ? 'NO_CV_WITH_PREVIOUS_CV' : 'CPA_EXCEEDED',
               todaySpend: result.todaySpend,
               todayCPA: result.todayCPA,
-              yesterdayCPA: result.yesterdayCPA,
+              yesterdayCPA: result.last7DaysCPA, // 過去7日間平均CPA
               targetCPA: 0, // 後で取得
               allowableCPA: 0, // 後で取得
             },
@@ -1004,7 +1012,7 @@ export class IntradayOptimizationService {
     const message =
       result.todayCPA !== null
         ? `広告「${result.adName}」を一時停止しました\n当日CPA: ¥${result.todayCPA.toFixed(0)}（許容CPAを超過）\n23:59に自動再開予定`
-        : `広告「${result.adName}」を一時停止しました\n当日CV: 0件（前日CPA: ¥${result.yesterdayCPA?.toFixed(0) || '-'} → CVR悪化の兆候）\n23:59に自動再開予定`;
+        : `広告「${result.adName}」を一時停止しました\n当日CV: 0件（過去7日間平均CPA: ¥${result.last7DaysCPA?.toFixed(0) || '-'} → CVR悪化の兆候）\n23:59に自動再開予定`;
 
     await this.notificationService.createNotification({
       type: 'INTRADAY_CPA_PAUSE' as any,
@@ -1017,7 +1025,7 @@ export class IntradayOptimizationService {
       metadata: {
         todaySpend: result.todaySpend,
         todayCPA: result.todayCPA,
-        yesterdayCPA: result.yesterdayCPA,
+        last7DaysCPA: result.last7DaysCPA,
         todayCV: result.todayCV,
       },
     });
