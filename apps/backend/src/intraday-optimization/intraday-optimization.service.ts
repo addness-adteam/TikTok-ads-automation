@@ -830,14 +830,19 @@ export class IntradayOptimizationService {
 
   /**
    * 配信再開の実行
+   * GitHub Actionsのスケジュール遅延で日付が変わる可能性があるため、
+   * 当日と前日の停止ログを対象にする
    */
   async executeIntradayResume() {
     const today = this.getTodayJST();
+    const yesterday = new Date(today);
+    yesterday.setUTCDate(yesterday.getUTCDate() - 1);
 
-    // 本日停止&未再開の広告を取得
+    // 当日または前日に停止&未再開の広告を取得
+    // （GitHub Actionsの遅延で日付が変わっても対応可能）
     const pauseLogs = await this.prisma.intradayPauseLog.findMany({
       where: {
-        pauseDate: today,
+        pauseDate: { in: [today, yesterday] },
         resumed: false,
       },
     });
@@ -892,14 +897,19 @@ export class IntradayOptimizationService {
 
   /**
    * 予算復元の実行
+   * GitHub Actionsのスケジュール遅延で日付が変わる可能性があるため、
+   * 当日と前日の削減ログを対象にする
    */
   async executeIntradayBudgetRestore() {
     const today = this.getTodayJST();
+    const yesterday = new Date(today);
+    yesterday.setUTCDate(yesterday.getUTCDate() - 1);
 
-    // 本日削減&未復元を取得
+    // 当日または前日に削減&未復元を取得
+    // （GitHub Actionsの遅延で日付が変わっても対応可能）
     const reductionLogs = await this.prisma.intradayBudgetReductionLog.findMany({
       where: {
-        reductionDate: today,
+        reductionDate: { in: [today, yesterday] },
         restored: false,
       },
     });
