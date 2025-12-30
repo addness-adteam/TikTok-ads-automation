@@ -86,7 +86,7 @@ export type OptimizationMode = 'ROAS_MAXIMIZE' | 'ACQUISITION_MAXIMIZE';
 export interface AdGroupOptimizationResult {
   adgroupId: string;
   campaignId: string;
-  action: 'PAUSE' | 'CONTINUE' | 'INCREASE_BUDGET' | 'NO_CHANGE' | 'ERROR' | 'SKIPPED_DUE_TO_CAP';
+  action: 'PAUSE' | 'CONTINUE' | 'INCREASE_BUDGET' | 'NO_CHANGE' | 'ERROR' | 'SKIPPED_DUE_TO_CAP' | 'SKIPPED_DUE_TO_COOLDOWN';
   reason: string;
   isCBO: boolean; // キャンペーン予算（CBO）かどうか
   isSmartPlus?: boolean;
@@ -994,12 +994,32 @@ export class OptimizationService {
         };
       }
 
+      let budgetResult: any;
       if (result.isSmartPlus) {
         this.logger.log(`Smart+ ad detected for adgroup ${result.adgroupId}, using Smart+ budget update API`);
-        await this.increaseSmartPlusBudget(result.adgroupId, result.campaignId, advertiserId, accessToken, 0.3);
+        budgetResult = await this.increaseSmartPlusBudget(result.adgroupId, result.campaignId, advertiserId, accessToken, 0.3);
       } else {
-        await this.increaseBudget(result.adgroupId, advertiserId, accessToken, 0.3);
+        budgetResult = await this.increaseBudget(result.adgroupId, advertiserId, accessToken, 0.3);
       }
+
+      // クールダウンでスキップされた場合の処理
+      if (budgetResult?.action === 'SKIPPED_DUE_TO_COOLDOWN') {
+        return {
+          ...result,
+          action: 'SKIPPED_DUE_TO_COOLDOWN',
+          reason: budgetResult.reason,
+        };
+      }
+
+      // 上限日予算でスキップされた場合の処理
+      if (budgetResult?.action === 'SKIPPED_DUE_TO_CAP') {
+        return {
+          ...result,
+          action: 'SKIPPED_DUE_TO_CAP',
+          reason: budgetResult.reason,
+        };
+      }
+
       return {
         ...result,
         reason: `${result.reason}${result.isSmartPlus ? '（Smart+ API使用）' : ''}`,
@@ -1067,10 +1087,29 @@ export class OptimizationService {
       } else {
         const firstResult = increaseResults[0];
         try {
+          let budgetResult: any;
           if (firstResult.isSmartPlus) {
-            await this.increaseSmartPlusBudget(firstResult.adgroupId, campaignId, advertiserId, accessToken, 0.3);
+            budgetResult = await this.increaseSmartPlusBudget(firstResult.adgroupId, campaignId, advertiserId, accessToken, 0.3);
           } else {
-            await this.increaseBudget(firstResult.adgroupId, advertiserId, accessToken, 0.3);
+            budgetResult = await this.increaseBudget(firstResult.adgroupId, advertiserId, accessToken, 0.3);
+          }
+
+          // クールダウンでスキップされた場合の処理
+          if (budgetResult?.action === 'SKIPPED_DUE_TO_COOLDOWN') {
+            return adgroupResults.map(r => ({
+              ...r,
+              action: 'SKIPPED_DUE_TO_COOLDOWN' as const,
+              reason: budgetResult.reason,
+            }));
+          }
+
+          // 上限日予算でスキップされた場合の処理
+          if (budgetResult?.action === 'SKIPPED_DUE_TO_CAP') {
+            return adgroupResults.map(r => ({
+              ...r,
+              action: 'SKIPPED_DUE_TO_CAP' as const,
+              reason: budgetResult.reason,
+            }));
           }
         } catch (error) {
           this.logger.error(`Failed to increase CBO campaign budget:`, error);
@@ -1163,6 +1202,7 @@ export class OptimizationService {
    * 広告セットの予算を増額（O-06対応: リトライ機能付き）
    * 上限日予算チェック機能付き
    * 予算バリデーション機能付き
+   * クールダウン機能付き
    */
   private async increaseBudget(
     adgroupId: string,
@@ -1176,6 +1216,28 @@ export class OptimizationService {
       // 広告セット情報を取得
       const adgroup = await this.tiktokService.getAdGroup(advertiserId, accessToken, adgroupId);
       this.logger.log(`AdGroup fetched: budget=${adgroup.budget}, budget_mode=${adgroup.budget_mode}`);
+
+      // ===== クールダウンチェック（予算タイプに基づいて判定） =====
+      const isAdGroupBudget = !!(adgroup.budget_mode && adgroup.budget);
+      const cooldownEntityType = isAdGroupBudget ? 'ADGROUP' : 'CAMPAIGN';
+      const cooldownEntityId = isAdGroupBudget ? adgroupId : adgroup.campaign_id;
+      const cooldownCheck = await this.checkBudgetIncreaseCooldown(cooldownEntityType, cooldownEntityId);
+
+      if (cooldownCheck.isInCooldown) {
+        const lastIncreaseStr = cooldownCheck.lastIncreaseDate
+          ? cooldownCheck.lastIncreaseDate.toLocaleDateString('ja-JP')
+          : '不明';
+        this.logger.log(
+          `Skipping budget increase for ${cooldownEntityType} ${cooldownEntityId}: cooldown period active ` +
+          `(last increase: ${cooldownCheck.lastIncreaseDate?.toISOString() || 'unknown'})`
+        );
+        return {
+          success: true,
+          [isAdGroupBudget ? 'adgroupId' : 'campaignId']: cooldownEntityId,
+          action: 'SKIPPED_DUE_TO_COOLDOWN',
+          reason: `クールダウン期間中のため増額スキップ（前回増額: ${lastIncreaseStr}）`,
+        };
+      }
 
       const currentBudget = adgroup.budget;
       // 小数点以下を切り捨て（TikTok APIは整数のみ受け付けるため）
@@ -1378,8 +1440,54 @@ export class OptimizationService {
   }
 
   /**
+   * 予算増額クールダウン期間中かどうかを判定
+   * @param entityType 'ADGROUP' | 'CAMPAIGN'
+   * @param entityId 広告セットID または キャンペーンID
+   * @param cooldownDays クールダウン日数（デフォルト: 3）
+   * @returns { isInCooldown: boolean, lastIncreaseDate?: Date }
+   */
+  private async checkBudgetIncreaseCooldown(
+    entityType: 'ADGROUP' | 'CAMPAIGN',
+    entityId: string,
+    cooldownDays: number = 3,
+  ): Promise<{ isInCooldown: boolean; lastIncreaseDate?: Date }> {
+    try {
+      // 過去N日以内の予算増額ログを検索
+      const cutoffDate = new Date();
+      cutoffDate.setDate(cutoffDate.getDate() - cooldownDays);
+
+      const recentBudgetIncrease = await this.prisma.changeLog.findFirst({
+        where: {
+          entityType,
+          entityId,
+          action: 'UPDATE_BUDGET',
+          source: 'OPTIMIZATION', // 自動最適化による増額のみを対象
+          createdAt: {
+            gt: cutoffDate,
+          },
+        },
+        orderBy: { createdAt: 'desc' },
+      });
+
+      if (recentBudgetIncrease) {
+        return {
+          isInCooldown: true,
+          lastIncreaseDate: recentBudgetIncrease.createdAt,
+        };
+      }
+
+      return { isInCooldown: false };
+    } catch (error) {
+      // DBエラー時は安全側に倒してクールダウン中として扱う
+      this.logger.error(`Failed to check cooldown for ${entityType} ${entityId}: ${error.message}`);
+      return { isInCooldown: true, lastIncreaseDate: undefined };
+    }
+  }
+
+  /**
    * 新スマートプラス広告セットの予算を増額
    * CBO有効時はキャンペーン予算を、CBO無効時は広告セット予算を更新
+   * クールダウン機能付き
    */
   private async increaseSmartPlusBudget(
     adgroupId: string,
@@ -1408,6 +1516,28 @@ export class OptimizationService {
       const isCBOEnabled = campaign.budget_optimize_on === true && campaign.budget_mode !== 'BUDGET_MODE_INFINITE';
 
       this.logger.log(`CBO判定: budget_optimize_on=${campaign.budget_optimize_on}, budget_mode=${campaign.budget_mode}, isCBOEnabled=${isCBOEnabled}`);
+
+      // ===== クールダウンチェック（予算タイプに基づいて判定） =====
+      const cooldownEntityType = isCBOEnabled ? 'CAMPAIGN' : 'ADGROUP';
+      const cooldownEntityId = isCBOEnabled ? campaignId : adgroupId;
+      const cooldownCheck = await this.checkBudgetIncreaseCooldown(cooldownEntityType, cooldownEntityId);
+
+      if (cooldownCheck.isInCooldown) {
+        const lastIncreaseStr = cooldownCheck.lastIncreaseDate
+          ? cooldownCheck.lastIncreaseDate.toLocaleDateString('ja-JP')
+          : '不明';
+        this.logger.log(
+          `Skipping Smart+ budget increase for ${cooldownEntityType} ${cooldownEntityId}: cooldown period active ` +
+          `(last increase: ${cooldownCheck.lastIncreaseDate?.toISOString() || 'unknown'})`
+        );
+        return {
+          success: true,
+          [isCBOEnabled ? 'campaignId' : 'adgroupId']: cooldownEntityId,
+          action: 'SKIPPED_DUE_TO_COOLDOWN',
+          reason: `クールダウン期間中のため増額スキップ（前回増額: ${lastIncreaseStr}）`,
+          isSmartPlus: true,
+        };
+      }
 
       if (isCBOEnabled) {
         // CBO有効：キャンペーン予算を更新
