@@ -135,6 +135,22 @@ jobs:
                 echo ""
               fi
 
+              # クールダウンでスキップされた広告セットを表示
+              cooldown_count=$(echo "$body" | jq -r '[.data.results[]? | select(.action == "SKIPPED_DUE_TO_COOLDOWN")] | length')
+              if [ "$cooldown_count" -gt 0 ]; then
+                echo "=== ⏸️ クールダウンでスキップ（3日以内に増額済み） ==="
+                echo "$body" | jq -r '.data.results[]? | select(.action == "SKIPPED_DUE_TO_COOLDOWN") | "AdGroup: \(.adgroupId) - \(.reason // "クールダウン期間中")"'
+                echo ""
+              fi
+
+              # 上限日予算でスキップされた広告セットを表示
+              cap_count=$(echo "$body" | jq -r '[.data.results[]? | select(.action == "SKIPPED_DUE_TO_CAP")] | length')
+              if [ "$cap_count" -gt 0 ]; then
+                echo "=== 🔒 上限日予算でスキップ ==="
+                echo "$body" | jq -r '.data.results[]? | select(.action == "SKIPPED_DUE_TO_CAP") | "AdGroup: \(.adgroupId) - \(.reason // "上限日予算に到達")"'
+                echo ""
+              fi
+
               # エラーがあれば出力
               has_errors=$(echo "$body" | jq -r '.data.results[]? | select(.success == false) | .adgroupId' | head -1)
               if [ -n "$has_errors" ]; then
