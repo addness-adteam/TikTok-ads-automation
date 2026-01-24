@@ -692,14 +692,22 @@ export class JobsController {
   /**
    * 日中CPAチェックを実行（15:00用）
    * POST /jobs/intraday-cpa-check?dryRun=true でドライラン実行
+   * POST /jobs/intraday-cpa-check?excludedAdvertisers=id1,id2,id3 で除外アカウント指定
    */
   @Post('intraday-cpa-check')
-  async runIntradayCPACheck(@Query('dryRun') dryRun?: string) {
+  async runIntradayCPACheck(
+    @Query('dryRun') dryRun?: string,
+    @Query('excludedAdvertisers') excludedAdvertisers?: string,
+  ) {
     const isDryRun = dryRun === 'true';
-    this.logger.log(`Manual trigger: Running intraday CPA check${isDryRun ? ' (DRY RUN)' : ''}`);
+    const excludedList = excludedAdvertisers
+      ? excludedAdvertisers.split(',').map(id => id.trim()).filter(id => id)
+      : undefined;
+
+    this.logger.log(`Manual trigger: Running intraday CPA check${isDryRun ? ' (DRY RUN)' : ''}${excludedList ? ` (excluding: ${excludedList.join(', ')})` : ''}`);
 
     try {
-      const result = await this.intradayOptimizationService.executeIntradayCPACheck(isDryRun);
+      const result = await this.intradayOptimizationService.executeIntradayCPACheck(isDryRun, excludedList);
       return {
         success: true,
         message: isDryRun ? 'Intraday CPA check dry run completed' : 'Intraday CPA check completed',

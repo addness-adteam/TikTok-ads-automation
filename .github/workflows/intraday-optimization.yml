@@ -26,6 +26,11 @@ on:
 
 env:
   API_BASE_URL: https://tik-tok-ads-automation-backend.vercel.app
+  # 日中CPA最適化から除外するアカウント（カンマ区切り）
+  # NOTE: AI_1 (7468288053866561553) は一時的に除外中
+  # NOTE: AI_2 (7523128243466551303) は一時的に除外中
+  # NOTE: AI_3 (7543540647266074641) は一時的に除外中
+  INTRADAY_EXCLUDED_ADVERTISERS: '7468288053866561553,7523128243466551303,7543540647266074641'
 
 jobs:
   intraday-cpa-check:
@@ -35,11 +40,28 @@ jobs:
       - name: Run Intraday CPA Check (15:00 JST)
         run: |
           DRY_RUN="${{ github.event.inputs.dry_run }}"
+          EXCLUDED="${{ env.INTRADAY_EXCLUDED_ADVERTISERS }}"
+
+          # Build API URL with parameters
+          API_URL="${{ env.API_BASE_URL }}/jobs/intraday-cpa-check"
+          PARAMS=""
+
           if [ "$DRY_RUN" == "true" ]; then
             echo "=== DRY RUN MODE: No actual changes will be made ==="
-            API_URL="${{ env.API_BASE_URL }}/jobs/intraday-cpa-check?dryRun=true"
-          else
-            API_URL="${{ env.API_BASE_URL }}/jobs/intraday-cpa-check"
+            PARAMS="dryRun=true"
+          fi
+
+          if [ -n "$EXCLUDED" ]; then
+            echo "=== Excluding advertisers: $EXCLUDED ==="
+            if [ -n "$PARAMS" ]; then
+              PARAMS="${PARAMS}&excludedAdvertisers=${EXCLUDED}"
+            else
+              PARAMS="excludedAdvertisers=${EXCLUDED}"
+            fi
+          fi
+
+          if [ -n "$PARAMS" ]; then
+            API_URL="${API_URL}?${PARAMS}"
           fi
 
           echo "Starting intraday CPA check at $(date -u '+%Y-%m-%d %H:%M:%S UTC')"

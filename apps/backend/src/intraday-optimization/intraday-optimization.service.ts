@@ -170,14 +170,18 @@ export class IntradayOptimizationService {
   /**
    * 日中CPAチェックの実行
    * @param dryRun trueの場合、実際のAPI呼び出しをスキップして判定結果のみ返す
+   * @param additionalExcludedAdvertisers 追加で除外するAdvertiser IDs（API呼び出し時に指定）
    */
-  async executeIntradayCPACheck(dryRun = false): Promise<DryRunResult | void> {
+  async executeIntradayCPACheck(dryRun = false, additionalExcludedAdvertisers?: string[]): Promise<DryRunResult | void> {
     if (dryRun) {
       this.logger.log('=== DRY RUN MODE: No actual changes will be made ===');
     }
 
-    // 除外Advertiser設定を取得
-    const excludedAdvertisers = this.getExcludedAdvertisers();
+    // 除外Advertiser設定を取得（追加の除外リストを含む）
+    const excludedAdvertisers = this.getExcludedAdvertisers(additionalExcludedAdvertisers);
+    if (excludedAdvertisers.length > 0) {
+      this.logger.log(`Excluded advertisers: ${excludedAdvertisers.join(', ')}`);
+    }
 
     // 有効なOAuthTokenを持つAdvertiserを取得
     const oauthTokens = await this.prisma.oAuthToken.findMany({
@@ -1077,10 +1081,19 @@ export class IntradayOptimizationService {
 
   /**
    * 除外Advertiserリストを取得
+   * @param additionalExcluded 追加で除外するAdvertiser IDs（API呼び出し時に指定）
    */
-  private getExcludedAdvertisers(): string[] {
+  getExcludedAdvertisers(additionalExcluded?: string[]): string[] {
     const excluded = this.configService.get('INTRADAY_EXCLUDED_ADVERTISERS') || '';
-    return excluded.split(',').map((id: string) => id.trim()).filter((id: string) => id);
+    const fromEnv = excluded.split(',').map((id: string) => id.trim()).filter((id: string) => id);
+
+    // 追加の除外リストがあればマージ
+    if (additionalExcluded && additionalExcluded.length > 0) {
+      const combined = new Set([...fromEnv, ...additionalExcluded]);
+      return Array.from(combined);
+    }
+
+    return fromEnv;
   }
 
   /**
