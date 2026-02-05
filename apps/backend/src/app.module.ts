@@ -18,6 +18,7 @@ import { AdTextTemplateModule } from './ad-text-template/ad-text-template.module
 import { NotificationModule } from './notification/notification.module';
 import { AdPerformanceModule } from './ad-performance/ad-performance.module';
 import { IntradayOptimizationModule } from './intraday-optimization/intraday-optimization.module';
+import { AdCountRecordingModule } from './ad-count-recording/ad-count-recording.module';
 
 @Module({
   imports: [
@@ -41,6 +42,7 @@ import { IntradayOptimizationModule } from './intraday-optimization/intraday-opt
     NotificationModule,
     AdPerformanceModule,
     IntradayOptimizationModule,
+    AdCountRecordingModule,
   ],
   controllers: [AppController],
   providers: [AppService],

@@ -11,6 +11,16 @@ const prisma = new PrismaClient();
 
 async function addToken(advertiserId: string, accessToken: string) {
   try {
+    // Advertiserレコードが存在しない場合は先に作成（外部キー制約対策）
+    await prisma.advertiser.upsert({
+      where: { tiktokAdvertiserId: advertiserId },
+      create: {
+        tiktokAdvertiserId: advertiserId,
+        name: `Advertiser ${advertiserId}`,
+      },
+      update: {},
+    });
+
     // 無期限トークンなので、有効期限を10年後に設定
     const expiresAt = new Date();
     expiresAt.setFullYear(expiresAt.getFullYear() + 10);

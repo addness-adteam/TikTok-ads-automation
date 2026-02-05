@@ -48,7 +48,7 @@ export class GoogleSheetsService {
 
     this.auth = new google.auth.GoogleAuth({
       credentials,
-      scopes: ['https://www.googleapis.com/auth/spreadsheets.readonly'],
+      scopes: ['https://www.googleapis.com/auth/spreadsheets'],
     });
 
     this.sheets = google.sheets({ version: 'v4', auth: this.auth });
@@ -199,6 +199,112 @@ export class GoogleSheetsService {
       columnPositions,
       freshnessWarning,
     };
+  }
+
+  /**
+   * スプレッドシートから指定範囲の値を取得
+   * @param spreadsheetId スプレッドシートID
+   * @param range 取得範囲（例: 'シート名!A:C'）
+   * @returns 2次元配列
+   */
+  async getValues(spreadsheetId: string, range: string): Promise<string[][]> {
+    try {
+      const response = await withRetry<any>(
+        () => this.sheets.spreadsheets.values.get({ spreadsheetId, range }),
+        {
+          maxRetries: 3,
+          initialDelayMs: 1000,
+          backoffMultiplier: 2,
+          retryableErrors: isGoogleSheetsErrorRetryable,
+          onRetry: (error, attempt, delayMs) => {
+            this.logger.warn(`[getValues] Attempt ${attempt}/3 failed. Retrying in ${delayMs}ms...`);
+          },
+        },
+        this.logger,
+      );
+      return response.data?.values || [];
+    } catch (error) {
+      const errorInfo = classifyGoogleSheetsError(error);
+      logGoogleSheetsError(this.logger, errorInfo, `getValues(${range})`);
+      throw error;
+    }
+  }
+
+  /**
+   * スプレッドシートの指定範囲に値を書き込み（既存セルの上書き）
+   * @param spreadsheetId スプレッドシートID
+   * @param range 書き込み範囲（例: 'シート名!B5:C5'）
+   * @param values 書き込む値の2次元配列
+   */
+  async updateValues(
+    spreadsheetId: string,
+    range: string,
+    values: string[][],
+  ): Promise<void> {
+    try {
+      await withRetry<any>(
+        () => this.sheets.spreadsheets.values.update({
+          spreadsheetId,
+          range,
+          valueInputOption: 'USER_ENTERED',
+          requestBody: { values },
+        }),
+        {
+          maxRetries: 3,
+          initialDelayMs: 1000,
+          backoffMultiplier: 2,
+          retryableErrors: isGoogleSheetsErrorRetryable,
+          onRetry: (error, attempt, delayMs) => {
+            this.logger.warn(`[updateValues] Attempt ${attempt}/3 failed. Retrying in ${delayMs}ms...`);
+          },
+        },
+        this.logger,
+      );
+      this.logger.log(`Updated values in range: ${range}`);
+    } catch (error) {
+      const errorInfo = classifyGoogleSheetsError(error);
+      logGoogleSheetsError(this.logger, errorInfo, `updateValues(${range})`);
+      throw error;
+    }
+  }
+
+  /**
+   * スプレッドシートの末尾に行を追加
+   * @param spreadsheetId スプレッドシートID
+   * @param range 追加先の範囲（例: 'シート名!A:C'）
+   * @param values 追加する値の2次元配列
+   */
+  async appendValues(
+    spreadsheetId: string,
+    range: string,
+    values: string[][],
+  ): Promise<void> {
+    try {
+      await withRetry<any>(
+        () => this.sheets.spreadsheets.values.append({
+          spreadsheetId,
+          range,
+          valueInputOption: 'USER_ENTERED',
+          insertDataOption: 'INSERT_ROWS',
+          requestBody: { values },
+        }),
+        {
+          maxRetries: 3,
+          initialDelayMs: 1000,
+          backoffMultiplier: 2,
+          retryableErrors: isGoogleSheetsErrorRetryable,
+          onRetry: (error, attempt, delayMs) => {
+            this.logger.warn(`[appendValues] Attempt ${attempt}/3 failed. Retrying in ${delayMs}ms...`);
+          },
+        },
+        this.logger,
+      );
+      this.logger.log(`Appended values to range: ${range}`);
+    } catch (error) {
+      const errorInfo = classifyGoogleSheetsError(error);
+      logGoogleSheetsError(this.logger, errorInfo, `appendValues(${range})`);
+      throw error;
+    }
   }
 
   /**

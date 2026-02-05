@@ -1,0 +1,91 @@
+name: Daily Ad Count Recording
+
+on:
+  schedule:
+    # 毎日3:30（日本時間）= 18:30（UTC前日）
+    # 予算最適化（3:00 JST）完了後に実行
+    - cron: '30 18 * * *'
+  workflow_dispatch:
+    inputs:
+      target_date:
+        description: '記録対象日（YYYY-MM-DD形式、空欄で前日）'
+        required: false
+        type: string
+
+env:
+  API_BASE_URL: https://tik-tok-ads-automation-backend.vercel.app
+
+jobs:
+  record-daily-counts:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Record Daily Ad Counts
+        run: |
+          TARGET_DATE="${{ github.event.inputs.target_date }}"
+
+          # APIのURL構築
+          API_URL="${{ env.API_BASE_URL }}/jobs/record-daily-ad-counts"
+          if [ -n "$TARGET_DATE" ]; then
+            API_URL="${API_URL}?targetDate=${TARGET_DATE}"
+            echo "=== 対象日: $TARGET_DATE ==="
+          else
+            echo "=== 対象日: 前日（自動） ==="
+          fi
+
+          echo "Starting daily ad count recording at $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
+
+          max_retries=3
+          retry_count=0
+          success=false
+
+          while [ $retry_count -lt $max_retries ]; do
+            set +e
+            response=$(curl -s -w "\n%{http_code}" \
+              --max-time 120 \
+              --connect-timeout 30 \
+              --retry 3 \
+              --retry-delay 10 \
+              --retry-all-errors \
+              -X POST \
+              "$API_URL")
+            curl_exit_code=$?
+            set -e
+
+            if [ $curl_exit_code -ne 0 ]; then
+              retry_count=$((retry_count + 1))
+              echo "curl failed with exit code $curl_exit_code. Retry $retry_count/$max_retries..."
+              sleep $((30 * retry_count))
+              continue
+            fi
+
+            http_code=$(echo "$response" | tail -n1)
+            body=$(echo "$response" | sed '$d')
+
+            echo "HTTP Status: $http_code"
+
+            if [ "$http_code" -eq 200 ] || [ "$http_code" -eq 201 ]; then
+              echo "=== 記録結果 ==="
+              echo "$body" | jq -r '.data | "対象日: \(.targetDate) | 出稿数: \(.launchCount) | 停止数: \(.pauseCount) | シート更新: \(.sheetUpdated)"'
+              echo ""
+              success=true
+              break
+            else
+              retry_count=$((retry_count + 1))
+              echo "Request failed with status $http_code. Retry $retry_count/$max_retries..."
+              echo "$body"
+              sleep $((30 * retry_count))
+            fi
+          done
+
+          if [ "$success" != true ]; then
+            echo "Daily ad count recording failed after $max_retries retries"
+            exit 1
+          fi
+
+      - name: Generate Summary
+        if: always()
+        run: |
+          echo "## Daily Ad Count Recording" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Execution Time**: $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_STEP_SUMMARY
+          echo "- **Target Date**: ${{ github.event.inputs.target_date || 'Yesterday (auto)' }}" >> $GITHUB_STEP_SUMMARY

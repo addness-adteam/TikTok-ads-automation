@@ -3,6 +3,7 @@ import { SchedulerService } from './scheduler.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { TiktokService } from '../tiktok/tiktok.service';
 import { IntradayOptimizationService } from '../intraday-optimization/intraday-optimization.service';
+import { AdCountRecordingService } from '../ad-count-recording/ad-count-recording.service';
 
 @Controller('jobs')
 export class JobsController {
@@ -13,6 +14,7 @@ export class JobsController {
     private readonly prisma: PrismaService,
     private readonly tiktokService: TiktokService,
     private readonly intradayOptimizationService: IntradayOptimizationService,
+    private readonly adCountRecordingService: AdCountRecordingService,
   ) {}
 
   /**
@@ -763,6 +765,38 @@ export class JobsController {
       };
     } catch (error) {
       this.logger.error('Intraday budget restore failed', error);
+      return {
+        success: false,
+        error: error.message,
+      };
+    }
+  }
+
+  // ============================================================================
+  // 日次出稿数・停止数記録
+  // ============================================================================
+
+  /**
+   * 日次の出稿数・停止数を集計してGoogle Sheetsに記録
+   * POST /jobs/record-daily-ad-counts?targetDate=2026-02-03
+   * targetDate省略時は前日分を記録
+   */
+  @Post('record-daily-ad-counts')
+  async recordDailyAdCounts(@Query('targetDate') targetDate?: string) {
+    this.logger.log(
+      `Manual trigger: Recording daily ad counts${targetDate ? ` for ${targetDate}` : ' for yesterday'}`,
+    );
+
+    try {
+      const target = targetDate ? new Date(targetDate + 'T00:00:00Z') : undefined;
+      const result = await this.adCountRecordingService.recordDailyCounts(target);
+      return {
+        success: true,
+        message: 'Daily ad count recording completed',
+        data: result,
+      };
+    } catch (error) {
+      this.logger.error('Daily ad count recording failed', error);
       return {
         success: false,
         error: error.message,
