@@ -557,3 +557,27 @@ model IntradayBudgetReductionLog {
   @@index([adgroupId, reductionDate])
   @@map("intraday_budget_reduction_logs")
 }
+
+// ============================================================================
+// 毎時予算調整V2 スナップショット
+// ============================================================================
+
+model HourlyOptimizationSnapshot {
+  id            String   @id @default(uuid())
+  advertiserId  String
+  adId          String
+  adName        String
+  executionTime DateTime
+  todayCVCount  Int
+  todaySpend    Float
+  todayCPA      Float?
+  dailyBudget   Float
+  action        String
+  reason        String?
+  newBudget     Float?
+  createdAt     DateTime @default(now())
+
+  @@index([advertiserId, executionTime])
+  @@index([adId, executionTime])
+  @@map("hourly_optimization_snapshots")
+}

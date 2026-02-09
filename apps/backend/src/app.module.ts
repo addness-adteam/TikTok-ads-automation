@@ -19,6 +19,7 @@ import { NotificationModule } from './notification/notification.module';
 import { AdPerformanceModule } from './ad-performance/ad-performance.module';
 import { IntradayOptimizationModule } from './intraday-optimization/intraday-optimization.module';
 import { AdCountRecordingModule } from './ad-count-recording/ad-count-recording.module';
+import { BudgetOptimizationV2Module } from './budget-optimization-v2/budget-optimization-v2.module';
 
 @Module({
   imports: [
@@ -43,6 +44,7 @@ import { AdCountRecordingModule } from './ad-count-recording/ad-count-recording.
     AdPerformanceModule,
     IntradayOptimizationModule,
     AdCountRecordingModule,
+    BudgetOptimizationV2Module,
   ],
   controllers: [AppController],
   providers: [AppService],
