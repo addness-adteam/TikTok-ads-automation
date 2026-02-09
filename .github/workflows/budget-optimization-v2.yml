@@ -139,7 +139,14 @@ jobs:
               stage1_count=$(echo "$body" | jq -r '.data.stage1Results | length')
               if [ "$stage1_count" -gt 0 ]; then
                 echo "=== 💰 Stage1: 予算増額判定 ==="
-                echo "$body" | jq -r '.data.stage1Results[] | "[\(.action)] \(.adName): \(.reason) | CPA=\(.todayCPA // "N/A")円 CV=\(.todayCV)"'
+                echo "────────────────────────────────────────────────────────────────"
+                echo "$body" | jq -r '.data.stage1Results[] |
+                  "[\(.action)] \(.adName)\n" +
+                  "  💰 日予算: ¥\(.currentBudget // 0)" +
+                  (if .newBudget then " → ¥\(.newBudget)" else "" end) + "\n" +
+                  "  📈 当日CPA: \(if .todayCPA then "¥\(.todayCPA | floor)" else "N/A" end) | 当日CV: \(.todayCV) | 当日広告費: ¥\(.todaySpend // 0 | floor)\n" +
+                  "  📝 \(.reason)\n" +
+                  "────────────────────────────────────────────────────────────────"'
                 echo ""
               fi
 
@@ -147,7 +154,13 @@ jobs:
               stage2_count=$(echo "$body" | jq -r '.data.stage2Results | length')
               if [ "$stage2_count" -gt 0 ]; then
                 echo "=== 🛑 Stage2: 停止判定 ==="
-                echo "$body" | jq -r '.data.stage2Results[] | "[\(.action)] \(.adName): \(.reason)"'
+                echo "────────────────────────────────────────────────────────────────"
+                echo "$body" | jq -r '.data.stage2Results[] |
+                  "[\(.action)] \(.adName)\n" +
+                  "  📊 過去7日: 広告費=¥\(.last7DaysSpend // 0 | floor) | CV=\(.last7DaysCVCount) | フロント販売=\(.last7DaysFrontSalesCount)\n" +
+                  "  💰 CPA: \(if .last7DaysCPA then "¥\(.last7DaysCPA | floor)" else "N/A" end) | フロントCPO: \(if .last7DaysFrontCPO then "¥\(.last7DaysFrontCPO | floor)" else "N/A" end)\n" +
+                  "  📝 \(.reason)\n" +
+                  "────────────────────────────────────────────────────────────────"'
                 echo ""
               fi
 
