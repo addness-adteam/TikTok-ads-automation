@@ -158,8 +158,15 @@ export class AppealService {
   async create(data: CreateAppealDto) {
     this.logger.log(`Creating appeal: ${data.name}`);
 
-    // 訴求名からスプレッドシートURLを自動生成
-    const { cvSpreadsheetUrl, frontSpreadsheetUrl } = this.getSpreadsheetUrlsForAppeal(data.name);
+    let cvSpreadsheetUrl = data.cvSpreadsheetUrl;
+    let frontSpreadsheetUrl = data.frontSpreadsheetUrl;
+
+    // URLが明示的に指定されていない場合のみ自動生成
+    if (!cvSpreadsheetUrl || !frontSpreadsheetUrl) {
+      const generated = this.getSpreadsheetUrlsForAppeal(data.name);
+      cvSpreadsheetUrl = cvSpreadsheetUrl || generated.cvSpreadsheetUrl;
+      frontSpreadsheetUrl = frontSpreadsheetUrl || generated.frontSpreadsheetUrl;
+    }
 
     return this.prisma.appeal.create({
       data: {
@@ -168,8 +175,8 @@ export class AppealService {
         allowableCPA: data.allowableCPA,
         targetFrontCPO: data.targetFrontCPO,
         allowableFrontCPO: data.allowableFrontCPO,
-        cvSpreadsheetUrl: data.cvSpreadsheetUrl || cvSpreadsheetUrl,
-        frontSpreadsheetUrl: data.frontSpreadsheetUrl || frontSpreadsheetUrl,
+        cvSpreadsheetUrl,
+        frontSpreadsheetUrl,
       },
     });
   }

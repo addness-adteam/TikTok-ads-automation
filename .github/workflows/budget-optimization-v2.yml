@@ -121,6 +121,13 @@ jobs:
             echo "HTTP Status: $http_code"
 
             if [ "$http_code" -eq 200 ] || [ "$http_code" -eq 201 ]; then
+              # レスポンスのsuccessフィールドを確認
+              api_success=$(echo "$body" | jq -r '.success // false')
+              if [ "$api_success" != "true" ]; then
+                api_error=$(echo "$body" | jq -r '.error // "Unknown error"')
+                echo "❌ API returned error: $api_error"
+                break
+              fi
               echo "✅ Success for ${{ matrix.advertiser_id }}"
               echo ""
 

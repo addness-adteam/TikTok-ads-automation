@@ -1,4 +1,4 @@
-import { Controller, Post, Get, Body, Param, Query, Logger } from '@nestjs/common';
+import { Controller, Post, Get, Body, Param, Query, Logger, HttpException, HttpStatus } from '@nestjs/common';
 import { BudgetOptimizationV2Service } from './budget-optimization-v2.service';
 import { ConfigService } from '@nestjs/config';
 
@@ -34,7 +34,10 @@ export class BudgetOptimizationV2Controller {
       return { success: true, data: result };
     } catch (error) {
       this.logger.error(`[V2] Execute failed for ${advertiserId}:`, error);
-      return { success: false, error: error.message };
+      throw new HttpException(
+        { success: false, error: error.message },
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
     }
   }
 
@@ -54,7 +57,10 @@ export class BudgetOptimizationV2Controller {
       return { success: true, data: result };
     } catch (error) {
       this.logger.error('[V2] Execute-all failed:', error);
-      return { success: false, error: error.message };
+      throw new HttpException(
+        { success: false, error: error.message },
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
     }
   }
 
@@ -74,7 +80,10 @@ export class BudgetOptimizationV2Controller {
       return { success: true, dryRun: true, data: result };
     } catch (error) {
       this.logger.error(`[V2] Dry-run failed for ${advertiserId}:`, error);
-      return { success: false, error: error.message };
+      throw new HttpException(
+        { success: false, error: error.message },
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
     }
   }
 
@@ -92,7 +101,10 @@ export class BudgetOptimizationV2Controller {
       return { success: true, data: snapshots };
     } catch (error) {
       this.logger.error(`[V2] Get snapshots failed:`, error);
-      return { success: false, error: error.message };
+      throw new HttpException(
+        { success: false, error: error.message },
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
     }
   }
 }
