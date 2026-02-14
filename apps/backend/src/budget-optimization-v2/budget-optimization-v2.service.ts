@@ -660,9 +660,62 @@ export class BudgetOptimizationV2Service {
     const rawAds = response.data?.list || [];
     const activeAds = rawAds.filter((ad: any) => ad.operation_status === 'ENABLE');
 
+    // Smart+ ad GETはad-levelにbudgetを持たないため、adgroup/campaignから予算を取得
+    const adgroupIds = [...new Set(activeAds.map((ad: any) => ad.adgroup_id).filter(Boolean))];
+    const campaignIds = [...new Set(activeAds.map((ad: any) => ad.campaign_id).filter(Boolean))];
+
+    // AdGroup予算をバッチ取得
+    const adgroupBudgetMap = new Map<string, number>();
+    if (adgroupIds.length > 0) {
+      try {
+        const adgroupResponse = await this.tiktokService.getAdGroups(advertiserId, accessToken, campaignIds as string[]);
+        const adgroups = adgroupResponse.data?.list || [];
+        for (const ag of adgroups) {
+          if (ag.adgroup_id && ag.budget) {
+            adgroupBudgetMap.set(ag.adgroup_id, parseFloat(ag.budget));
+          }
+        }
+        this.logger.log(`[V2] Fetched adgroup budgets: ${adgroupBudgetMap.size} adgroups with budget`);
+      } catch (error) {
+        this.logger.error(`[V2] Failed to fetch adgroup budgets: ${error.message}`);
+      }
+    }
+
+    // CBO広告用: campaign予算をバッチ取得
+    const campaignBudgetMap = new Map<string, number>();
+    const cboAds = activeAds.filter((ad: any) => ad.budget_optimize_on === true || ad.budget_optimize_on === 'ON');
+    const cboCampaignIds = [...new Set(cboAds.map((ad: any) => ad.campaign_id).filter(Boolean))] as string[];
+    if (cboCampaignIds.length > 0) {
+      for (const campaignId of cboCampaignIds) {
+        try {
+          const campaign = await this.tiktokService.getCampaign(advertiserId, accessToken, campaignId);
+          if (campaign && campaign.budget) {
+            campaignBudgetMap.set(campaignId, parseFloat(campaign.budget));
+          }
+        } catch (error) {
+          this.logger.error(`[V2] Failed to fetch campaign budget for ${campaignId}: ${error.message}`);
+        }
+      }
+      this.logger.log(`[V2] Fetched campaign budgets: ${campaignBudgetMap.size} campaigns with budget`);
+    }
+
     return activeAds.map((ad: any) => {
       const adName = ad.ad_name || '';
       const validation = validateAdNameFormat(adName);
+      const isCBO = ad.budget_optimize_on === true || ad.budget_optimize_on === 'ON';
+
+      // 予算取得: CBO → campaign予算、非CBO → adgroup予算
+      let dailyBudget = 0;
+      if (isCBO) {
+        dailyBudget = campaignBudgetMap.get(ad.campaign_id) || 0;
+      } else {
+        dailyBudget = adgroupBudgetMap.get(ad.adgroup_id) || 0;
+      }
+
+      if (dailyBudget === 0) {
+        this.logger.warn(`[V2] Budget is 0 for ad ${ad.smart_plus_ad_id || ad.ad_id} (${adName}), isCBO=${isCBO}`);
+      }
+
       return {
         adId: ad.smart_plus_ad_id || ad.ad_id,
         adName,
@@ -670,8 +723,8 @@ export class BudgetOptimizationV2Service {
         campaignId: ad.campaign_id || '',
         advertiserId,
         status: ad.operation_status,
-        dailyBudget: parseFloat(ad.budget || '0'),
-        isCBO: ad.budget_optimize_on === true || ad.budget_optimize_on === 'ON',
+        dailyBudget,
+        isCBO,
         parsedName: validation.isValid ? validation.parsed! : null,
       };
     });

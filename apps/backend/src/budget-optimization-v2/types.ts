@@ -33,7 +33,7 @@ export const SNAPSHOT_RETENTION_DAYS = 730;
 
 /** TikTok APIの予算制限（円） */
 export const TIKTOK_BUDGET_LIMITS = {
-  MIN: 50,
+  MIN: 2_000,
   MAX: 50_000_000,
 } as const;
 
