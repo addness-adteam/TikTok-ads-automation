@@ -508,18 +508,37 @@ export class GoogleSheetsService {
   }
 
   /**
-   * 日付文字列をDateオブジェクトに変換
-   * @param dateString 日付文字列
-   * @returns Dateオブジェクト
+   * 日付文字列をDateオブジェクトに変換（JSTとして解釈）
+   * スプレッドシートの日付はJST前提のため、タイムゾーン情報がなければ+09:00として扱う
    */
   private parseDate(dateString: string): Date | null {
     try {
-      // さまざまな日付形式に対応
-      const date = new Date(dateString);
-      if (isNaN(date.getTime())) {
-        return null;
+      if (!dateString) return null;
+      const trimmed = dateString.trim();
+
+      // タイムゾーン情報が既にある場合はそのまま解釈
+      if (/[+-]\d{2}:?\d{2}$|Z$/i.test(trimmed) || /GMT|UTC/i.test(trimmed)) {
+        const date = new Date(trimmed);
+        return isNaN(date.getTime()) ? null : date;
       }
-      return date;
+
+      // タイムゾーンなし → JSTとしてパース
+      // "2026/02/15", "2026/2/15", "2026-02-15", "2026/02/15 18:30:00" 等
+      const match = trimmed.match(
+        /^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})(?:\s+(\d{1,2}:\d{2}(?::\d{2})?))?/,
+      );
+      if (match) {
+        const [, year, month, day, time] = match;
+        const mm = month.padStart(2, '0');
+        const dd = day.padStart(2, '0');
+        const timeStr = time || '00:00:00';
+        const date = new Date(`${year}-${mm}-${dd}T${timeStr}+09:00`);
+        return isNaN(date.getTime()) ? null : date;
+      }
+
+      // フォールバック
+      const date = new Date(trimmed);
+      return isNaN(date.getTime()) ? null : date;
     } catch (error) {
       return null;
     }
