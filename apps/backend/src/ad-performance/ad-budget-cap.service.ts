@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 
 @Injectable()
@@ -6,6 +6,26 @@ export class AdBudgetCapService {
   private readonly logger = new Logger(AdBudgetCapService.name);
 
   constructor(private readonly prisma: PrismaService) {}
+
+  /**
+   * tiktokAdvertiserIdから内部Advertiser IDを解決
+   * フロントエンドはtiktokAdvertiserIdを送信するため、内部IDへの変換が必要
+   */
+  private async resolveAdvertiserId(advertiserId: string): Promise<string> {
+    // UUID形式ならそのまま返す
+    if (advertiserId.includes('-')) {
+      return advertiserId;
+    }
+    // tiktokAdvertiserIdとして検索
+    const advertiser = await this.prisma.advertiser.findUnique({
+      where: { tiktokAdvertiserId: advertiserId },
+      select: { id: true },
+    });
+    if (!advertiser) {
+      throw new NotFoundException(`Advertiser not found: ${advertiserId}`);
+    }
+    return advertiser.id;
+  }
 
   /**
    * 上限日予算を設定
@@ -18,11 +38,13 @@ export class AdBudgetCapService {
     startDate?: Date;
     endDate?: Date;
   }): Promise<any> {
+    const internalAdvertiserId = await this.resolveAdvertiserId(data.advertiserId);
+
     return this.prisma.adBudgetCap.upsert({
       where: { adId: data.adId },
       create: {
         adId: data.adId,
-        advertiserId: data.advertiserId,
+        advertiserId: internalAdvertiserId,
         maxDailyBudget: data.maxDailyBudget,
         enabled: data.enabled ?? true,
         startDate: data.startDate,
@@ -71,7 +93,8 @@ export class AdBudgetCapService {
     advertiserId: string,
     options?: { enabled?: boolean },
   ): Promise<any[]> {
-    const where: any = { advertiserId };
+    const internalAdvertiserId = await this.resolveAdvertiserId(advertiserId);
+    const where: any = { advertiserId: internalAdvertiserId };
 
     if (options?.enabled !== undefined) {
       where.enabled = options.enabled;
