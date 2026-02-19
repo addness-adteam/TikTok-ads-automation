@@ -109,11 +109,11 @@ export class AdCountRecordingService {
       return 0;
     }
 
-    // ChangeLogから予算最適化によるPAUSEを取得
+    // ChangeLogから予算最適化によるPAUSEを取得（V1/V2両方のsourceに対応）
     const pauses = await this.prisma.changeLog.findMany({
       where: {
         action: 'PAUSE',
-        source: 'OPTIMIZATION',
+        source: { in: ['OPTIMIZATION', 'BUDGET_OPTIMIZATION_V2'] },
         createdAt: {
           gte: startOfDayJST,
           lt: endOfDayJST,
