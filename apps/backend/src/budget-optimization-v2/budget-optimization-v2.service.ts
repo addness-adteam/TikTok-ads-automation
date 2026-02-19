@@ -12,12 +12,15 @@ import {
 } from '../common/utils';
 import {
   BUDGET_INCREASE_RATE,
+  BUDGET_DECREASE_RATE,
   BUDGET_TIER,
   BUDGET_TIER_MIN_OPTS,
   OPERATION_HOURS,
   MIN_IMPRESSIONS_FOR_PAUSE,
   SNAPSHOT_RETENTION_DAYS,
   TIKTOK_BUDGET_LIMITS,
+  INDIVIDUAL_RESERVATION_SPREADSHEET_ID,
+  INDIVIDUAL_RESERVATION_CONFIG,
   detectChannelType,
   usesFrontCPO,
   type ChannelType,
@@ -134,11 +137,12 @@ export class BudgetOptimizationV2Service {
         paused: stage2Results.filter(r => r.action === 'PAUSE').length,
         skipped: stage1Results.filter(r => r.action === 'SKIP').length
           + stage2Results.filter(r => r.action === 'SKIP_NEW_CR').length,
+        budgetDecreased: stage2Results.filter(r => r.action === 'BUDGET_DECREASE_20PCT').length,
       },
     };
 
     this.logger.log(
-      `[V2] Completed: increased=${result.summary.increased}, continued=${result.summary.continued}, paused=${result.summary.paused}, skipped=${result.summary.skipped}`,
+      `[V2] Completed: increased=${result.summary.increased}, continued=${result.summary.continued}, paused=${result.summary.paused}, budgetDecreased=${result.summary.budgetDecreased}, skipped=${result.summary.skipped}`,
     );
 
     return result;
@@ -283,6 +287,8 @@ export class BudgetOptimizationV2Service {
             last7DaysFrontSalesCount: 0,
             last7DaysCPA: null,
             last7DaysFrontCPO: null,
+            last7DaysIndividualReservationCount: 0,
+            last7DaysIndividualReservationCPO: null,
           });
           continue;
         }
@@ -309,6 +315,8 @@ export class BudgetOptimizationV2Service {
             last7DaysFrontSalesCount: 0,
             last7DaysCPA: null,
             last7DaysFrontCPO: null,
+            last7DaysIndividualReservationCount: 0,
+            last7DaysIndividualReservationCPO: null,
           });
           continue;
         }
@@ -334,22 +342,62 @@ export class BudgetOptimizationV2Service {
           );
         }
 
-        // CPA / フロントCPO計算
+        // 個別予約数を取得
+        const individualReservationPath = this.generateIndividualReservationPath(
+          ad.parsedName.lpName, ad.parsedName.creativeName, appeal.name,
+        );
+        let last7DaysIndividualReservationCount = 0;
+        try {
+          last7DaysIndividualReservationCount = await this.googleSheetsService.getIndividualReservationCount(
+            channelType,
+            INDIVIDUAL_RESERVATION_SPREADSHEET_ID,
+            individualReservationPath,
+            startDate,
+            endDate,
+          );
+        } catch (error) {
+          this.logger.warn(`[V2] Failed to get individual reservation count for ad ${ad.adId}: ${error.message}`);
+        }
+
+        // CPA / フロントCPO / 個別予約CPO計算
         const last7DaysCPA = last7DaysCVCount > 0 ? last7DaysSpend / last7DaysCVCount : null;
         const last7DaysFrontCPO = last7DaysFrontSalesCount > 0 ? last7DaysSpend / last7DaysFrontSalesCount : null;
+        const last7DaysIndividualReservationCPO = last7DaysIndividualReservationCount > 0
+          ? last7DaysSpend / last7DaysIndividualReservationCount : null;
 
-        // 停止判定
-        const decision = this.evaluatePauseDecision(
+        // 既存のCPA/フロントCPO停止判定
+        let decision = this.evaluatePauseDecision(
           ad, channelType, appeal,
           last7DaysSpend, last7DaysImpressions,
           last7DaysCVCount, last7DaysFrontSalesCount,
           last7DaysCPA, last7DaysFrontCPO,
+          last7DaysIndividualReservationCount,
+          last7DaysIndividualReservationCPO,
         );
+
+        // 既存判定がCONTINUEの場合 → 個別予約CPO判定を追加実行
+        if (decision.action === 'CONTINUE' && appeal.allowableIndividualReservationCPO) {
+          decision = this.evaluateIndividualReservationCPO(
+            ad, channelType, appeal,
+            last7DaysSpend, last7DaysImpressions,
+            last7DaysCVCount, last7DaysFrontSalesCount,
+            last7DaysCPA, last7DaysFrontCPO,
+            last7DaysIndividualReservationCount,
+            last7DaysIndividualReservationCPO,
+            appeal.allowableIndividualReservationCPO,
+          );
+        }
+
         results.push(decision);
 
-        // 停止実行
-        if (decision.action === 'PAUSE' && !dryRun) {
-          await this.executeAdPause(ad, decision.reason, advertiserId, accessToken);
+        // アクション実行
+        if (!dryRun) {
+          if (decision.action === 'PAUSE') {
+            await this.executeAdPause(ad, decision.reason, advertiserId, accessToken);
+          } else if (decision.action === 'BUDGET_DECREASE_20PCT') {
+            const newBudget = await this.executeBudgetDecrease(ad, decision.reason, advertiserId, accessToken);
+            decision.newBudgetAfterDecrease = newBudget;
+          }
         }
       } catch (error) {
         this.logger.error(`[V2] Stage2 error for ad ${ad.adId}:`, error.message);
@@ -365,6 +413,8 @@ export class BudgetOptimizationV2Service {
           last7DaysFrontSalesCount: 0,
           last7DaysCPA: null,
           last7DaysFrontCPO: null,
+          last7DaysIndividualReservationCount: 0,
+          last7DaysIndividualReservationCPO: null,
         });
       }
     }
@@ -560,6 +610,8 @@ export class BudgetOptimizationV2Service {
     last7DaysFrontSalesCount: number,
     last7DaysCPA: number | null,
     last7DaysFrontCPO: number | null,
+    last7DaysIndividualReservationCount: number = 0,
+    last7DaysIndividualReservationCPO: number | null = null,
   ): PauseDecision {
     const base = {
       adId: ad.adId,
@@ -571,6 +623,8 @@ export class BudgetOptimizationV2Service {
       last7DaysFrontSalesCount,
       last7DaysCPA,
       last7DaysFrontCPO,
+      last7DaysIndividualReservationCount,
+      last7DaysIndividualReservationCPO,
     };
 
     if (usesFrontCPO(channelType)) {
@@ -651,6 +705,85 @@ export class BudgetOptimizationV2Service {
       ...base,
       action: 'CONTINUE',
       reason: `CPA ¥${(last7DaysCPA || 0).toFixed(0)} ≤ 許容CPA ¥${allowableCPA}`,
+    };
+  }
+
+  // ============================================================================
+  // 個別予約CPO判定
+  // ============================================================================
+
+  /**
+   * 個別予約CPOによる追加判定
+   * 既存のCPA/フロントCPO判定でCONTINUEの場合にのみ呼ばれる
+   */
+  private evaluateIndividualReservationCPO(
+    ad: V2SmartPlusAd,
+    channelType: ChannelType,
+    appeal: any,
+    last7DaysSpend: number,
+    last7DaysImpressions: number,
+    last7DaysCVCount: number,
+    last7DaysFrontSalesCount: number,
+    last7DaysCPA: number | null,
+    last7DaysFrontCPO: number | null,
+    last7DaysIndividualReservationCount: number,
+    last7DaysIndividualReservationCPO: number | null,
+    allowableIndividualReservationCPO: number,
+  ): PauseDecision {
+    const base = {
+      adId: ad.adId,
+      adName: ad.adName,
+      channelType,
+      last7DaysSpend,
+      last7DaysImpressions,
+      last7DaysCVCount,
+      last7DaysFrontSalesCount,
+      last7DaysCPA,
+      last7DaysFrontCPO,
+      last7DaysIndividualReservationCount,
+      last7DaysIndividualReservationCPO,
+    };
+
+    if (last7DaysIndividualReservationCount === 0) {
+      // 個別予約0件: 広告費ベースで判定
+      if (last7DaysSpend >= allowableIndividualReservationCPO) {
+        this.logger.log(
+          `[V2] Ad ${ad.adId}: 個別予約0件、広告費 ¥${last7DaysSpend.toFixed(0)} ≥ 許容個別予約CPO ¥${allowableIndividualReservationCPO} → PAUSE`,
+        );
+        return {
+          ...base,
+          action: 'PAUSE',
+          reason: `個別予約0件、広告費 ¥${last7DaysSpend.toFixed(0)} ≥ 許容個別予約CPO ¥${allowableIndividualReservationCPO}`,
+        };
+      }
+      return {
+        ...base,
+        action: 'CONTINUE',
+        reason: `個別予約0件、広告費 ¥${last7DaysSpend.toFixed(0)} < 許容個別予約CPO ¥${allowableIndividualReservationCPO}（継続）`,
+      };
+    }
+
+    // 個別予約1件以上: CPOで判定
+    if (last7DaysIndividualReservationCPO !== null && last7DaysIndividualReservationCPO > allowableIndividualReservationCPO) {
+      const newBudget = Math.max(
+        TIKTOK_BUDGET_LIMITS.MIN,
+        Math.floor(ad.dailyBudget * BUDGET_DECREASE_RATE),
+      );
+      this.logger.log(
+        `[V2] Ad ${ad.adId}: 個別予約CPO ¥${last7DaysIndividualReservationCPO.toFixed(0)} > 許容 ¥${allowableIndividualReservationCPO} → 予算20%ダウン (¥${ad.dailyBudget} → ¥${newBudget})`,
+      );
+      return {
+        ...base,
+        action: 'BUDGET_DECREASE_20PCT',
+        reason: `個別予約CPO ¥${last7DaysIndividualReservationCPO.toFixed(0)} > 許容 ¥${allowableIndividualReservationCPO}（予算20%ダウン）`,
+        newBudgetAfterDecrease: newBudget,
+      };
+    }
+
+    return {
+      ...base,
+      action: 'CONTINUE',
+      reason: `個別予約CPO ¥${(last7DaysIndividualReservationCPO || 0).toFixed(0)} ≤ 許容 ¥${allowableIndividualReservationCPO}（継続）`,
     };
   }
 
@@ -959,6 +1092,59 @@ export class BudgetOptimizationV2Service {
     }
   }
 
+  /**
+   * 広告の日予算を20%ダウンする（個別予約CPO超過時）
+   */
+  private async executeBudgetDecrease(
+    ad: V2SmartPlusAd,
+    reason: string,
+    advertiserId: string,
+    accessToken: string,
+  ): Promise<number> {
+    const oldBudget = ad.dailyBudget;
+    const newBudget = Math.max(
+      TIKTOK_BUDGET_LIMITS.MIN,
+      Math.floor(oldBudget * BUDGET_DECREASE_RATE),
+    );
+
+    this.logger.log(
+      `[V2] Budget decrease for ad ${ad.adId} (${ad.adName}): ¥${oldBudget} → ¥${newBudget} (20% down, 個別予約CPO超過)`,
+    );
+
+    try {
+      if (ad.isCBO) {
+        await this.tiktokService.updateSmartPlusCampaignBudget(
+          advertiserId, accessToken, ad.campaignId, newBudget,
+        );
+      } else {
+        await this.tiktokService.updateSmartPlusAdGroupBudgets(
+          advertiserId, accessToken,
+          [{ adgroup_id: ad.adgroupId, budget: newBudget }],
+        );
+      }
+
+      // ChangeLog記録
+      await withDatabaseRetry(() =>
+        this.prisma.changeLog.create({
+          data: {
+            entityType: ad.isCBO ? 'CAMPAIGN' : 'ADGROUP',
+            entityId: ad.isCBO ? ad.campaignId : ad.adgroupId,
+            action: 'DECREASE_BUDGET',
+            source: 'BUDGET_OPTIMIZATION_V2',
+            beforeData: { budget: oldBudget },
+            afterData: { budget: newBudget },
+            reason: `V2予算減額(個別予約CPO超過): ${reason}`,
+          },
+        }),
+      );
+
+      return newBudget;
+    } catch (error) {
+      this.logger.error(`[V2] Budget decrease failed for ad ${ad.adId}:`, error.message);
+      throw error;
+    }
+  }
+
   // ============================================================================
   // Snapshot管理
   // ============================================================================
@@ -1083,6 +1269,10 @@ export class BudgetOptimizationV2Service {
     return `TikTok広告-${appealName}-${lpName}`;
   }
 
+  private generateIndividualReservationPath(lpName: string, creativeName: string, appealName: string): string {
+    return `TikTok広告-${appealName}-${lpName}-${creativeName}`;
+  }
+
   private getJSTHour(date: Date): number {
     const jst = new Date(date.getTime() + 9 * 60 * 60 * 1000);
     return jst.getUTCHours();
@@ -1141,7 +1331,7 @@ export class BudgetOptimizationV2Service {
       isFirstRound: false,
       stage1Results: [],
       stage2Results: [],
-      summary: { totalAds: 0, increased: 0, continued: 0, paused: 0, skipped: 0 },
+      summary: { totalAds: 0, increased: 0, continued: 0, paused: 0, skipped: 0, budgetDecreased: 0 },
     };
   }
 }

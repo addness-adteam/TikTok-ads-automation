@@ -508,6 +508,87 @@ export class GoogleSheetsService {
   }
 
   /**
+   * 個別予約数を取得
+   *
+   * 既存のcountRegistrationPathとは異なるロジック:
+   * - 列位置はchannelTypeで固定（ヘッダー検出不要）
+   * - 1セル内に改行区切りで複数の登録経路が含まれる場合があり、
+   *   各行をカウントする
+   *
+   * @param channelType 導線タイプ（タブ名・列の決定に使用）
+   * @param spreadsheetId スプレッドシートID
+   * @param registrationPath 登録経路（例: TikTok広告-スキルプラス-LP2-CR00322）
+   * @param startDate 開始日
+   * @param endDate 終了日
+   * @returns 個別予約件数
+   */
+  async getIndividualReservationCount(
+    channelType: 'SNS' | 'AI' | 'SEMINAR',
+    spreadsheetId: string,
+    registrationPath: string,
+    startDate: Date,
+    endDate: Date,
+  ): Promise<number> {
+    const config: Record<string, { sheetName: string; dateColumnIndex: number; pathColumnIndex: number }> = {
+      SEMINAR: { sheetName: 'スキルプラス（オートウェビナー用）', dateColumnIndex: 0, pathColumnIndex: 34 },
+      AI: { sheetName: 'AI', dateColumnIndex: 0, pathColumnIndex: 46 },
+      SNS: { sheetName: 'SNS', dateColumnIndex: 0, pathColumnIndex: 46 },
+    };
+
+    const { sheetName, dateColumnIndex, pathColumnIndex } = config[channelType];
+
+    this.logger.log(
+      `[個別予約] Counting for path: ${registrationPath}, sheet: ${sheetName}, pathCol: ${pathColumnIndex}`,
+    );
+
+    try {
+      // AU列(46)まで取得するために A:AZ の範囲を指定
+      const rows = await this.getSheetDataWithCache(spreadsheetId, sheetName, 'A:AZ');
+
+      if (!rows || rows.length === 0) {
+        this.logger.warn(`[個別予約] No data found in sheet: ${sheetName}`);
+        return 0;
+      }
+
+      let count = 0;
+      // ヘッダー行をスキップ
+      for (let i = 1; i < rows.length; i++) {
+        const row = rows[i];
+        const dateValue = row[dateColumnIndex];
+        const pathValue = row[pathColumnIndex];
+
+        if (!dateValue) continue;
+
+        // 日付が範囲内かチェック
+        const rowDate = this.parseDate(String(dateValue));
+        if (!rowDate) continue;
+        if (rowDate < startDate || rowDate > endDate) continue;
+
+        // セル値がない場合はスキップ
+        if (!pathValue) continue;
+
+        // セル内の登録経路を改行で分割してカウント
+        const lines = String(pathValue).split('\n');
+        for (const line of lines) {
+          if (line.trim() === registrationPath) {
+            count++;
+          }
+        }
+      }
+
+      this.logger.log(
+        `[個別予約] Found ${count} matches for path: ${registrationPath} in ${sheetName} (${startDate.toISOString()} - ${endDate.toISOString()})`,
+      );
+
+      return count;
+    } catch (error) {
+      const errorInfo = classifyGoogleSheetsError(error);
+      logGoogleSheetsError(this.logger, errorInfo, `getIndividualReservationCount(${sheetName})`);
+      throw error;
+    }
+  }
+
+  /**
    * 日付文字列をDateオブジェクトに変換（JSTとして解釈）
    * スプレッドシートの日付はJST前提のため、タイムゾーン情報がなければ+09:00として扱う
    */

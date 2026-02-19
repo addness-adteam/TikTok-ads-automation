@@ -20,6 +20,7 @@ model Appeal {
   allowableCPA          Float?
   targetFrontCPO        Float?
   allowableFrontCPO     Float?
+  allowableIndividualReservationCPO  Float?
   cvSpreadsheetUrl      String?
   frontSpreadsheetUrl   String?
   createdAt             DateTime    @default(now())

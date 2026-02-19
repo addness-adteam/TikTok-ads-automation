@@ -8,6 +8,7 @@ export interface CreateAppealDto {
   allowableCPA?: number;
   targetFrontCPO?: number;
   allowableFrontCPO?: number;
+  allowableIndividualReservationCPO?: number;
   cvSpreadsheetUrl?: string;
   frontSpreadsheetUrl?: string;
 }
@@ -18,6 +19,7 @@ export interface UpdateAppealDto {
   allowableCPA?: number;
   targetFrontCPO?: number;
   allowableFrontCPO?: number;
+  allowableIndividualReservationCPO?: number;
   cvSpreadsheetUrl?: string;
   frontSpreadsheetUrl?: string;
 }
@@ -175,6 +177,7 @@ export class AppealService {
         allowableCPA: data.allowableCPA,
         targetFrontCPO: data.targetFrontCPO,
         allowableFrontCPO: data.allowableFrontCPO,
+        allowableIndividualReservationCPO: data.allowableIndividualReservationCPO,
         cvSpreadsheetUrl,
         frontSpreadsheetUrl,
       },
@@ -198,6 +201,7 @@ export class AppealService {
         allowableCPA: data.allowableCPA,
         targetFrontCPO: data.targetFrontCPO,
         allowableFrontCPO: data.allowableFrontCPO,
+        allowableIndividualReservationCPO: data.allowableIndividualReservationCPO,
         cvSpreadsheetUrl: data.cvSpreadsheetUrl,
         frontSpreadsheetUrl: data.frontSpreadsheetUrl,
       },

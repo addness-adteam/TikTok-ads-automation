@@ -37,6 +37,31 @@ export const TIKTOK_BUDGET_LIMITS = {
   MAX: 50_000_000,
 } as const;
 
+/** 予算減額率（個別予約CPO超過時） */
+export const BUDGET_DECREASE_RATE = 0.8;
+
+/** 個別予約スプレッドシートID（全導線共通） */
+export const INDIVIDUAL_RESERVATION_SPREADSHEET_ID = '1MsJRbZGrLOkgd7lRApr1ciFQ1GOZaIjmrXQSIe3_nCA';
+
+/** 個別予約 導線別タブ・列設定 */
+export const INDIVIDUAL_RESERVATION_CONFIG = {
+  SEMINAR: {
+    sheetName: 'スキルプラス（オートウェビナー用）',
+    dateColumnIndex: 0,        // A列
+    pathColumnIndex: 34,       // AI列
+  },
+  AI: {
+    sheetName: 'AI',
+    dateColumnIndex: 0,        // A列
+    pathColumnIndex: 46,       // AU列
+  },
+  SNS: {
+    sheetName: 'SNS',
+    dateColumnIndex: 0,        // A列
+    pathColumnIndex: 46,       // AU列
+  },
+} as const;
+
 // ----------------------------------------------------------------------------
 // 導線タイプ
 // ----------------------------------------------------------------------------
@@ -125,7 +150,7 @@ export interface BudgetIncreaseDecision {
 // 停止判定
 // ----------------------------------------------------------------------------
 
-export type PauseAction = 'PAUSE' | 'CONTINUE' | 'SKIP_NEW_CR';
+export type PauseAction = 'PAUSE' | 'CONTINUE' | 'SKIP_NEW_CR' | 'BUDGET_DECREASE_20PCT';
 
 export interface PauseDecision {
   adId: string;
@@ -139,6 +164,9 @@ export interface PauseDecision {
   last7DaysFrontSalesCount: number;
   last7DaysCPA: number | null;
   last7DaysFrontCPO: number | null;
+  last7DaysIndividualReservationCount: number;
+  last7DaysIndividualReservationCPO: number | null;
+  newBudgetAfterDecrease?: number;
 }
 
 // ----------------------------------------------------------------------------
@@ -157,5 +185,6 @@ export interface HourlyExecutionResult {
     continued: number;
     paused: number;
     skipped: number;
+    budgetDecreased: number;
   };
 }

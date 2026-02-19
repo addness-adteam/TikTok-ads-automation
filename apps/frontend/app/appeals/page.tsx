@@ -19,6 +19,7 @@ interface Appeal {
   allowableCPA: number | null;
   targetFrontCPO: number | null;
   allowableFrontCPO: number | null;
+  allowableIndividualReservationCPO: number | null;
   cvSpreadsheetUrl: string | null;
   frontSpreadsheetUrl: string | null;
   advertisers: { id: string; name: string }[];
@@ -96,6 +97,7 @@ export default function AppealsPage() {
       allowableCPA: null,
       targetFrontCPO: null,
       allowableFrontCPO: null,
+      allowableIndividualReservationCPO: null,
     });
     setIsEditModalOpen(true);
   };
@@ -240,7 +242,7 @@ export default function AppealsPage() {
                 </div>
 
                 {/* KPI指標 */}
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+                <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-4">
                   <div className="bg-gray-50 rounded-lg p-3">
                     <p className="text-xs text-gray-500 mb-1">目標CPA</p>
                     <p className="text-lg font-semibold text-gray-900">
@@ -263,6 +265,12 @@ export default function AppealsPage() {
                     <p className="text-xs text-gray-500 mb-1">許容フロントCPO</p>
                     <p className="text-lg font-semibold text-gray-900">
                       {appeal.allowableFrontCPO ? `¥${appeal.allowableFrontCPO.toLocaleString()}` : '未設定'}
+                    </p>
+                  </div>
+                  <div className="bg-gray-50 rounded-lg p-3">
+                    <p className="text-xs text-gray-500 mb-1">許容個別予約CPO</p>
+                    <p className="text-lg font-semibold text-gray-900">
+                      {appeal.allowableIndividualReservationCPO ? `¥${appeal.allowableIndividualReservationCPO.toLocaleString()}` : '未設定'}
                     </p>
                   </div>
                 </div>
@@ -433,6 +441,16 @@ export default function AppealsPage() {
                     onChange={(e) => setEditingAppeal({ ...editingAppeal, allowableFrontCPO: e.target.value ? Number(e.target.value) : null })}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                     placeholder="例: 5000"
+                  />
+                </div>
+                <div className="col-span-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">許容個別予約CPO (円)</label>
+                  <input
+                    type="number"
+                    value={editingAppeal.allowableIndividualReservationCPO || ''}
+                    onChange={(e) => setEditingAppeal({ ...editingAppeal, allowableIndividualReservationCPO: e.target.value ? Number(e.target.value) : null })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="例: 50000"
                   />
                 </div>
               </div>
