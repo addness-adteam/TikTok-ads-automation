@@ -603,7 +603,17 @@ export class BudgetOptimizationV2Service {
         };
       }
 
-      // フロント販売0だがCV>0 → CPAフォールバック
+      // フロント販売0だがCV>0
+      // まず広告費が許容フロントCPO以上消化していたら停止
+      if (allowableFrontCPO && last7DaysSpend >= allowableFrontCPO) {
+        return {
+          ...base,
+          action: 'PAUSE',
+          reason: `フロント販売0、広告費 ¥${last7DaysSpend.toFixed(0)} ≥ 許容フロントCPO ¥${allowableFrontCPO}（フロント販売未発生）`,
+        };
+      }
+
+      // CPAフォールバック
       if (last7DaysCPA !== null && last7DaysCPA > allowableCPA) {
         return {
           ...base,
