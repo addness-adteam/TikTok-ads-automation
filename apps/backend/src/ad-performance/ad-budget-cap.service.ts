@@ -56,6 +56,15 @@ export class AdBudgetCapService {
         startDate: data.startDate,
         endDate: data.endDate,
       },
+      include: {
+        ad: {
+          select: {
+            id: true,
+            name: true,
+            status: true,
+          },
+        },
+      },
     });
   }
 
