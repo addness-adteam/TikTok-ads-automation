@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { LayoutDashboard, Target, Megaphone, Image, Sliders, TrendingUp, DollarSign, ChevronDown } from 'lucide-react';
+import { LayoutDashboard, Target, Megaphone, Image, Sliders, TrendingUp, DollarSign, ChevronDown, UserX } from 'lucide-react';
 import { useAuth } from '@/lib/context/AuthContext';
 import { NotificationPanel } from '@/components/notifications/NotificationPanel';
 import { useState } from 'react';
@@ -48,6 +48,11 @@ const menuItems: MenuItem[] = [
       { name: 'パフォーマンス一覧', href: '/ad-performance' },
       { name: '上限日予算設定', href: '/ad-performance/budget-caps' },
     ],
+  },
+  {
+    name: '制作者停止率',
+    href: '/creator-stop-rate',
+    icon: UserX,
   },
 ];
 

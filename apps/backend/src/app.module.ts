@@ -20,6 +20,7 @@ import { AdPerformanceModule } from './ad-performance/ad-performance.module';
 import { IntradayOptimizationModule } from './intraday-optimization/intraday-optimization.module';
 import { AdCountRecordingModule } from './ad-count-recording/ad-count-recording.module';
 import { BudgetOptimizationV2Module } from './budget-optimization-v2/budget-optimization-v2.module';
+import { CreatorStopRateModule } from './creator-stop-rate/creator-stop-rate.module';
 
 @Module({
   imports: [
@@ -45,6 +46,7 @@ import { BudgetOptimizationV2Module } from './budget-optimization-v2/budget-opti
     IntradayOptimizationModule,
     AdCountRecordingModule,
     BudgetOptimizationV2Module,
+    CreatorStopRateModule,
   ],
   controllers: [AppController],
   providers: [AppService],

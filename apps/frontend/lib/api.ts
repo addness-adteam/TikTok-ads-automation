@@ -309,3 +309,62 @@ export async function updateAdBudgetCap(
 export async function deleteAdBudgetCap(id: string): Promise<void> {
   await apiClient.delete(`/api/ad-budget-caps/${id}`);
 }
+
+// ============================================================================
+// 制作者停止率API
+// ============================================================================
+
+export interface CreatorAd {
+  adName: string;
+  adTiktokId: string;
+  status: string;
+  isPaused: boolean;
+  pauseDate: string | null;
+}
+
+export interface CreatorStopRate {
+  creatorName: string;
+  adCount: number;
+  pauseCount: number;
+  stopRate: number;
+  isAlert: boolean;
+  ads: CreatorAd[];
+}
+
+export interface CreatorStopRateResponse {
+  success: boolean;
+  data: {
+    summary: {
+      totalCreators: number;
+      totalAds: number;
+      totalPaused: number;
+      overallStopRate: number;
+      alertCount: number;
+    };
+    creators: CreatorStopRate[];
+    period: {
+      from: string;
+      to: string;
+      days: number;
+    };
+    advertiserIds: string[];
+  };
+}
+
+// 制作者停止率取得
+export async function getCreatorStopRates(options?: {
+  advertiserIds?: string[];
+  days?: number;
+}): Promise<CreatorStopRateResponse> {
+  const params = new URLSearchParams();
+  if (options?.advertiserIds && options.advertiserIds.length > 0) {
+    params.append('advertiserIds', options.advertiserIds.join(','));
+  }
+  if (options?.days) {
+    params.append('days', String(options.days));
+  }
+
+  const query = params.toString();
+  const response = await apiClient.get(`/api/creator-stop-rate${query ? `?${query}` : ''}`);
+  return response.data;
+}
