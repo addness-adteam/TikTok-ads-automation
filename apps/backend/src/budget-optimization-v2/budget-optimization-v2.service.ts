@@ -579,10 +579,10 @@ export class BudgetOptimizationV2Service {
       reason += ` → AdBudgetCap ¥${budgetCap} で制限`;
     }
 
-    // 40,000円上限チェック（AdBudgetCapがない場合）
-    if (newBudget > BUDGET_TIER.HIGH_MAX * BUDGET_INCREASE_RATE) {
-      // 1.3倍しても40,000円の1.3倍=52,000円を超える場合はキャップ
-      // ただし40,000以下の場合のみ増額対象なので、ここには来ないはず
+    // 上限日予算チェック（AdBudgetCapがない場合でも40,000円を超えないようにする）
+    if (newBudget > BUDGET_TIER.HIGH_MAX) {
+      newBudget = BUDGET_TIER.HIGH_MAX;
+      reason += ` → 上限¥${BUDGET_TIER.HIGH_MAX}で制限`;
     }
 
     // TikTok API制限チェック
