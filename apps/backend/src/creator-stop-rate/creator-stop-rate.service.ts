@@ -20,7 +20,7 @@ interface CreatorStopRate {
   ads: CreatorAd[];
 }
 
-interface CreatorStopRateResponse {
+export interface CreatorStopRateResponse {
   success: boolean;
   data: {
     summary: {
