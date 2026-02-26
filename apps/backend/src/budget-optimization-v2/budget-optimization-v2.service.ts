@@ -321,6 +321,29 @@ export class BudgetOptimizationV2Service {
           continue;
         }
 
+        // 出稿7日以内保護チェック
+        if (ad.parsedName && this.isWithin7DaysOfPublish(ad.parsedName.date, todayStr)) {
+          results.push({
+            adId: ad.adId,
+            adName: ad.adName,
+            action: 'SKIP_NEW_CR',
+            reason: `出稿7日以内保護: 出稿日=${ad.parsedName.date}（停止判定スキップ）`,
+            channelType,
+            last7DaysSpend,
+            last7DaysImpressions,
+            last7DaysCVCount: 0,
+            last7DaysFrontSalesCount: 0,
+            last7DaysCPA: null,
+            last7DaysFrontCPO: null,
+            last7DaysIndividualReservationCount: 0,
+            last7DaysIndividualReservationCPO: null,
+          });
+          this.logger.log(
+            `[V2] Ad ${ad.adId} (${ad.adName}): 出稿7日以内保護 (出稿日=${ad.parsedName.date}) → SKIP`,
+          );
+          continue;
+        }
+
         // スプレッドシートから過去7日間のCV数を取得
         const last7DaysCVCount = await this.googleSheetsService.getCVCount(
           appeal.name,
@@ -1291,6 +1314,35 @@ export class BudgetOptimizationV2Service {
   private parseJSTDateEnd(dateStr: string): Date {
     // dateStr: "YYYY-MM-DD" → JSTの23:59:59
     return new Date(`${dateStr}T23:59:59+09:00`);
+  }
+
+  /**
+   * 出稿日が直近7日以内かどうかを判定
+   * @param adDateStr 広告名の日付部分 (YYMMDD形式, e.g., "260204")
+   * @param todayStr 今日の日付 (YYYY-MM-DD形式, e.g., "2026-02-26")
+   * @returns 出稿日が今日から7日以内ならtrue
+   */
+  private isWithin7DaysOfPublish(adDateStr: string, todayStr: string): boolean {
+    try {
+      if (!adDateStr || adDateStr.length < 6) return false;
+      const year = 2000 + parseInt(adDateStr.slice(0, 2), 10);
+      const month = parseInt(adDateStr.slice(2, 4), 10);
+      const day = parseInt(adDateStr.slice(4, 6), 10);
+      if (isNaN(year) || isNaN(month) || isNaN(day)) return false;
+
+      const publishDate = new Date(Date.UTC(year, month - 1, day));
+      const today = new Date(Date.UTC(
+        parseInt(todayStr.slice(0, 4), 10),
+        parseInt(todayStr.slice(5, 7), 10) - 1,
+        parseInt(todayStr.slice(8, 10), 10),
+      ));
+
+      const diffMs = today.getTime() - publishDate.getTime();
+      const diffDays = diffMs / (1000 * 60 * 60 * 24);
+      return diffDays >= 0 && diffDays < 7;
+    } catch {
+      return false;
+    }
   }
 
   private calculateLast7DaysPeriod(todayStr: string): {
