@@ -179,6 +179,34 @@ export class BudgetOptimizationV2Service {
   }
 
   // ============================================================================
+  // 予算調整除外CRリスト取得
+  // ============================================================================
+
+  private async getExcludedCreativeNames(advertiserId: string): Promise<Set<string>> {
+    const now = new Date();
+    const exclusions = await this.prisma.budgetOptimizationExclusion.findMany({
+      where: {
+        enabled: true,
+        AND: [
+          {
+            OR: [
+              { advertiserId: null },
+              { advertiserId: advertiserId },
+            ],
+          },
+          {
+            OR: [
+              { expiresAt: null },
+              { expiresAt: { gt: now } },
+            ],
+          },
+        ],
+      },
+    });
+    return new Set(exclusions.map(e => e.creativeName));
+  }
+
+  // ============================================================================
   // 第1段階：当日CPA基準の予算増額
   // ============================================================================
 
@@ -195,12 +223,22 @@ export class BudgetOptimizationV2Service {
     // 当日メトリクスをTikTok APIから取得
     const todayMetrics = await this.getTodayMetrics(advertiserId, accessToken, todayStr);
 
+    // 除外CRリストを取得
+    const excludedCRs = await this.getExcludedCreativeNames(advertiserId);
+
     const results: BudgetIncreaseDecision[] = [];
 
     for (const ad of ads) {
       try {
         if (!ad.parsedName) {
           results.push(this.skipDecision(ad, '広告名パース不可'));
+          continue;
+        }
+
+        // 予算調整除外チェック
+        if (excludedCRs.has(ad.parsedName.creativeName)) {
+          this.logger.log(`[V2] Ad ${ad.adId} (${ad.adName}): 予算調整除外 CR名=${ad.parsedName.creativeName} → SKIP`);
+          results.push(this.skipDecision(ad, `予算調整除外: CR名=${ad.parsedName.creativeName}`));
           continue;
         }
 
@@ -270,6 +308,9 @@ export class BudgetOptimizationV2Service {
     // 過去7日間メトリクスをTikTok APIから取得
     const last7DaysMetrics = await this.getLast7DaysMetrics(advertiserId, accessToken, startStr, endStr);
 
+    // 除外CRリストを取得
+    const excludedCRs = await this.getExcludedCreativeNames(advertiserId);
+
     const results: PauseDecision[] = [];
 
     for (const ad of ads) {
@@ -280,6 +321,27 @@ export class BudgetOptimizationV2Service {
             adName: ad.adName,
             action: 'SKIP_NEW_CR',
             reason: '広告名パース不可',
+            channelType,
+            last7DaysSpend: 0,
+            last7DaysImpressions: 0,
+            last7DaysCVCount: 0,
+            last7DaysFrontSalesCount: 0,
+            last7DaysCPA: null,
+            last7DaysFrontCPO: null,
+            last7DaysIndividualReservationCount: 0,
+            last7DaysIndividualReservationCPO: null,
+          });
+          continue;
+        }
+
+        // 予算調整除外チェック
+        if (excludedCRs.has(ad.parsedName.creativeName)) {
+          this.logger.log(`[V2] Ad ${ad.adId} (${ad.adName}): 予算調整除外 CR名=${ad.parsedName.creativeName} → SKIP`);
+          results.push({
+            adId: ad.adId,
+            adName: ad.adName,
+            action: 'SKIP_NEW_CR',
+            reason: `予算調整除外: CR名=${ad.parsedName.creativeName}`,
             channelType,
             last7DaysSpend: 0,
             last7DaysImpressions: 0,
@@ -465,12 +527,22 @@ export class BudgetOptimizationV2Service {
     // 前回のSnapshotを取得（当日分で最新のもの）
     const lastSnapshots = await this.getLastSnapshots(advertiserId, todayStr);
 
+    // 除外CRリストを取得
+    const excludedCRs = await this.getExcludedCreativeNames(advertiserId);
+
     const results: BudgetIncreaseDecision[] = [];
 
     for (const ad of ads) {
       try {
         if (!ad.parsedName) {
           results.push(this.skipDecision(ad, '広告名パース不可'));
+          continue;
+        }
+
+        // 予算調整除外チェック
+        if (excludedCRs.has(ad.parsedName.creativeName)) {
+          this.logger.log(`[V2] Ad ${ad.adId} (${ad.adName}): 予算調整除外 CR名=${ad.parsedName.creativeName} → SKIP`);
+          results.push(this.skipDecision(ad, `予算調整除外: CR名=${ad.parsedName.creativeName}`));
           continue;
         }
 

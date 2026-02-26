@@ -563,6 +563,21 @@ model IntradayBudgetReductionLog {
 // 毎時予算調整V2 スナップショット
 // ============================================================================
 
+model BudgetOptimizationExclusion {
+  id            String    @id @default(uuid())
+  creativeName  String                          // CR名 (例: "CR00924")
+  advertiserId  String?                         // null = 全アカウント対象
+  reason        String?                         // 除外理由メモ
+  enabled       Boolean   @default(true)
+  expiresAt     DateTime?                       // 自動解除日時 (null = 無期限)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([creativeName])
+  @@index([enabled])
+  @@map("budget_optimization_exclusions")
+}
+
 model HourlyOptimizationSnapshot {
   id            String   @id @default(uuid())
   advertiserId  String

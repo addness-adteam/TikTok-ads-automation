@@ -1,6 +1,7 @@
-import { Controller, Post, Get, Body, Param, Query, Logger, HttpException, HttpStatus } from '@nestjs/common';
+import { Controller, Post, Get, Patch, Delete, Body, Param, Query, Logger, HttpException, HttpStatus } from '@nestjs/common';
 import { BudgetOptimizationV2Service } from './budget-optimization-v2.service';
 import { ConfigService } from '@nestjs/config';
+import { PrismaService } from '../prisma/prisma.service';
 
 @Controller('api/budget-optimization-v2')
 export class BudgetOptimizationV2Controller {
@@ -9,6 +10,7 @@ export class BudgetOptimizationV2Controller {
   constructor(
     private readonly service: BudgetOptimizationV2Service,
     private readonly configService: ConfigService,
+    private readonly prisma: PrismaService,
   ) {}
 
   private getAccessToken(providedToken?: string): string {
@@ -101,6 +103,139 @@ export class BudgetOptimizationV2Controller {
       return { success: true, data: snapshots };
     } catch (error) {
       this.logger.error(`[V2] Get snapshots failed:`, error);
+      throw new HttpException(
+        { success: false, error: error.message },
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  // ============================================================================
+  // 予算調整除外 CRUD
+  // ============================================================================
+
+  /**
+   * 除外リスト取得
+   * GET /api/budget-optimization-v2/exclusions
+   */
+  @Get('exclusions')
+  async getExclusions(
+    @Query('enabled') enabled?: string,
+  ) {
+    try {
+      const where: any = {};
+      if (enabled !== undefined) {
+        where.enabled = enabled === 'true';
+      }
+      const exclusions = await this.prisma.budgetOptimizationExclusion.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+      });
+      return { success: true, data: exclusions };
+    } catch (error) {
+      this.logger.error('[V2] Get exclusions failed:', error);
+      throw new HttpException(
+        { success: false, error: error.message },
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  /**
+   * 除外追加
+   * POST /api/budget-optimization-v2/exclusions
+   */
+  @Post('exclusions')
+  async createExclusion(
+    @Body() body: {
+      creativeName: string;
+      advertiserId?: string;
+      reason?: string;
+      expiresAt?: string;
+    },
+  ) {
+    try {
+      if (!body.creativeName) {
+        throw new HttpException(
+          { success: false, error: 'creativeName is required' },
+          HttpStatus.BAD_REQUEST,
+        );
+      }
+      const exclusion = await this.prisma.budgetOptimizationExclusion.create({
+        data: {
+          creativeName: body.creativeName,
+          advertiserId: body.advertiserId || null,
+          reason: body.reason || null,
+          expiresAt: body.expiresAt ? new Date(body.expiresAt) : null,
+        },
+      });
+      this.logger.log(`[V2] Created exclusion: ${exclusion.creativeName} (id: ${exclusion.id})`);
+      return { success: true, data: exclusion };
+    } catch (error) {
+      if (error instanceof HttpException) throw error;
+      this.logger.error('[V2] Create exclusion failed:', error);
+      throw new HttpException(
+        { success: false, error: error.message },
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  /**
+   * 除外更新
+   * PATCH /api/budget-optimization-v2/exclusions/:id
+   */
+  @Patch('exclusions/:id')
+  async updateExclusion(
+    @Param('id') id: string,
+    @Body() body: {
+      creativeName?: string;
+      advertiserId?: string;
+      reason?: string;
+      enabled?: boolean;
+      expiresAt?: string | null;
+    },
+  ) {
+    try {
+      const data: any = {};
+      if (body.creativeName !== undefined) data.creativeName = body.creativeName;
+      if (body.advertiserId !== undefined) data.advertiserId = body.advertiserId || null;
+      if (body.reason !== undefined) data.reason = body.reason;
+      if (body.enabled !== undefined) data.enabled = body.enabled;
+      if (body.expiresAt !== undefined) {
+        data.expiresAt = body.expiresAt ? new Date(body.expiresAt) : null;
+      }
+      const exclusion = await this.prisma.budgetOptimizationExclusion.update({
+        where: { id },
+        data,
+      });
+      this.logger.log(`[V2] Updated exclusion: ${exclusion.id}`);
+      return { success: true, data: exclusion };
+    } catch (error) {
+      this.logger.error(`[V2] Update exclusion failed:`, error);
+      throw new HttpException(
+        { success: false, error: error.message },
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  /**
+   * 除外削除
+   * DELETE /api/budget-optimization-v2/exclusions/:id
+   */
+  @Delete('exclusions/:id')
+  async deleteExclusion(
+    @Param('id') id: string,
+  ) {
+    try {
+      await this.prisma.budgetOptimizationExclusion.delete({
+        where: { id },
+      });
+      this.logger.log(`[V2] Deleted exclusion: ${id}`);
+      return { success: true };
+    } catch (error) {
+      this.logger.error(`[V2] Delete exclusion failed:`, error);
       throw new HttpException(
         { success: false, error: error.message },
         HttpStatus.INTERNAL_SERVER_ERROR,
