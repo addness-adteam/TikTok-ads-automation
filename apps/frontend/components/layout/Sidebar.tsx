@@ -39,6 +39,10 @@ const menuItems: MenuItem[] = [
     name: '予算調整',
     href: '/optimization',
     icon: Sliders,
+    subItems: [
+      { name: '予算調整実行', href: '/optimization' },
+      { name: 'CR除外設定', href: '/optimization/exclusions' },
+    ],
   },
   {
     name: '広告パフォーマンス',

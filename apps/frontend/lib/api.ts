@@ -351,6 +351,69 @@ export interface CreatorStopRateResponse {
   };
 }
 
+// ============================================================================
+// 予算調整除外API
+// ============================================================================
+
+export interface BudgetOptimizationExclusion {
+  id: string;
+  creativeName: string;
+  advertiserId: string | null;
+  reason: string | null;
+  enabled: boolean;
+  expiresAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// 除外リスト取得
+export async function getBudgetExclusions(
+  options?: { enabled?: boolean }
+): Promise<BudgetOptimizationExclusion[]> {
+  const params = new URLSearchParams();
+  if (options?.enabled !== undefined) {
+    params.append('enabled', String(options.enabled));
+  }
+  const query = params.toString();
+  const response = await apiClient.get(`/api/budget-optimization-v2/exclusions${query ? `?${query}` : ''}`);
+  return response.data.data;
+}
+
+// 除外追加
+export async function createBudgetExclusion(data: {
+  creativeName: string;
+  advertiserId?: string;
+  reason?: string;
+  expiresAt?: string;
+}): Promise<BudgetOptimizationExclusion> {
+  const response = await apiClient.post('/api/budget-optimization-v2/exclusions', data);
+  return response.data.data;
+}
+
+// 除外更新
+export async function updateBudgetExclusion(
+  id: string,
+  data: {
+    creativeName?: string;
+    advertiserId?: string;
+    reason?: string;
+    enabled?: boolean;
+    expiresAt?: string | null;
+  }
+): Promise<BudgetOptimizationExclusion> {
+  const response = await apiClient.patch(`/api/budget-optimization-v2/exclusions/${id}`, data);
+  return response.data.data;
+}
+
+// 除外削除
+export async function deleteBudgetExclusion(id: string): Promise<void> {
+  await apiClient.delete(`/api/budget-optimization-v2/exclusions/${id}`);
+}
+
+// ============================================================================
+// 制作者停止率API
+// ============================================================================
+
 // 制作者停止率取得
 export async function getCreatorStopRates(options?: {
   advertiserIds?: string[];
