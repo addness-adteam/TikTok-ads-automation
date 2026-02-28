@@ -1,5 +1,4 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { Cron } from '@nestjs/schedule';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 import { TiktokService } from '../tiktok/tiktok.service';
@@ -69,11 +68,9 @@ export class IntradayOptimizationService {
 
   /**
    * 15:00 日中CPAチェックジョブ
+   * NOTE: @Cronスケジューラは削除済み。GitHub Actionsワークフローも削除済み。
+   * 手動実行のみ可能（POST /jobs/intraday-cpa-check）
    */
-  @Cron('0 15 * * *', {
-    name: 'intraday-cpa-check',
-    timeZone: 'Asia/Tokyo',
-  })
   async runIntradayCPACheck() {
     // フィーチャーフラグチェック
     if (this.configService.get('FEATURE_INTRADAY_CPA_CHECK_ENABLED') !== 'true') {
@@ -103,11 +100,8 @@ export class IntradayOptimizationService {
 
   /**
    * 23:59 配信再開ジョブ
+   * NOTE: @Cronスケジューラは削除済み。手動実行のみ可能（POST /jobs/intraday-resume）
    */
-  @Cron('59 23 * * *', {
-    name: 'intraday-resume',
-    timeZone: 'Asia/Tokyo',
-  })
   async runIntradayResume() {
     // フィーチャーフラグチェック
     if (this.configService.get('FEATURE_INTRADAY_CPA_CHECK_ENABLED') !== 'true') {
@@ -136,11 +130,8 @@ export class IntradayOptimizationService {
 
   /**
    * 23:59:30 予算復元ジョブ
+   * NOTE: @Cronスケジューラは削除済み。手動実行のみ可能（POST /jobs/intraday-budget-restore）
    */
-  @Cron('30 59 23 * * *', {
-    name: 'intraday-budget-restore',
-    timeZone: 'Asia/Tokyo',
-  })
   async runIntradayBudgetRestore() {
     // フィーチャーフラグチェック
     if (this.configService.get('FEATURE_INTRADAY_CPA_CHECK_ENABLED') !== 'true') {
