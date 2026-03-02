@@ -47,6 +47,12 @@ export const DEFAULT_DAILY_BUDGET: Record<ChannelType, number> = {
   SNS: 3_000,
 } as const;
 
+/** 日次レポート書き出し先スプレッドシートID */
+export const DAILY_REPORT_SPREADSHEET_ID = '17PWEALugoIY2aKtjpITuyEAwJRz7o03q5iLeR5_5FwM';
+
+/** 日次レポートシート名 */
+export const DAILY_REPORT_SHEET_NAME = '予算調整レポート';
+
 /** 個別予約スプレッドシートID（全導線共通） */
 export const INDIVIDUAL_RESERVATION_SPREADSHEET_ID = '1MsJRbZGrLOkgd7lRApr1ciFQ1GOZaIjmrXQSIe3_nCA';
 

@@ -20,6 +20,8 @@ import {
   SNAPSHOT_RETENTION_DAYS,
   TIKTOK_BUDGET_LIMITS,
   DEFAULT_DAILY_BUDGET,
+  DAILY_REPORT_SPREADSHEET_ID,
+  DAILY_REPORT_SHEET_NAME,
   INDIVIDUAL_RESERVATION_SPREADSHEET_ID,
   INDIVIDUAL_RESERVATION_CONFIG,
   detectChannelType,
@@ -176,10 +178,129 @@ export class BudgetOptimizationV2Service {
         }
       }
 
+      // 第1回の場合、日次レポートをGoogle Sheetsに書き出し
+      try {
+        await this.writeDailyReportToSheet(results);
+      } catch (error) {
+        this.logger.error('[V2] Daily report write failed:', error);
+        // レポート失敗は予算調整の結果に影響させない
+      }
+
       return { success: true, dryRun, results };
     } finally {
       batchJobLock.release(jobName);
     }
+  }
+
+  // ============================================================================
+  // 日次レポート書き出し
+  // ============================================================================
+
+  private async writeDailyReportToSheet(results: HourlyExecutionResult[]): Promise<void> {
+    const firstRoundResults = results.filter(r => r.isFirstRound);
+    if (firstRoundResults.length === 0) {
+      this.logger.log('[V2-Report] No first-round results. Skipping daily report.');
+      return;
+    }
+
+    const now = new Date();
+    const dateStr = this.getJSTDateString(now);
+    const rows: string[][] = [];
+
+    for (const result of firstRoundResults) {
+      // Advertiser & Appeal名取得
+      const advertiser = await this.prisma.advertiser.findUnique({
+        where: { tiktokAdvertiserId: result.advertiserId },
+        include: { appeal: true },
+      });
+      const appealName = advertiser?.appeal?.name ?? result.advertiserId;
+      const channelType = detectChannelType(appealName);
+
+      // Stage1をadIdでMap化
+      const stage1Map = new Map(result.stage1Results.map(r => [r.adId, r]));
+
+      // Stage2の全広告をベースにループ（Stage2が全広告のメトリクスを持つ）
+      if (result.stage2Results.length > 0) {
+        for (const s2 of result.stage2Results) {
+          const s1 = stage1Map.get(s2.adId);
+          rows.push([
+            dateStr,
+            appealName,
+            channelType,
+            s2.adName,
+            s1 ? String(s1.currentBudget) : '',
+            s1 ? s1.action : '',
+            s1?.newBudget != null ? String(s1.newBudget) : '',
+            s1?.todayCPA != null ? String(Math.round(s1.todayCPA)) : '',
+            s1 ? String(s1.todayCV) : '',
+            s1 ? String(Math.round(s1.todaySpend)) : '',
+            s2.last7DaysCPA != null ? String(Math.round(s2.last7DaysCPA)) : '',
+            s2.last7DaysFrontCPO != null ? String(Math.round(s2.last7DaysFrontCPO)) : '',
+            s2.last7DaysIndividualReservationCPO != null ? String(Math.round(s2.last7DaysIndividualReservationCPO)) : '',
+            String(Math.round(s2.last7DaysSpend)),
+            String(s2.last7DaysCVCount),
+            String(s2.last7DaysFrontSalesCount),
+            String(s2.last7DaysIndividualReservationCount),
+            s2.action,
+            s2.reason,
+          ]);
+        }
+      } else {
+        // Stage2がない場合（第1回だがStage2結果が空の場合）Stage1のみ出力
+        for (const s1 of result.stage1Results) {
+          rows.push([
+            dateStr,
+            appealName,
+            channelType,
+            s1.adName,
+            String(s1.currentBudget),
+            s1.action,
+            s1.newBudget != null ? String(s1.newBudget) : '',
+            s1.todayCPA != null ? String(Math.round(s1.todayCPA)) : '',
+            String(s1.todayCV),
+            String(Math.round(s1.todaySpend)),
+            '', '', '', '', '', '', '', '', '',
+          ]);
+        }
+      }
+    }
+
+    if (rows.length === 0) {
+      this.logger.log('[V2-Report] No rows to write.');
+      return;
+    }
+
+    // ヘッダー行チェック（シートが空の場合のみヘッダーを書き出し）
+    try {
+      const existing = await this.googleSheetsService.getValues(
+        DAILY_REPORT_SPREADSHEET_ID,
+        `${DAILY_REPORT_SHEET_NAME}!A1:A1`,
+      );
+      if (!existing || existing.length === 0 || !existing[0]?.[0]) {
+        const headers = [
+          '日付', 'アカウント', '導線', '広告名', '日予算',
+          '予算アクション', '新予算', '当日CPA', '当日CV', '当日広告費',
+          '7日CPA', '7日フロントCPO', '7日個別予約CPO', '7日広告費',
+          '7日CV', '7日フロント販売数', '7日個別予約数', '停止判定', '判定理由',
+        ];
+        await this.googleSheetsService.appendValues(
+          DAILY_REPORT_SPREADSHEET_ID,
+          `${DAILY_REPORT_SHEET_NAME}!A:S`,
+          [headers],
+        );
+      }
+    } catch (error) {
+      this.logger.warn('[V2-Report] Header check failed, proceeding with data:', error);
+    }
+
+    // データ書き出し
+    await this.googleSheetsService.appendValues(
+      DAILY_REPORT_SPREADSHEET_ID,
+      `${DAILY_REPORT_SHEET_NAME}!A:S`,
+      rows,
+    );
+
+    this.logger.log(`[V2-Report] Wrote ${rows.length} rows to daily report sheet.`);
   }
 
   // ============================================================================
