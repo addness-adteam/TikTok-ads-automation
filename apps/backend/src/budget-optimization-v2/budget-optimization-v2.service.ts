@@ -19,6 +19,7 @@ import {
   MIN_IMPRESSIONS_FOR_PAUSE,
   SNAPSHOT_RETENTION_DAYS,
   TIKTOK_BUDGET_LIMITS,
+  DEFAULT_DAILY_BUDGET,
   INDIVIDUAL_RESERVATION_SPREADSHEET_ID,
   INDIVIDUAL_RESERVATION_CONFIG,
   detectChannelType,
@@ -32,6 +33,9 @@ import {
   type PauseAction,
   type PauseDecision,
   type HourlyExecutionResult,
+  type BudgetResetResult,
+  type BudgetResetAdResult,
+  type BudgetResetAction,
 } from './types';
 
 @Injectable()
@@ -1447,6 +1451,191 @@ export class BudgetOptimizationV2Service {
       todaySpend: 0,
     };
   }
+
+  // ============================================================================
+  // 日予算リセット（毎日0時）
+  // ============================================================================
+
+  /**
+   * 特定AdvertiserのSmart+広告の日予算をデフォルトにリセット
+   */
+  async resetDailyBudgets(
+    advertiserId: string,
+    accessToken: string,
+    dryRun: boolean = false,
+  ): Promise<BudgetResetResult> {
+    const now = new Date();
+    this.logger.log(
+      `[V2-RESET] Starting budget reset for ${advertiserId} (dryRun: ${dryRun})`,
+    );
+
+    // Advertiser & Appeal取得
+    const advertiser = await this.prisma.advertiser.findUnique({
+      where: { tiktokAdvertiserId: advertiserId },
+      include: { appeal: true },
+    });
+
+    if (!advertiser || !advertiser.appeal) {
+      throw new Error(`Advertiser ${advertiserId} not found or no appeal assigned`);
+    }
+
+    const appeal = advertiser.appeal;
+    const channelType = detectChannelType(appeal.name);
+    const defaultBudget = DEFAULT_DAILY_BUDGET[channelType];
+
+    this.logger.log(
+      `[V2-RESET] Channel: ${channelType}, Default budget: ¥${defaultBudget}`,
+    );
+
+    // Smart+配信中広告を取得
+    const activeAds = await this.getActiveSmartPlusAds(advertiserId, accessToken, appeal);
+    this.logger.log(`[V2-RESET] Found ${activeAds.length} active Smart+ ads`);
+
+    const adResults: BudgetResetAdResult[] = [];
+    // 同一entity (campaign/adgroup) の重複リセットを防止
+    const processedEntities = new Set<string>();
+
+    for (const ad of activeAds) {
+      const entityType = ad.isCBO ? 'CAMPAIGN' : 'ADGROUP';
+      const entityId = ad.isCBO ? ad.campaignId : ad.adgroupId;
+      const entityKey = `${entityType}:${entityId}`;
+
+      // 既に同じentityを処理済みならスキップ
+      if (processedEntities.has(entityKey)) {
+        continue;
+      }
+      processedEntities.add(entityKey);
+
+      // 既にデフォルト予算の場合はスキップ
+      if (ad.dailyBudget === defaultBudget) {
+        adResults.push({
+          adId: ad.adId,
+          adName: ad.adName,
+          action: 'SKIP_ALREADY_DEFAULT',
+          entityType,
+          entityId,
+          oldBudget: ad.dailyBudget,
+          newBudget: defaultBudget,
+        });
+        this.logger.log(
+          `[V2-RESET] SKIP ${ad.adName}: already at default ¥${defaultBudget}`,
+        );
+        continue;
+      }
+
+      // リセット実行
+      try {
+        if (!dryRun) {
+          if (ad.isCBO) {
+            await this.tiktokService.updateSmartPlusCampaignBudget(
+              advertiserId, accessToken, ad.campaignId, defaultBudget,
+            );
+          } else {
+            await this.tiktokService.updateSmartPlusAdGroupBudgets(
+              advertiserId, accessToken,
+              [{ adgroup_id: ad.adgroupId, budget: defaultBudget }],
+            );
+          }
+
+          // ChangeLog記録
+          await withDatabaseRetry(() =>
+            this.prisma.changeLog.create({
+              data: {
+                entityType,
+                entityId,
+                action: 'RESET_BUDGET',
+                source: 'BUDGET_RESET_MIDNIGHT',
+                beforeData: { budget: ad.dailyBudget },
+                afterData: { budget: defaultBudget },
+                reason: `日予算リセット: ¥${ad.dailyBudget} → ¥${defaultBudget} (${channelType}デフォルト)`,
+              },
+            }),
+          );
+        }
+
+        adResults.push({
+          adId: ad.adId,
+          adName: ad.adName,
+          action: 'RESET',
+          entityType,
+          entityId,
+          oldBudget: ad.dailyBudget,
+          newBudget: defaultBudget,
+        });
+        this.logger.log(
+          `[V2-RESET] ${dryRun ? '[DRY-RUN] ' : ''}RESET ${ad.adName}: ¥${ad.dailyBudget} → ¥${defaultBudget}`,
+        );
+      } catch (error) {
+        adResults.push({
+          adId: ad.adId,
+          adName: ad.adName,
+          action: 'ERROR',
+          entityType,
+          entityId,
+          oldBudget: ad.dailyBudget,
+          newBudget: defaultBudget,
+          error: error.message,
+        });
+        this.logger.error(
+          `[V2-RESET] ERROR resetting ${ad.adName}: ${error.message}`,
+        );
+      }
+    }
+
+    const summary = {
+      totalAds: adResults.length,
+      reset: adResults.filter(r => r.action === 'RESET').length,
+      skippedAlreadyDefault: adResults.filter(r => r.action === 'SKIP_ALREADY_DEFAULT').length,
+      errors: adResults.filter(r => r.action === 'ERROR').length,
+    };
+
+    this.logger.log(
+      `[V2-RESET] Done for ${advertiserId}: total=${summary.totalAds}, reset=${summary.reset}, skip=${summary.skippedAlreadyDefault}, errors=${summary.errors}`,
+    );
+
+    return {
+      advertiserId,
+      channelType,
+      defaultBudget,
+      executionTime: now.toISOString(),
+      dryRun,
+      adResults,
+      summary,
+    };
+  }
+
+  /**
+   * 全対象アカウントの日予算をリセット
+   */
+  async resetAllDailyBudgets(accessToken: string, dryRun: boolean = false) {
+    const jobName = 'budget-reset-midnight';
+    if (!batchJobLock.acquire(jobName, 600000)) {
+      this.logger.warn('[V2-RESET] Previous reset job is still running. Skipping...');
+      return { success: false, reason: 'JOB_LOCKED' };
+    }
+
+    try {
+      const advertiserIds = await this.getTargetAdvertiserIds();
+      const results: BudgetResetResult[] = [];
+
+      for (const advertiserId of advertiserIds) {
+        try {
+          const result = await this.resetDailyBudgets(advertiserId, accessToken, dryRun);
+          results.push(result);
+        } catch (error) {
+          this.logger.error(`[V2-RESET] Failed for advertiser ${advertiserId}:`, error);
+        }
+      }
+
+      return { success: true, dryRun, results };
+    } finally {
+      batchJobLock.release(jobName);
+    }
+  }
+
+  // ============================================================================
+  // ヘルパー
+  // ============================================================================
 
   private emptyResult(advertiserId: string, now: Date): HourlyExecutionResult {
     return {

@@ -40,6 +40,13 @@ export const TIKTOK_BUDGET_LIMITS = {
 /** 予算減額率（個別予約CPO超過時） */
 export const BUDGET_DECREASE_RATE = 0.8;
 
+/** チャネル別デフォルト日予算（円） */
+export const DEFAULT_DAILY_BUDGET: Record<ChannelType, number> = {
+  AI: 3_000,
+  SEMINAR: 5_000,
+  SNS: 3_000,
+} as const;
+
 /** 個別予約スプレッドシートID（全導線共通） */
 export const INDIVIDUAL_RESERVATION_SPREADSHEET_ID = '1MsJRbZGrLOkgd7lRApr1ciFQ1GOZaIjmrXQSIe3_nCA';
 
@@ -186,5 +193,37 @@ export interface HourlyExecutionResult {
     paused: number;
     skipped: number;
     budgetDecreased: number;
+  };
+}
+
+// ----------------------------------------------------------------------------
+// 予算リセット
+// ----------------------------------------------------------------------------
+
+export type BudgetResetAction = 'RESET' | 'SKIP_ALREADY_DEFAULT' | 'ERROR';
+
+export interface BudgetResetAdResult {
+  adId: string;
+  adName: string;
+  action: BudgetResetAction;
+  entityType: 'CAMPAIGN' | 'ADGROUP';
+  entityId: string;
+  oldBudget: number;
+  newBudget: number;
+  error?: string;
+}
+
+export interface BudgetResetResult {
+  advertiserId: string;
+  channelType: ChannelType;
+  defaultBudget: number;
+  executionTime: string;
+  dryRun: boolean;
+  adResults: BudgetResetAdResult[];
+  summary: {
+    totalAds: number;
+    reset: number;
+    skippedAlreadyDefault: number;
+    errors: number;
   };
 }

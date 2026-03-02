@@ -111,6 +111,57 @@ export class BudgetOptimizationV2Controller {
   }
 
   // ============================================================================
+  // 日予算リセット
+  // ============================================================================
+
+  /**
+   * 特定Advertiserの日予算をデフォルトにリセット
+   * POST /api/budget-optimization-v2/reset-budget/:advertiserId
+   */
+  @Post('reset-budget/:advertiserId')
+  async resetBudget(
+    @Param('advertiserId') advertiserId: string,
+    @Body('accessToken') accessToken?: string,
+    @Body('dryRun') dryRun?: boolean,
+  ) {
+    this.logger.log(`[V2] Reset-budget requested for ${advertiserId} (dryRun: ${dryRun})`);
+    try {
+      const token = this.getAccessToken(accessToken);
+      const result = await this.service.resetDailyBudgets(advertiserId, token, dryRun === true);
+      return { success: true, data: result };
+    } catch (error) {
+      this.logger.error(`[V2] Reset-budget failed for ${advertiserId}:`, error);
+      throw new HttpException(
+        { success: false, error: error.message },
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  /**
+   * 全対象アカウントの日予算をデフォルトにリセット
+   * POST /api/budget-optimization-v2/reset-budget-all
+   */
+  @Post('reset-budget-all')
+  async resetBudgetAll(
+    @Body('accessToken') accessToken?: string,
+    @Body('dryRun') dryRun?: boolean,
+  ) {
+    this.logger.log(`[V2] Reset-budget-all requested (dryRun: ${dryRun})`);
+    try {
+      const token = this.getAccessToken(accessToken);
+      const result = await this.service.resetAllDailyBudgets(token, dryRun === true);
+      return { success: true, data: result };
+    } catch (error) {
+      this.logger.error('[V2] Reset-budget-all failed:', error);
+      throw new HttpException(
+        { success: false, error: error.message },
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  // ============================================================================
   // 予算調整除外 CRUD
   // ============================================================================
 
