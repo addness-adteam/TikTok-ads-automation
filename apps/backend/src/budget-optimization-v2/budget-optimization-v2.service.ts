@@ -690,7 +690,11 @@ export class BudgetOptimizationV2Service {
         const lastCVCount = lastSnapshot?.todayCVCount || 0;
 
         if (todayCV <= lastCVCount) {
-          results.push(this.skipDecision(ad, `CV増加なし（前回: ${lastCVCount}, 現在: ${todayCV}）`));
+          // 実際のCV数を渡してスナップショットに正しく保存する
+          // （todayCV=0で保存すると次回ラウンドで同じCVが再検出されるバグを防止）
+          const metrics = todayMetrics.get(ad.adId);
+          const spend = metrics?.spend || 0;
+          results.push(this.skipDecision(ad, `CV増加なし（前回: ${lastCVCount}, 現在: ${todayCV}）`, todayCV, spend));
           continue;
         }
 
@@ -1563,16 +1567,16 @@ export class BudgetOptimizationV2Service {
     };
   }
 
-  private skipDecision(ad: V2SmartPlusAd, reason: string): BudgetIncreaseDecision {
+  private skipDecision(ad: V2SmartPlusAd, reason: string, todayCV: number = 0, todaySpend: number = 0): BudgetIncreaseDecision {
     return {
       adId: ad.adId,
       adName: ad.adName,
       action: 'SKIP',
       reason,
       currentBudget: ad.dailyBudget,
-      todayCPA: null,
-      todayCV: 0,
-      todaySpend: 0,
+      todayCPA: todayCV > 0 ? todaySpend / todayCV : null,
+      todayCV,
+      todaySpend,
     };
   }
 
