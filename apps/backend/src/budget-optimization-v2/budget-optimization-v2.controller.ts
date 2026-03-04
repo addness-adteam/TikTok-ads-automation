@@ -2,6 +2,7 @@ import { Controller, Post, Get, Patch, Delete, Body, Param, Query, Logger, HttpE
 import { BudgetOptimizationV2Service } from './budget-optimization-v2.service';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
+import type { HourlyExecutionResult } from './types';
 
 @Controller('api/budget-optimization-v2')
 export class BudgetOptimizationV2Controller {
@@ -82,6 +83,35 @@ export class BudgetOptimizationV2Controller {
       return { success: true, dryRun: true, data: result };
     } catch (error) {
       this.logger.error(`[V2] Dry-run failed for ${advertiserId}:`, error);
+      throw new HttpException(
+        { success: false, error: error.message },
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  /**
+   * 日次レポートをGoogle Sheetsに書き出し
+   * POST /api/budget-optimization-v2/write-daily-report
+   * GitHub Actionsから最適化API成功後に呼ばれる
+   */
+  @Post('write-daily-report')
+  async writeDailyReport(
+    @Body('results') results: HourlyExecutionResult[],
+  ) {
+    this.logger.log(`[V2] Write daily report requested (${results?.length ?? 0} results)`);
+    try {
+      if (!results || results.length === 0) {
+        throw new HttpException(
+          { success: false, error: 'results array is required' },
+          HttpStatus.BAD_REQUEST,
+        );
+      }
+      await this.service.writeDailyReportToSheet(results);
+      return { success: true };
+    } catch (error) {
+      if (error instanceof HttpException) throw error;
+      this.logger.error('[V2] Write daily report failed:', error);
       throw new HttpException(
         { success: false, error: error.message },
         HttpStatus.INTERNAL_SERVER_ERROR,

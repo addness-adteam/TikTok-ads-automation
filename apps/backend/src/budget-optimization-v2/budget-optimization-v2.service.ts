@@ -151,16 +151,6 @@ export class BudgetOptimizationV2Service {
       `[V2] Completed: increased=${result.summary.increased}, continued=${result.summary.continued}, paused=${result.summary.paused}, budgetDecreased=${result.summary.budgetDecreased}, skipped=${result.summary.skipped}`,
     );
 
-    // 第1回の場合、日次レポートをGoogle Sheetsに書き出し
-    if (isFirstRound) {
-      try {
-        await this.writeDailyReportToSheet([result]);
-      } catch (error) {
-        this.logger.error('[V2] Daily report write failed:', error);
-        // レポート失敗は予算調整の結果に影響させない
-      }
-    }
-
     return result;
   }
 
@@ -188,7 +178,6 @@ export class BudgetOptimizationV2Service {
         }
       }
 
-      // シート書き出しは各executeHourlyOptimization()内で実行済み
       return { success: true, dryRun, results };
     } finally {
       batchJobLock.release(jobName);
@@ -199,7 +188,7 @@ export class BudgetOptimizationV2Service {
   // 日次レポート書き出し
   // ============================================================================
 
-  private async writeDailyReportToSheet(results: HourlyExecutionResult[]): Promise<void> {
+  async writeDailyReportToSheet(results: HourlyExecutionResult[]): Promise<void> {
     const firstRoundResults = results.filter(r => r.isFirstRound);
     if (firstRoundResults.length === 0) {
       this.logger.log('[V2-Report] No first-round results. Skipping daily report.');

@@ -187,9 +187,65 @@ jobs:
 
           if [ "$success" = true ]; then
             echo "result=success" >> $GITHUB_OUTPUT
+            echo "is_first_round=$is_first" >> $GITHUB_OUTPUT
+            # JSONレスポンスをファイルに保存（GITHUB_OUTPUTは改行を含むJSONに非対応）
+            echo "$body" > /tmp/optimize_response_${{ matrix.advertiser_id }}.json
           else
             echo "result=failed" >> $GITHUB_OUTPUT
           fi
+
+      - name: Write daily report to Google Sheets
+        if: steps.time_check.outputs.skip != 'true' && steps.optimize.outputs.result == 'success' && steps.optimize.outputs.is_first_round == 'true'
+        run: |
+          echo "📝 Writing daily report to Google Sheets for ${{ matrix.advertiser_id }}..."
+
+          # レスポンスからresultデータを抽出してシート書き出しAPIに送信
+          result_data=$(jq -c '.data' /tmp/optimize_response_${{ matrix.advertiser_id }}.json)
+
+          max_retries=3
+          retry_count=0
+
+          while [ $retry_count -lt $max_retries ]; do
+            set +e
+            response=$(curl -s -w "\n%{http_code}" \
+              --max-time 300 \
+              --connect-timeout 30 \
+              -X POST \
+              "${{ env.API_BASE_URL }}/api/budget-optimization-v2/write-daily-report" \
+              -H "Content-Type: application/json" \
+              -d "{\"results\": [$result_data]}")
+            curl_exit_code=$?
+            set -e
+
+            if [ $curl_exit_code -ne 0 ]; then
+              retry_count=$((retry_count + 1))
+              echo "⚠️ curl failed (exit code $curl_exit_code). Retry $retry_count/$max_retries..."
+              if [ $retry_count -lt $max_retries ]; then
+                sleep $((15 * retry_count))
+                continue
+              else
+                echo "❌ Sheet write failed after $max_retries retries"
+                break
+              fi
+            fi
+
+            http_code=$(echo "$response" | tail -n1)
+            body=$(echo "$response" | sed '$d')
+
+            if [ "$http_code" -eq 200 ] || [ "$http_code" -eq 201 ]; then
+              echo "✅ Daily report written to Google Sheets"
+              break
+            else
+              retry_count=$((retry_count + 1))
+              echo "⚠️ Sheet write failed (HTTP $http_code). Retry $retry_count/$max_retries..."
+              echo "$body"
+              if [ $retry_count -lt $max_retries ]; then
+                sleep $((15 * retry_count))
+              else
+                echo "❌ Sheet write failed after $max_retries retries"
+              fi
+            fi
+          done
 
   summary:
     runs-on: ubuntu-latest
