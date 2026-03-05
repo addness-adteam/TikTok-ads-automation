@@ -1486,7 +1486,7 @@ export class BudgetOptimizationV2Service {
   }
 
   private generateIndividualReservationPath(lpName: string, creativeName: string, appealName: string): string {
-    return `TikTok広告-${appealName}-${lpName}-${creativeName}`;
+    return `TikTok広告-${appealName}-${lpName}`;
   }
 
   private getJSTHour(date: Date): number {
