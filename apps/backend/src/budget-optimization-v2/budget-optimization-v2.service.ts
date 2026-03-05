@@ -266,7 +266,7 @@ export class BudgetOptimizationV2Service {
     try {
       const existing = await this.googleSheetsService.getValues(
         DAILY_REPORT_SPREADSHEET_ID,
-        `${DAILY_REPORT_SHEET_NAME}!A1:A1`,
+        `'${DAILY_REPORT_SHEET_NAME}'!A1`,
       );
       if (!existing || existing.length === 0 || !existing[0]?.[0]) {
         const headers = [
@@ -277,7 +277,7 @@ export class BudgetOptimizationV2Service {
         ];
         await this.googleSheetsService.appendValues(
           DAILY_REPORT_SPREADSHEET_ID,
-          `${DAILY_REPORT_SHEET_NAME}!A:S`,
+          `'${DAILY_REPORT_SHEET_NAME}'!A:S`,
           [headers],
         );
       }
@@ -288,7 +288,7 @@ export class BudgetOptimizationV2Service {
     // データ書き出し
     await this.googleSheetsService.appendValues(
       DAILY_REPORT_SPREADSHEET_ID,
-      `${DAILY_REPORT_SHEET_NAME}!A:S`,
+      `'${DAILY_REPORT_SHEET_NAME}'!A:S`,
       rows,
     );
 
