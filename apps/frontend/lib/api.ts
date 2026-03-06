@@ -322,12 +322,20 @@ export interface CreatorAd {
   pauseDate: string | null;
 }
 
+export interface CreatorCR {
+  crName: string;
+  ads: CreatorAd[];
+  isFullyPaused: boolean;
+}
+
 export interface CreatorStopRate {
   creatorName: string;
-  adCount: number;
+  crCount: number;
   pauseCount: number;
   stopRate: number;
   isAlert: boolean;
+  crs: CreatorCR[];
+  adCount: number;
   ads: CreatorAd[];
 }
 
@@ -336,10 +344,11 @@ export interface CreatorStopRateResponse {
   data: {
     summary: {
       totalCreators: number;
-      totalAds: number;
+      totalCRs: number;
       totalPaused: number;
       overallStopRate: number;
       alertCount: number;
+      totalAds: number;
     };
     creators: CreatorStopRate[];
     period: {

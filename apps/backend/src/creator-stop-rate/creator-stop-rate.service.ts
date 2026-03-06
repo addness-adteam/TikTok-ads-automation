@@ -11,12 +11,22 @@ interface CreatorAd {
   pauseDate: string | null;
 }
 
+interface CreatorCR {
+  crName: string;
+  ads: CreatorAd[];
+  isFullyPaused: boolean;
+}
+
 interface CreatorStopRate {
   creatorName: string;
-  adCount: number;
+  crCount: number;
   pauseCount: number;
   stopRate: number;
   isAlert: boolean;
+  crs: CreatorCR[];
+  /** @deprecated Use crCount instead */
+  adCount: number;
+  /** @deprecated Use crs instead */
   ads: CreatorAd[];
 }
 
@@ -25,10 +35,11 @@ export interface CreatorStopRateResponse {
   data: {
     summary: {
       totalCreators: number;
-      totalAds: number;
+      totalCRs: number;
       totalPaused: number;
       overallStopRate: number;
       alertCount: number;
+      totalAds: number;
     };
     creators: CreatorStopRate[];
     period: {
@@ -154,56 +165,74 @@ export class CreatorStopRateService {
 
     this.logger.log(`停止記録のある広告数: ${pausedAdMap.size}`);
 
-    // Step 5: 制作者ごとに集計
-    const creatorMap = new Map<
+    // Step 5: 制作者 × CR名 でグループ化
+    // 同じCR名で複数出稿されている場合、全て停止された場合のみ「停止」とカウント
+    const creatorCRMap = new Map<
       string,
-      {
-        ads: CreatorAd[];
-        pauseCount: number;
-      }
+      Map<string, CreatorAd[]>
     >();
 
     for (const ad of targetAds) {
-      if (!creatorMap.has(ad.creator)) {
-        creatorMap.set(ad.creator, { ads: [], pauseCount: 0 });
+      if (!creatorCRMap.has(ad.creator)) {
+        creatorCRMap.set(ad.creator, new Map());
       }
 
-      const entry = creatorMap.get(ad.creator)!;
+      const crMap = creatorCRMap.get(ad.creator)!;
+      const result = validateAdNameFormat(ad.name);
+      const crName = result.parsed?.creativeName || ad.name;
+
+      if (!crMap.has(crName)) {
+        crMap.set(crName, []);
+      }
+
       const isPaused = pausedAdMap.has(ad.tiktokId);
       const pauseDate = isPaused ? pausedAdMap.get(ad.tiktokId)! : null;
 
-      entry.ads.push({
+      crMap.get(crName)!.push({
         adName: ad.name,
         adTiktokId: ad.tiktokId,
         status: ad.status,
         isPaused,
         pauseDate: pauseDate ? pauseDate.toISOString() : null,
       });
-
-      if (isPaused) {
-        entry.pauseCount++;
-      }
     }
 
-    // Step 6: レスポンス構築
+    // Step 6: レスポンス構築（CR単位で停止判定）
     const creators: CreatorStopRate[] = [];
     let totalPaused = 0;
+    let totalCRs = 0;
 
-    for (const [creatorName, data] of creatorMap) {
-      const adCount = data.ads.length;
+    for (const [creatorName, crMap] of creatorCRMap) {
+      const crs: CreatorCR[] = [];
+      let creatorPauseCount = 0;
+      const allAds: CreatorAd[] = [];
+
+      for (const [crName, ads] of crMap) {
+        const isFullyPaused = ads.length > 0 && ads.every((a) => a.isPaused);
+        crs.push({ crName, ads, isFullyPaused });
+        allAds.push(...ads);
+        if (isFullyPaused) {
+          creatorPauseCount++;
+        }
+      }
+
+      const crCount = crs.length;
       const stopRate =
-        adCount > 0 ? Math.round((data.pauseCount / adCount) * 1000) / 10 : 0;
+        crCount > 0 ? Math.round((creatorPauseCount / crCount) * 1000) / 10 : 0;
 
       creators.push({
         creatorName,
-        adCount,
-        pauseCount: data.pauseCount,
+        crCount,
+        pauseCount: creatorPauseCount,
         stopRate,
         isAlert: stopRate > 90,
-        ads: data.ads,
+        crs,
+        adCount: allAds.length,
+        ads: allAds,
       });
 
-      totalPaused += data.pauseCount;
+      totalPaused += creatorPauseCount;
+      totalCRs += crCount;
     }
 
     // 停止率の降順でソート
@@ -211,7 +240,7 @@ export class CreatorStopRateService {
 
     const totalAds = targetAds.length;
     const overallStopRate =
-      totalAds > 0 ? Math.round((totalPaused / totalAds) * 1000) / 10 : 0;
+      totalCRs > 0 ? Math.round((totalPaused / totalCRs) * 1000) / 10 : 0;
     const alertCount = creators.filter((c) => c.isAlert).length;
 
     return {
@@ -219,10 +248,11 @@ export class CreatorStopRateService {
       data: {
         summary: {
           totalCreators: creators.length,
-          totalAds,
+          totalCRs,
           totalPaused,
           overallStopRate,
           alertCount,
+          totalAds,
         },
         creators,
         period: {
@@ -294,10 +324,11 @@ export class CreatorStopRateService {
       data: {
         summary: {
           totalCreators: 0,
-          totalAds: 0,
+          totalCRs: 0,
           totalPaused: 0,
           overallStopRate: 0,
           alertCount: 0,
+          totalAds: 0,
         },
         creators: [],
         period: {

@@ -147,9 +147,12 @@ export default function CreatorStopRatePage() {
                       <FileText className="w-5 h-5 text-green-600" />
                     </div>
                     <div>
-                      <p className="text-sm text-gray-600">総出稿数</p>
+                      <p className="text-sm text-gray-600">総CR数</p>
                       <p className="text-2xl font-bold text-gray-900">
-                        {data.summary.totalAds}
+                        {data.summary.totalCRs}
+                      </p>
+                      <p className="text-xs text-gray-400">
+                        ({data.summary.totalAds}広告)
                       </p>
                     </div>
                   </div>
@@ -233,7 +236,7 @@ export default function CreatorStopRatePage() {
                             制作者名
                           </th>
                           <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                            出稿数
+                            CR数
                           </th>
                           <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
                             停止数
@@ -280,10 +283,10 @@ export default function CreatorStopRatePage() {
                 </h3>
                 <ul className="text-sm text-blue-800 space-y-1 list-disc list-inside">
                   <li>
-                    出稿数: 広告名のYYMMDD日付が集計期間内の広告数
+                    CR数: 同一CR名の広告をグループ化した数
                   </li>
                   <li>
-                    停止数: 予算最適化で自動停止された広告数
+                    停止数: 同一CRの全広告が停止された場合のみカウント（1つでも稼働中なら停止扱いにしない）
                   </li>
                   <li>
                     停止率90%超えの制作者はアラート表示されます
@@ -340,7 +343,7 @@ function ExpandableRow({
           </div>
         </td>
         <td className="px-4 py-4 text-right text-sm text-gray-900">
-          {creator.adCount}
+          {creator.crCount}
         </td>
         <td className="px-4 py-4 text-right text-sm text-gray-900">
           {creator.pauseCount}
@@ -373,76 +376,97 @@ function ExpandableRow({
         </td>
       </tr>
 
-      {/* 展開時: 広告一覧 */}
+      {/* 展開時: CR別広告一覧 */}
       {isExpanded && (
         <tr>
           <td colSpan={6} className="px-0 py-0">
             <div className="bg-gray-50 px-8 py-4 border-t border-gray-100">
               <h4 className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-3">
-                {creator.creatorName} の広告一覧（{creator.adCount}件）
+                {creator.creatorName} のCR一覧（{creator.crCount}CR / {creator.adCount}広告）
               </h4>
-              <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-gray-200">
-                  <thead>
-                    <tr>
-                      <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">
-                        広告名
-                      </th>
-                      <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">
-                        広告ID
-                      </th>
-                      <th className="px-3 py-2 text-center text-xs font-medium text-gray-500">
-                        ステータス
-                      </th>
-                      <th className="px-3 py-2 text-center text-xs font-medium text-gray-500">
-                        自動停止
-                      </th>
-                      <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">
-                        停止日時
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-100">
-                    {creator.ads.map((ad) => (
-                      <tr key={ad.adTiktokId} className="hover:bg-gray-100">
-                        <td className="px-3 py-2 text-sm text-gray-900 max-w-xs truncate">
-                          {ad.adName}
-                        </td>
-                        <td className="px-3 py-2 text-xs text-gray-500 font-mono">
-                          {ad.adTiktokId}
-                        </td>
-                        <td className="px-3 py-2 text-center">
-                          <span
-                            className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
-                              ad.status === 'ENABLE' || ad.status === 'STATUS_ENABLE'
-                                ? 'bg-green-100 text-green-700'
-                                : 'bg-gray-100 text-gray-600'
-                            }`}
-                          >
-                            {ad.status === 'ENABLE' || ad.status === 'STATUS_ENABLE'
-                              ? '配信中'
-                              : '停止'}
-                          </span>
-                        </td>
-                        <td className="px-3 py-2 text-center">
-                          {ad.isPaused ? (
-                            <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-700">
-                              停止済
-                            </span>
-                          ) : (
-                            <span className="text-xs text-gray-400">-</span>
-                          )}
-                        </td>
-                        <td className="px-3 py-2 text-sm text-gray-500">
-                          {ad.pauseDate
-                            ? new Date(ad.pauseDate).toLocaleString('ja-JP')
-                            : '-'}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+              {creator.crs.map((cr) => (
+                <div key={cr.crName} className="mb-3 last:mb-0">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="text-sm font-medium text-gray-800">
+                      {cr.crName}
+                    </span>
+                    <span className="text-xs text-gray-400">
+                      ({cr.ads.length}広告)
+                    </span>
+                    {cr.isFullyPaused ? (
+                      <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-700">
+                        全停止
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-700">
+                        稼働中
+                      </span>
+                    )}
+                  </div>
+                  <div className="overflow-x-auto ml-4">
+                    <table className="min-w-full divide-y divide-gray-200">
+                      <thead>
+                        <tr>
+                          <th className="px-3 py-1 text-left text-xs font-medium text-gray-500">
+                            広告名
+                          </th>
+                          <th className="px-3 py-1 text-left text-xs font-medium text-gray-500">
+                            広告ID
+                          </th>
+                          <th className="px-3 py-1 text-center text-xs font-medium text-gray-500">
+                            ステータス
+                          </th>
+                          <th className="px-3 py-1 text-center text-xs font-medium text-gray-500">
+                            自動停止
+                          </th>
+                          <th className="px-3 py-1 text-left text-xs font-medium text-gray-500">
+                            停止日時
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100">
+                        {cr.ads.map((ad) => (
+                          <tr key={ad.adTiktokId} className="hover:bg-gray-100">
+                            <td className="px-3 py-1.5 text-sm text-gray-900 max-w-xs truncate">
+                              {ad.adName}
+                            </td>
+                            <td className="px-3 py-1.5 text-xs text-gray-500 font-mono">
+                              {ad.adTiktokId}
+                            </td>
+                            <td className="px-3 py-1.5 text-center">
+                              <span
+                                className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
+                                  ad.status === 'ENABLE' || ad.status === 'STATUS_ENABLE'
+                                    ? 'bg-green-100 text-green-700'
+                                    : 'bg-gray-100 text-gray-600'
+                                }`}
+                              >
+                                {ad.status === 'ENABLE' || ad.status === 'STATUS_ENABLE'
+                                  ? '配信中'
+                                  : '停止'}
+                              </span>
+                            </td>
+                            <td className="px-3 py-1.5 text-center">
+                              {ad.isPaused ? (
+                                <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-700">
+                                  停止済
+                                </span>
+                              ) : (
+                                <span className="text-xs text-gray-400">-</span>
+                              )}
+                            </td>
+                            <td className="px-3 py-1.5 text-sm text-gray-500">
+                              {ad.pauseDate
+                                ? new Date(ad.pauseDate).toLocaleString('ja-JP')
+                                : '-'}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              ))}
             </div>
           </td>
         </tr>
