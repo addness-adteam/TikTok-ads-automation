@@ -500,28 +500,7 @@ export class BudgetOptimizationV2Service {
           continue;
         }
 
-        // 出稿7日以内保護チェック
-        if (ad.parsedName && this.isWithin7DaysOfPublish(ad.parsedName.date, todayStr)) {
-          results.push({
-            adId: ad.adId,
-            adName: ad.adName,
-            action: 'SKIP_NEW_CR',
-            reason: `出稿7日以内保護: 出稿日=${ad.parsedName.date}（停止判定スキップ）`,
-            channelType,
-            last7DaysSpend,
-            last7DaysImpressions,
-            last7DaysCVCount: 0,
-            last7DaysFrontSalesCount: 0,
-            last7DaysCPA: null,
-            last7DaysFrontCPO: null,
-            last7DaysIndividualReservationCount: 0,
-            last7DaysIndividualReservationCPO: null,
-          });
-          this.logger.log(
-            `[V2] Ad ${ad.adId} (${ad.adName}): 出稿7日以内保護 (出稿日=${ad.parsedName.date}) → SKIP`,
-          );
-          continue;
-        }
+        const isWithin7Days = ad.parsedName && this.isWithin7DaysOfPublish(ad.parsedName.date, todayStr);
 
         // スプレッドシートから過去7日間のCV数を取得
         const last7DaysCVCount = await this.googleSheetsService.getCVCount(
@@ -577,17 +556,23 @@ export class BudgetOptimizationV2Service {
           last7DaysIndividualReservationCPO,
         );
 
-        // 既存判定がCONTINUEの場合 → 個別予約CPO判定を追加実行
+        // 既存判定がCONTINUEの場合 → 個別予約CPO判定を追加実行（出稿7日以内は個別予約CPO判定スキップ）
         if (decision.action === 'CONTINUE' && appeal.allowableIndividualReservationCPO) {
-          decision = this.evaluateIndividualReservationCPO(
-            ad, channelType, appeal,
-            last7DaysSpend, last7DaysImpressions,
-            last7DaysCVCount, last7DaysFrontSalesCount,
-            last7DaysCPA, last7DaysFrontCPO,
-            last7DaysIndividualReservationCount,
-            last7DaysIndividualReservationCPO,
-            appeal.allowableIndividualReservationCPO,
-          );
+          if (isWithin7Days) {
+            this.logger.log(
+              `[V2] Ad ${ad.adId} (${ad.adName}): 出稿7日以内保護 (出稿日=${ad.parsedName.date}) → 個別予約CPO判定スキップ`,
+            );
+          } else {
+            decision = this.evaluateIndividualReservationCPO(
+              ad, channelType, appeal,
+              last7DaysSpend, last7DaysImpressions,
+              last7DaysCVCount, last7DaysFrontSalesCount,
+              last7DaysCPA, last7DaysFrontCPO,
+              last7DaysIndividualReservationCount,
+              last7DaysIndividualReservationCPO,
+              appeal.allowableIndividualReservationCPO,
+            );
+          }
         }
 
         results.push(decision);
