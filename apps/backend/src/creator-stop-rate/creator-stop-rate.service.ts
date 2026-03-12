@@ -15,7 +15,11 @@ interface CreatorCR {
   crName: string;
   ads: CreatorAd[];
   isFullyPaused: boolean;
+  totalSpend: number;
+  isBigHit: boolean;
 }
+
+const BIG_HIT_SPEND_THRESHOLD = 500000;
 
 interface CreatorStopRate {
   creatorName: string;
@@ -24,6 +28,8 @@ interface CreatorStopRate {
   stopRate: number;
   isAlert: boolean;
   crs: CreatorCR[];
+  bigHitCount: number;
+  bigHitRate: number;
   /** @deprecated Use crCount instead */
   adCount: number;
   /** @deprecated Use crs instead */
@@ -40,6 +46,8 @@ export interface CreatorStopRateResponse {
       overallStopRate: number;
       alertCount: number;
       totalAds: number;
+      totalBigHitCRs: number;
+      overallBigHitRate: number;
     };
     creators: CreatorStopRate[];
     period: {
@@ -165,6 +173,26 @@ export class CreatorStopRateService {
 
     this.logger.log(`停止記録のある広告数: ${pausedAdMap.size}`);
 
+    // Step 4.5: 直近1ヶ月の消化金額を広告ID別に集計
+    const adInternalIds = targetAds.map((a) => a.id);
+    const spendAggregation = await this.prisma.metric.groupBy({
+      by: ['adId'],
+      where: {
+        adId: { in: adInternalIds },
+        statDate: { gte: jstFrom },
+      },
+      _sum: { spend: true },
+    });
+
+    const adSpendMap = new Map<string, number>();
+    for (const row of spendAggregation) {
+      if (row.adId) {
+        adSpendMap.set(row.adId, row._sum.spend || 0);
+      }
+    }
+
+    this.logger.log(`消化金額データ取得: ${adSpendMap.size}件`);
+
     // Step 5: 制作者 × CR名 でグループ化
     // 同じCR名で複数出稿されている場合、全て停止された場合のみ「停止」とカウント
     const creatorCRMap = new Map<
@@ -197,28 +225,52 @@ export class CreatorStopRateService {
       });
     }
 
-    // Step 6: レスポンス構築（CR単位で停止判定）
+    // Step 6: レスポンス構築（CR単位で停止判定 + 大当たりCR判定）
+    // tiktokId → internal id のマッピング
+    const tiktokToInternalId = new Map<string, string>();
+    for (const ad of targetAds) {
+      tiktokToInternalId.set(ad.tiktokId, ad.id);
+    }
+
     const creators: CreatorStopRate[] = [];
     let totalPaused = 0;
     let totalCRs = 0;
+    let totalBigHitCRs = 0;
 
     for (const [creatorName, crMap] of creatorCRMap) {
       const crs: CreatorCR[] = [];
       let creatorPauseCount = 0;
+      let creatorBigHitCount = 0;
       const allAds: CreatorAd[] = [];
 
       for (const [crName, ads] of crMap) {
         const isFullyPaused = ads.length > 0 && ads.every((a) => a.isPaused);
-        crs.push({ crName, ads, isFullyPaused });
+
+        // CR内の全広告のspendを合算
+        let crTotalSpend = 0;
+        for (const ad of ads) {
+          const internalId = tiktokToInternalId.get(ad.adTiktokId);
+          if (internalId) {
+            crTotalSpend += adSpendMap.get(internalId) || 0;
+          }
+        }
+        const isBigHit = crTotalSpend >= BIG_HIT_SPEND_THRESHOLD;
+
+        crs.push({ crName, ads, isFullyPaused, totalSpend: Math.round(crTotalSpend), isBigHit });
         allAds.push(...ads);
         if (isFullyPaused) {
           creatorPauseCount++;
+        }
+        if (isBigHit) {
+          creatorBigHitCount++;
         }
       }
 
       const crCount = crs.length;
       const stopRate =
         crCount > 0 ? Math.round((creatorPauseCount / crCount) * 1000) / 10 : 0;
+      const bigHitRate =
+        crCount > 0 ? Math.round((creatorBigHitCount / crCount) * 1000) / 10 : 0;
 
       creators.push({
         creatorName,
@@ -227,12 +279,15 @@ export class CreatorStopRateService {
         stopRate,
         isAlert: stopRate > 90,
         crs,
+        bigHitCount: creatorBigHitCount,
+        bigHitRate,
         adCount: allAds.length,
         ads: allAds,
       });
 
       totalPaused += creatorPauseCount;
       totalCRs += crCount;
+      totalBigHitCRs += creatorBigHitCount;
     }
 
     // 停止率の降順でソート
@@ -241,6 +296,8 @@ export class CreatorStopRateService {
     const totalAds = targetAds.length;
     const overallStopRate =
       totalCRs > 0 ? Math.round((totalPaused / totalCRs) * 1000) / 10 : 0;
+    const overallBigHitRate =
+      totalCRs > 0 ? Math.round((totalBigHitCRs / totalCRs) * 1000) / 10 : 0;
     const alertCount = creators.filter((c) => c.isAlert).length;
 
     return {
@@ -253,6 +310,8 @@ export class CreatorStopRateService {
           overallStopRate,
           alertCount,
           totalAds,
+          totalBigHitCRs,
+          overallBigHitRate,
         },
         creators,
         period: {
@@ -329,6 +388,8 @@ export class CreatorStopRateService {
           overallStopRate: 0,
           alertCount: 0,
           totalAds: 0,
+          totalBigHitCRs: 0,
+          overallBigHitRate: 0,
         },
         creators: [],
         period: {
