@@ -1,9 +1,9 @@
 name: Daily Budget Optimization
 
 on:
-  schedule:
-    # 毎日3時（日本時間）= 18時（UTC前日）
-    - cron: '0 18 * * *'
+  # スケジュール実行は無効化（全アカウントV2に移行済み）
+  # schedule:
+  #   - cron: '0 18 * * *'
   workflow_dispatch:
     inputs:
       advertiser_ids:
