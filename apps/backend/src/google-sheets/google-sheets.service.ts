@@ -426,6 +426,57 @@ export class GoogleSheetsService {
   }
 
   /**
+   * 指定期間内で1日あたりの最大CV数を取得
+   * @param spreadsheetUrl スプレッドシートURL
+   * @param registrationPath 登録経路
+   * @param startDate 開始日
+   * @param endDate 終了日
+   * @returns 期間内で最もCVが多かった日のCV数
+   */
+  async getMaxDailyCVCount(
+    spreadsheetUrl: string,
+    registrationPath: string,
+    startDate: Date,
+    endDate: Date,
+  ): Promise<number> {
+    try {
+      const spreadsheetId = this.extractSpreadsheetId(spreadsheetUrl);
+      const sheetName = 'TT_オプト';
+
+      const { data: rows, columnPositions } =
+        await this.getSheetDataWithColumnDetection(spreadsheetId, sheetName);
+
+      if (!rows || rows.length === 0) return 0;
+
+      // 日別にCV数を集計
+      const dailyCounts = new Map<string, number>();
+      for (let i = 1; i < rows.length; i++) {
+        const row = rows[i];
+        const pathValue = row[columnPositions.registrationPath];
+        const dateValue = row[columnPositions.date];
+
+        if (!pathValue || !dateValue || pathValue !== registrationPath) continue;
+
+        const rowDate = this.parseDate(dateValue);
+        if (!rowDate || rowDate < startDate || rowDate > endDate) continue;
+
+        const dateKey = rowDate.toISOString().slice(0, 10);
+        dailyCounts.set(dateKey, (dailyCounts.get(dateKey) || 0) + 1);
+      }
+
+      let maxCount = 0;
+      for (const count of dailyCounts.values()) {
+        if (count > maxCount) maxCount = count;
+      }
+
+      return maxCount;
+    } catch (error) {
+      this.logger.warn(`getMaxDailyCVCount failed for ${registrationPath}: ${error.message}`);
+      return 0;
+    }
+  }
+
+  /**
    * CV数を取得
    * @param appealName 訴求名（SNS, AI, デザジュク）
    * @param registrationPath 登録経路

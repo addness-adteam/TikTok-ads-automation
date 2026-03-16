@@ -19,6 +19,23 @@ export const BUDGET_TIER_MIN_OPTS = {
   HIGH: 3,   // 20,000〜40,000円: オプト3以上で増額
 } as const;
 
+/**
+ * 勝ちCR向け拡張予算帯（¥40,000超、上限なし）
+ * 勝ちCR = SNS/AI: 7日間フロントCPO ≤ 目標フロントCPO
+ *          セミナー: 7日間CPA ≤ 目標CPA
+ */
+export const WINNING_CR_BUDGET_TIER = {
+  TIER1_MAX: 80_000,    // 40,000〜80,000円
+  TIER2_MAX: 150_000,   // 80,000〜150,000円
+  // 150,000円超: 上限なし
+} as const;
+
+export const WINNING_CR_BUDGET_TIER_MIN_OPTS = {
+  TIER1: 4,   // 40,000〜80,000円: 4CV以上
+  TIER2: 5,   // 80,000〜150,000円: 5CV以上
+  TIER3: 6,   // 150,000円超: 6CV以上
+} as const;
+
 /** 運用時間帯（JST） */
 export const OPERATION_HOURS = {
   FIRST_ROUND_HOUR: 1,  // 01:00 JST
@@ -206,7 +223,7 @@ export interface HourlyExecutionResult {
 // 予算リセット
 // ----------------------------------------------------------------------------
 
-export type BudgetResetAction = 'RESET' | 'SKIP_ALREADY_DEFAULT' | 'ERROR';
+export type BudgetResetAction = 'RESET' | 'SKIP_ALREADY_DEFAULT' | 'SKIP_WINNING_CR' | 'ERROR';
 
 export interface BudgetResetAdResult {
   adId: string;
@@ -230,6 +247,7 @@ export interface BudgetResetResult {
     totalAds: number;
     reset: number;
     skippedAlreadyDefault: number;
+    skippedWinningCR: number;
     errors: number;
   };
 }

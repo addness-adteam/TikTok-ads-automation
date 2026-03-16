@@ -1555,6 +1555,111 @@ export class BudgetOptimizationV2Service {
   }
 
   // ============================================================================
+  // 勝ちCR判定（0時リセットスキップ用）
+  // ============================================================================
+
+  /**
+   * 勝ちCRのadIdセットを返す
+   *
+   * 条件:
+   * - 直近30日間で1日7CV以上（スプレッドシート基準）を記録した日が1日以上ある
+   * - SNS/AI: 7日間フロント販売 ≥ 1 AND 7日間フロントCPO ≤ targetFrontCPO
+   * - セミナー: 7日間CV ≥ 1 AND 7日間CPA ≤ targetCPA
+   */
+  private async getWinningCRAdIds(
+    ads: V2SmartPlusAd[],
+    appeal: any,
+    advertiserId: string,
+    accessToken: string,
+  ): Promise<Set<string>> {
+    const winningAdIds = new Set<string>();
+    const now = new Date();
+    const todayStr = this.getJSTDateString(now);
+    const channelType = detectChannelType(appeal.name);
+
+    // 7日間メトリクス取得
+    const { startDate: start7, endDate: end7, startStr, endStr } =
+      this.calculateLast7DaysPeriod(todayStr);
+    const last7DaysMetrics = await this.getLast7DaysMetrics(
+      advertiserId, accessToken, startStr, endStr,
+    );
+
+    // 30日前の日付を計算
+    const start30 = new Date(`${todayStr}T00:00:00+09:00`);
+    start30.setDate(start30.getDate() - 29); // 当日含む30日間
+    const end30 = this.parseJSTDateEnd(todayStr);
+
+    for (const ad of ads) {
+      try {
+        if (!ad.parsedName) continue;
+
+        const registrationPath = this.generateRegistrationPath(
+          ad.parsedName.lpName, appeal.name,
+        );
+
+        // 条件1: 直近30日で1日7CV以上の日があるか
+        const maxDailyCV = await this.googleSheetsService.getMaxDailyCVCount(
+          appeal.cvSpreadsheetUrl,
+          registrationPath,
+          start30,
+          end30,
+        );
+        if (maxDailyCV < 7) continue;
+
+        // 7日間の広告費を取得
+        const metrics = last7DaysMetrics.get(ad.adId);
+        const spend = metrics?.totalSpend || 0;
+        if (spend === 0) continue;
+
+        if (usesFrontCPO(channelType)) {
+          // 条件2 (SNS/AI): 7日間フロントCPO ≤ targetFrontCPO
+          if (!appeal.targetFrontCPO || !appeal.frontSpreadsheetUrl) continue;
+
+          const frontSalesCount = await this.googleSheetsService.getFrontSalesCount(
+            appeal.name, appeal.frontSpreadsheetUrl, registrationPath,
+            start7, end7,
+          );
+          if (frontSalesCount < 1) continue;
+
+          const frontCPO = spend / frontSalesCount;
+          if (frontCPO <= appeal.targetFrontCPO) {
+            winningAdIds.add(ad.adId);
+            this.logger.log(
+              `[V2-RESET] Winning CR: ${ad.adName} (フロントCPO ¥${frontCPO.toFixed(0)} ≤ 目標 ¥${appeal.targetFrontCPO}, 最大日別CV=${maxDailyCV})`,
+            );
+          }
+        } else {
+          // 条件2 (セミナー): 7日間CPA ≤ targetCPA
+          if (!appeal.targetCPA) continue;
+
+          const cvCount = await this.googleSheetsService.getCVCount(
+            appeal.name, appeal.cvSpreadsheetUrl, registrationPath,
+            start7, end7,
+          );
+          if (cvCount < 1) continue;
+
+          const cpa = spend / cvCount;
+          if (cpa <= appeal.targetCPA) {
+            winningAdIds.add(ad.adId);
+            this.logger.log(
+              `[V2-RESET] Winning CR: ${ad.adName} (CPA ¥${cpa.toFixed(0)} ≤ 目標 ¥${appeal.targetCPA}, 最大日別CV=${maxDailyCV})`,
+            );
+          }
+        }
+      } catch (error) {
+        this.logger.warn(
+          `[V2-RESET] Winning CR check failed for ${ad.adId}: ${error.message}`,
+        );
+      }
+    }
+
+    this.logger.log(
+      `[V2-RESET] Found ${winningAdIds.size} winning CRs out of ${ads.length} active ads`,
+    );
+    return winningAdIds;
+  }
+
+  // ============================================================================
   // 日予算リセット（毎日0時）
   // ============================================================================
 
@@ -1593,9 +1698,26 @@ export class BudgetOptimizationV2Service {
     const activeAds = await this.getActiveSmartPlusAds(advertiserId, accessToken, appeal);
     this.logger.log(`[V2-RESET] Found ${activeAds.length} active Smart+ ads`);
 
+    // 勝ちCR判定（リセットスキップ対象を特定）
+    // Google Sheetsキャッシュクリア（0時実行なので新しいデータを取得）
+    this.googleSheetsService.clearCache();
+    const winningAdIds = await this.getWinningCRAdIds(
+      activeAds, appeal, advertiserId, accessToken,
+    );
+
     const adResults: BudgetResetAdResult[] = [];
     // 同一entity (campaign/adgroup) の重複リセットを防止
     const processedEntities = new Set<string>();
+    // 勝ちCR判定済みentity（CBO時に同一campaign内の1つが勝ちCRなら全体スキップ）
+    const winningEntities = new Set<string>();
+    for (const ad of activeAds) {
+      if (winningAdIds.has(ad.adId)) {
+        const entityKey = ad.isCBO
+          ? `CAMPAIGN:${ad.campaignId}`
+          : `ADGROUP:${ad.adgroupId}`;
+        winningEntities.add(entityKey);
+      }
+    }
 
     for (const ad of activeAds) {
       const entityType = ad.isCBO ? 'CAMPAIGN' : 'ADGROUP';
@@ -1607,6 +1729,23 @@ export class BudgetOptimizationV2Service {
         continue;
       }
       processedEntities.add(entityKey);
+
+      // 勝ちCRはリセットスキップ（予算を維持）
+      if (winningEntities.has(entityKey)) {
+        adResults.push({
+          adId: ad.adId,
+          adName: ad.adName,
+          action: 'SKIP_WINNING_CR',
+          entityType,
+          entityId,
+          oldBudget: ad.dailyBudget,
+          newBudget: ad.dailyBudget,
+        });
+        this.logger.log(
+          `[V2-RESET] SKIP_WINNING_CR ${ad.adName}: 勝ちCRのため予算維持 ¥${ad.dailyBudget}`,
+        );
+        continue;
+      }
 
       // 既にデフォルト予算の場合はスキップ
       if (ad.dailyBudget === defaultBudget) {
@@ -1688,11 +1827,12 @@ export class BudgetOptimizationV2Service {
       totalAds: adResults.length,
       reset: adResults.filter(r => r.action === 'RESET').length,
       skippedAlreadyDefault: adResults.filter(r => r.action === 'SKIP_ALREADY_DEFAULT').length,
+      skippedWinningCR: adResults.filter(r => r.action === 'SKIP_WINNING_CR').length,
       errors: adResults.filter(r => r.action === 'ERROR').length,
     };
 
     this.logger.log(
-      `[V2-RESET] Done for ${advertiserId}: total=${summary.totalAds}, reset=${summary.reset}, skip=${summary.skippedAlreadyDefault}, errors=${summary.errors}`,
+      `[V2-RESET] Done for ${advertiserId}: total=${summary.totalAds}, reset=${summary.reset}, skipDefault=${summary.skippedAlreadyDefault}, skipWinning=${summary.skippedWinningCR}, errors=${summary.errors}`,
     );
 
     return {
