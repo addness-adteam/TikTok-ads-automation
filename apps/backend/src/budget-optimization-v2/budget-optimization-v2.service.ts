@@ -742,21 +742,14 @@ export class BudgetOptimizationV2Service {
       } else {
         reason = `日予算¥${currentBudget.toFixed(0)}、オプト${todayCV} < ${BUDGET_TIER_MIN_OPTS.MID}`;
       }
-    } else if (currentBudget <= BUDGET_TIER.HIGH_MAX) {
-      // 20,000〜40,000円 → オプト3以上
+    } else {
+      // 20,000円超 → オプト3以上
       if (todayCV >= BUDGET_TIER_MIN_OPTS.HIGH) {
         canIncrease = true;
         reason = `日予算¥${currentBudget.toFixed(0)}、オプト${todayCV} ≥ ${BUDGET_TIER_MIN_OPTS.HIGH}`;
       } else {
         reason = `日予算¥${currentBudget.toFixed(0)}、オプト${todayCV} < ${BUDGET_TIER_MIN_OPTS.HIGH}`;
       }
-    } else {
-      // 40,000円超 → 増額しない
-      return {
-        ...base,
-        action: 'CONTINUE',
-        reason: `日予算¥${currentBudget.toFixed(0)} > ¥${BUDGET_TIER.HIGH_MAX}（上限到達）`,
-      };
     }
 
     if (!canIncrease) {
@@ -778,12 +771,6 @@ export class BudgetOptimizationV2Service {
       }
       newBudget = budgetCap;
       reason += ` → AdBudgetCap ¥${budgetCap} で制限`;
-    }
-
-    // 上限日予算チェック（AdBudgetCapがない場合でも40,000円を超えないようにする）
-    if (newBudget > BUDGET_TIER.HIGH_MAX) {
-      newBudget = BUDGET_TIER.HIGH_MAX;
-      reason += ` → 上限¥${BUDGET_TIER.HIGH_MAX}で制限`;
     }
 
     // TikTok API制限チェック
