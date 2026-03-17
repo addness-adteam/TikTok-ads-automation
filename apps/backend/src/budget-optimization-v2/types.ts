@@ -39,7 +39,7 @@ export const WINNING_CR_BUDGET_TIER_MIN_OPTS = {
 /** 運用時間帯（JST） */
 export const OPERATION_HOURS = {
   FIRST_ROUND_HOUR: 1,  // 01:00 JST
-  LAST_HOUR: 19,         // 19:00 JST（20:00以降は実行しない）
+  LAST_HOUR: 23,         // 23:00 JST（24時間予算増加対応）
 } as const;
 
 /** 新規CR保護: 停止判定に必要な最低インプレッション */
