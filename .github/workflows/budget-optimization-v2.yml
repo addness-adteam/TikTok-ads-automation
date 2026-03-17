@@ -2,9 +2,11 @@ name: Hourly Budget Optimization V2
 
 on:
   schedule:
-    # JST 01:00〜19:30 = UTC 16:00〜翌10:30（30分間隔実行）
+    # JST 0:30〜23:30 = UTC 15:30〜翌14:30（30分間隔・ほぼ24時間実行）
+    # 0:00はbudget-reset-midnightと被るため0:30開始
+    - cron: '30 15 * * *'
     - cron: '0,30 16,17,18,19,20,21,22,23 * * *'
-    - cron: '0,30 0,1,2,3,4,5,6,7,8,9,10 * * *'
+    - cron: '0,30 0,1,2,3,4,5,6,7,8,9,10,11,12,13,14 * * *'
   workflow_dispatch:
     inputs:
       advertiser_ids:
@@ -56,14 +58,7 @@ jobs:
           jst_hour=$(TZ='Asia/Tokyo' date +%H)
           echo "JST hour: $jst_hour"
           echo "jst_hour=$jst_hour" >> $GITHUB_OUTPUT
-
-          # 20:00以降は実行しない（サービス側でもチェックするがワークフローでも早期終了）
-          if [ "$jst_hour" -ge 20 ] || [ "$jst_hour" -lt 1 ]; then
-            echo "Outside operation hours (JST $jst_hour). Skipping."
-            echo "skip=true" >> $GITHUB_OUTPUT
-          else
-            echo "skip=false" >> $GITHUB_OUTPUT
-          fi
+          echo "skip=false" >> $GITHUB_OUTPUT
 
       - name: Wait before processing
         if: steps.time_check.outputs.skip != 'true'

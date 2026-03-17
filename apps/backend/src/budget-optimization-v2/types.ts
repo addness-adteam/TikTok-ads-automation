@@ -38,8 +38,8 @@ export const WINNING_CR_BUDGET_TIER_MIN_OPTS = {
 
 /** 運用時間帯（JST） */
 export const OPERATION_HOURS = {
-  FIRST_ROUND_HOUR: 1,  // 01:00 JST
-  LAST_HOUR: 23,         // 23:00 JST（24時間予算増加対応）
+  FIRST_ROUND_HOUR: 0,  // 00:30 JST（GitHub Actionsの0:30実行で第1回）
+  LAST_HOUR: 23,         // 23:30 JST（24時間予算増加対応）
 } as const;
 
 /** 新規CR保護: 停止判定に必要な最低インプレッション */
