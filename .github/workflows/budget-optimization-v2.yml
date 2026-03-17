@@ -2,11 +2,11 @@ name: Hourly Budget Optimization V2
 
 on:
   schedule:
-    # JST 0:30〜23:30 = UTC 15:30〜翌14:30（30分間隔・ほぼ24時間実行）
-    # 0:00はbudget-reset-midnightと被るため0:30開始
-    - cron: '30 15 * * *'
-    - cron: '0,30 16,17,18,19,20,21,22,23 * * *'
-    - cron: '0,30 0,1,2,3,4,5,6,7,8,9,10,11,12,13,14 * * *'
+    # JST 0:30〜23:45（15分間隔・ほぼ24時間実行）
+    # 0:00はbudget-reset-midnightと被るため0:15開始
+    - cron: '15,30,45 15 * * *'
+    - cron: '0,15,30,45 16,17,18,19,20,21,22,23 * * *'
+    - cron: '0,15,30,45 0,1,2,3,4,5,6,7,8,9,10,11,12,13,14 * * *'
   workflow_dispatch:
     inputs:
       advertiser_ids:
