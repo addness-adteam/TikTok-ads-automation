@@ -205,14 +205,17 @@
 - [ ] **P3-5**: createSmartPlusAdGroup() — Smart+広告グループ作成
 - [ ] **P3-6**: createSmartPlusAd() — Smart+広告作成（creative_list付き）
 - [ ] **P3-7**: getSmartPlusAdFullDetail() — Smart+広告の完全データ取得（video_id解決含む）
+- [ ] **P3-8**: 通常配信はCampaignBuilderServiceの既存メソッドを再利用（追加不要の可能性）
 
-### Phase 4: SmartPlusDeployモジュール（メインロジック）
-- [ ] **P4-1**: `types.ts` 作成（CrossDeployInput, CrossDeployResult等）
-- [ ] **P4-2**: `smart-plus-deploy.module.ts` 作成
-- [ ] **P4-3**: `smart-plus-deploy.service.ts` 作成
-  - preview() / crossDeploy() / resumeFailedDeploy()
-- [ ] **P4-4**: `smart-plus-deploy.controller.ts` 作成
-  - GET /preview / POST /cross-deploy / POST /dry-run / POST /resume/:logId
+### Phase 4: CrossDeployモジュール（メインロジック）
+- [ ] **P4-1**: `types.ts` 作成（DeployMode='SMART_PLUS'|'REGULAR', CrossDeployInput, CrossDeployResult等）
+- [ ] **P4-2**: `cross-deploy.module.ts` 作成
+- [ ] **P4-3**: `cross-deploy.service.ts` 作成
+  - preview() — 元広告データ取得+プレビュー
+  - crossDeploy() — Smart+モード: 全動画→1広告 / 通常配信モード: 動画ごとに1-1-1作成
+  - resumeFailedDeploy() — 途中失敗からの再開
+- [ ] **P4-4**: `cross-deploy.controller.ts` 作成
+  - GET /preview / POST /deploy / POST /dry-run / POST /resume/:logId
 
 ### Phase 5: 統合テスト＆デプロイ
 - [ ] **P5-1**: TypeScriptコンパイルエラーなし確認

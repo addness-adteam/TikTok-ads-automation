@@ -1,17 +1,27 @@
-# Smart+広告 クロスアカウント横展開機能 要件定義書
+# 広告クロスアカウント横展開機能 要件定義書
 
 ## 1. 概要
 
 ### 背景
 - 現在成果が出ている広告（AIまとめ、SNSまとめ、ClaudeCode解説等）はほぼ全てSmart+広告
 - Smart+広告は1広告に複数動画（3〜20本）を含み、TikTokが自動で最適な組み合わせを配信
+- 一方、通常配信（1-1-1構成）の広告も横展開ニーズがある
 - TikTokの`video_id`はアカウント（advertiser_id）に紐づくため、別アカウントでは再アップロードが必要
-- 現在のシステムにはSmart+の作成API（campaign/adgroup/ad create）が未実装
+- 現在のシステムにはSmart+/通常配信ともに作成APIが未実装
 - LP URLの`ftid`パラメータはUTAGEで登録経路を作成して取得する必要がある
 
 ### ゴール
-あるアカウントで成果が出ているSmart+広告を、別のアカウントにワンコマンドで横展開できるようにする。
-UTAGE登録経路の自動生成→動画再アップロード→Smart+広告作成までを一気通貫で実行。
+あるアカウントで成果が出ている広告（Smart+/通常配信の両方）を、別のアカウントにワンコマンドで横展開できるようにする。
+UTAGE登録経路の自動生成→動画再アップロード→広告作成までを一気通貫で実行。
+
+### 2つの配信モード
+
+| モード | creative_list | campaign API | adgroup API | ad API | ユースケース |
+|--------|--------------|-------------|------------|--------|------------|
+| **Smart+** | 動画を複数本（3〜20本）まとめて渡す | `smart_plus/campaign/create` | `smart_plus/adgroup/create` | `smart_plus/ad/create` | AIまとめ、SNSまとめ等 |
+| **通常配信** | 動画1本 = 広告1本 | `campaign/create` | `adgroup/create` | `ad/create` | ClaudeCode解説、尻込み_ちえみさん等（※実態はSmart+の場合あり） |
+
+Smart+か通常配信かはインプットで指定。元広告がSmart+でも通常配信として横展開したり、その逆も可能。
 
 ## 2. 機能要件
 
@@ -270,126 +280,211 @@ Smart+広告1つ（例: 5本の動画入り）に対してUTAGE登録経路は**
 }
 ```
 
+### 2.7 通常配信モード（1-1-1構成）
+
+Smart+の代わりに通常のTikTok広告APIを使って、1キャンペーン-1広告グループ-1広告の構成で作成する。
+動画ダウンロード・再アップロード・UTAGE登録経路作成のロジックはSmart+モードと**完全に共通**。
+
+#### キャンペーン作成（通常配信）
+
+**API**: `POST /v1.3/campaign/create/`（既存のCampaignBuilderServiceと同じ）
+
+```json
+{
+  "advertiser_id": "横展開先のadvertiser_id",
+  "campaign_name": "YYMMDD/制作者名/CR名/LP名-CR{5桁番号}",
+  "objective_type": "LEAD_GENERATION",
+  "budget_mode": "BUDGET_MODE_INFINITE"
+}
+```
+
+#### 広告グループ作成（通常配信）
+
+**API**: `POST /v1.3/adgroup/create/`（既存のCampaignBuilderServiceと同じ）
+
+```json
+{
+  "advertiser_id": "横展開先のadvertiser_id",
+  "campaign_id": "上で作成したcampaign_id",
+  "adgroup_name": "YYMMDD ノンタゲ",
+  "budget_mode": "BUDGET_MODE_DYNAMIC_DAILY_BUDGET",
+  "budget": 3000,
+  "optimization_goal": "CONVERT",
+  "optimization_event": "ON_WEB_REGISTER",
+  "pixel_id": "アカウントのピクセルID",
+  "placement_type": "PLACEMENT_TYPE_AUTOMATIC",
+  "schedule_start_time": "配信開始時刻",
+  "schedule_type": "SCHEDULE_FROM_NOW",
+  "location_ids": ["1861060"],
+  "age_groups": ["AGE_18_24", "AGE_25_34", "AGE_35_44", "AGE_45_54", "AGE_55_100"],
+  "gender": "GENDER_UNLIMITED",
+  "languages": ["ja"]
+}
+```
+
+#### 広告作成（通常配信）
+
+**API**: `POST /v1.3/ad/create/`（既存のCampaignBuilderServiceと同じ）
+
+```json
+{
+  "advertiser_id": "横展開先のadvertiser_id",
+  "adgroup_id": "上で作成したadgroup_id",
+  "is_smart_creative": false,
+  "creatives": [{
+    "ad_name": "YYMMDD/制作者名/CR名/LP名-CR{5桁番号}",
+    "ad_text": "元広告と同じ広告文",
+    "ad_format": "SINGLE_VIDEO",
+    "video_id": "新video_id",
+    "identity_id": "アカウントのidentity_id",
+    "identity_type": "TT_USER",
+    "call_to_action_id": "7569153453977603079",
+    "landing_page_url": "https://school.addness.co.jp/p/{stepId}?ftid={trackingId}&utm_source=tiktok&utm_id=__CAMPAIGN_ID__&utm_campaign=__CAMPAIGN_NAME__&utm_medium=paid"
+  }]
+}
+```
+
+#### 通常配信での複数動画横展開
+
+元広告がSmart+（5本入り）だが通常配信で横展開する場合、**動画ごとに1つずつ広告を作成**する：
+- 5本の動画 → 5つのキャンペーン × 5つの広告グループ × 5つの広告
+- UTAGE登録経路も**動画ごとに1つずつ**作成（CR番号が連番で発番される）
+
 ## 3. 実装設計
 
 ### 3.1 新規モジュール構成
 
 ```
 apps/backend/src/
-  smart-plus-deploy/
-    smart-plus-deploy.module.ts
-    smart-plus-deploy.service.ts      # メインオーケストレーション
-    smart-plus-deploy.controller.ts   # APIエンドポイント
-    types.ts                          # 型定義
+  cross-deploy/
+    cross-deploy.module.ts
+    cross-deploy.service.ts         # メインオーケストレーション（Smart+/通常の両対応）
+    cross-deploy.controller.ts      # APIエンドポイント
+    types.ts                        # 型定義（DeployMode, CrossDeployInput等）
   utage/
     utage.module.ts
-    utage.service.ts                  # UTAGE認証・登録経路作成
-    utage.types.ts                    # ファネルマッピング等
+    utage.service.ts                # UTAGE認証・登録経路作成
+    utage.types.ts                  # ファネルマッピング等
 ```
+
+※ モジュール名を `smart-plus-deploy` → `cross-deploy` に変更（通常配信も対応するため）
 
 ### 3.2 TikTokServiceへの追加メソッド
 
 ```typescript
-// 動画情報取得（ダウンロードURL含む）
+// === 共通 ===
 async getVideoInfo(advertiserId: string, accessToken: string, videoIds: string[]): Promise<VideoInfo[]>
-
-// 動画ダウンロード（URLからBufferへ）
 async downloadVideo(videoUrl: string): Promise<Buffer>
+async uploadVideoToAccount(advertiserId: string, accessToken: string, videoBuffer: Buffer, filename: string): Promise<string>
 
-// Smart+キャンペーン作成
+// === Smart+用 ===
 async createSmartPlusCampaign(advertiserId: string, accessToken: string, params: SmartPlusCampaignCreateParams): Promise<string>
-
-// Smart+広告グループ作成
 async createSmartPlusAdGroup(advertiserId: string, accessToken: string, params: SmartPlusAdGroupCreateParams): Promise<string>
-
-// Smart+広告作成
 async createSmartPlusAd(advertiserId: string, accessToken: string, params: SmartPlusAdCreateParams): Promise<string>
+async getSmartPlusAdFullDetail(advertiserId: string, accessToken: string, smartPlusAdId: string): Promise<SmartPlusAdDetail>
+
+// === 通常配信用（既存のCampaignBuilderServiceのメソッドを再利用） ===
+// createCampaign(), createAdGroup(), createAd() は既存実装あり
 ```
 
 ### 3.3 UtageServiceのメソッド
 
 ```typescript
-// セッション管理
 async login(): Promise<void>
-async ensureSession(): Promise<void>  // セッション切れ自動検知＆再ログイン
-
-// CR番号管理
-async getLatestCrNumber(appeal: string, lpName: string): Promise<number>
-
-// 登録経路作成
-async createRegistrationPath(appeal: string, lpName: string, crNumber: number): Promise<{
-  registrationPath: string;    // "TikTok広告-AI-LP1-CR01235"
-  destinationUrl: string;      // "https://school.addness.co.jp/p/xxx?ftid=yyy"
-  crNumber: number;            // 1235
+async ensureSession(): Promise<void>
+async getLatestCrNumber(appeal: string, lpNumber: number): Promise<number>
+async createRegistrationPath(appeal: string, lpNumber: number, crNumber: number): Promise<{
+  registrationPath: string;
+  destinationUrl: string;
+  crNumber: number;
+}>
+async createRegistrationPathAndGetUrl(appeal: string, lpNumber: number): Promise<{
+  registrationPath: string;
+  destinationUrl: string;
+  crNumber: number;
 }>
 ```
 
-### 3.4 SmartPlusDeployServiceのメインメソッド
+### 3.4 CrossDeployServiceのメインメソッド
 
 ```typescript
+type DeployMode = 'SMART_PLUS' | 'REGULAR';
+
 async crossDeploy(input: {
   sourceAdvertiserId: string;     // 元アカウント
-  sourceSmartPlusAdId: string;    // 元広告ID
+  sourceAdId: string;             // 元広告ID（smart_plus_ad_id or ad_id）
   targetAdvertiserIds: string[];  // 横展開先アカウント（複数可）
+  mode: DeployMode;               // 'SMART_PLUS' or 'REGULAR'
   adNameOverride?: string;        // 広告名を上書きする場合
   dailyBudget?: number;           // 日予算（デフォルト: 導線別）
+  videoIndices?: number[];        // 通常配信時: Smart+の何番目の動画を使うか（省略で全部）
 }): Promise<CrossDeployResult[]>
 ```
-
-※ `landingPageUrl`はUTAGEで自動生成するためインプット不要。
 
 ### 3.5 APIエンドポイント
 
 ```
-POST /api/smart-plus-deploy/cross-deploy
+POST /api/cross-deploy/deploy
 Body: {
   sourceAdvertiserId: string,
-  sourceSmartPlusAdId: string,
+  sourceAdId: string,
   targetAdvertiserIds: string[],
-  dailyBudget?: number
+  mode: 'SMART_PLUS' | 'REGULAR',
+  dailyBudget?: number,
+  videoIndices?: number[]         // REGULAR時: 使う動画のインデックス
 }
 
-GET /api/smart-plus-deploy/preview
-Query: sourceAdvertiserId, sourceSmartPlusAdId
+GET /api/cross-deploy/preview
+Query: sourceAdvertiserId, sourceAdId
 → 横展開前のプレビュー（動画数、広告文、LP等を表示）
 
-POST /api/smart-plus-deploy/dry-run
-Body: （cross-deployと同じ）
+POST /api/cross-deploy/dry-run
+Body: （deployと同じ）
 → 動画アップロードまで実行するが、campaign/ad作成はスキップ
-→ 「何が作られるか」のバリデーション用
+
+POST /api/cross-deploy/resume/:logId
+→ 途中失敗からの再開
 ```
 
 ## 4. 処理フロー（シーケンス）
 
+### 共通フロー（Smart+/通常配信 共通部分）
 ```
-1. [preview] 元Smart+広告の完全データを取得
-   ├── smart_plus/ad/get で広告情報取得
-   ├── creative_listからvideo_id一覧を抽出（2.1の解決策で）
+1. [preview] 元広告の完全データを取得
+   ├── smart_plus/ad/get or ad/get で広告情報取得
+   ├── video_id一覧を抽出（2.1の解決策で）
    ├── file/video/ad/info で各動画のメタ情報取得
    └── 結果を返却（動画数、広告文、LP、設定情報）
 
 2. [cross-deploy]
-   ├── 2a. 全動画をダウンロード（Bufferに保持。1回だけ）
+   ├── 2a. 動画をダウンロード（Bufferに保持。1回だけ）
+   │        REGULAR + videoIndices指定時は対象動画のみ
    │
    ├── 2b. 横展開先アカウントごとに以下を実行:
-   │   ├── i.   全動画を横展開先にアップロード（新video_id取得）
-   │   │        └── アップロード完了を待機（リトライ付き）
-   │   ├── ii.  UTAGE登録経路を作成（UtageService経由）
-   │   │        ├── 最新CR番号を取得
-   │   │        ├── 新規登録経路を作成
-   │   │        └── ftid付きURLを取得
-   │   ├── iii. Smart+キャンペーン作成
-   │   ├── iv.  Smart+広告グループ作成（予算=導線別デフォルトorオーバーライド）
-   │   ├── v.   Smart+広告作成（新video_id + UTAGE URL）
+   │   ├── i.  動画を横展開先にアップロード（新video_id取得）
+   │   │       └── アップロード完了を待機（リトライ付き）
+   │   │
+   │   ├── [SMART_PLUSモード]
+   │   │   ├── ii.  UTAGE登録経路を1つ作成
+   │   │   ├── iii. smart_plus/campaign/create
+   │   │   ├── iv.  smart_plus/adgroup/create
+   │   │   └── v.   smart_plus/ad/create（全video_idをcreative_listに）
+   │   │
+   │   ├── [REGULARモード]
+   │   │   └── 動画ごとに以下を繰り返し:
+   │   │       ├── ii.  UTAGE登録経路を1つ作成（動画ごとにCR番号が連番）
+   │   │       ├── iii. campaign/create
+   │   │       ├── iv.  adgroup/create
+   │   │       └── v.   ad/create（video_id 1本）
+   │   │
    │   ├── vi.  DBにCampaign/AdGroup/Adレコード保存
    │   ├── vii. ChangeLogに記録
    │   └── viii.成功/失敗ステータスを記録
    │
    └── 2c. Entity Syncを1回実行（横展開先アカウント分のみ）
-           → DB同期を確認し、予算最適化V2が正しく拾えるようにする
 
 3. [結果] 各アカウントの作成結果を返却
-   ├── 成功: campaign_id, adgroup_id, smart_plus_ad_id, utage_path, destination_url
+   ├── 成功: campaign_id, adgroup_id, ad_id, utage_path, destination_url
    └── 失敗: エラー内容とどのステップで失敗したか
 ```
 
