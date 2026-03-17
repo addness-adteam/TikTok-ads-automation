@@ -1,6 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import axios, { AxiosInstance, AxiosRequestConfig, AxiosResponse } from 'axios';
+import FormData from 'form-data';
+import { createHash } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import {
   withRetry,
@@ -1167,6 +1169,8 @@ export class TiktokService {
     adName: string,
     options: {
       identity?: string;
+      identityType?: string;
+      identityAuthorizedBcId?: string;
       videoId?: string;
       imageIds?: string[];
       adText?: string;
@@ -1184,13 +1188,16 @@ export class TiktokService {
       const creative: any = {
         ad_name: adName,
         ad_text: options.adText,
-        // API v1.3: Use call_to_action_id instead of call_to_action string
-        call_to_action_id: '7569153453977603079', // LEARN_MORE CTA ID
+        call_to_action: options.callToAction || 'LEARN_MORE',
         landing_page_url: options.landingPageUrl,
-        display_name: options.identity || 'a356c51a-18f2-5f1e-b784-ccb3b107099e',
-        identity_id: options.identity || 'a356c51a-18f2-5f1e-b784-ccb3b107099e', // API v1.3: Required in creatives array (スキルプラス - AVAILABLE)
-        identity_type: 'TT_USER',
+        identity_id: options.identity || 'a356c51a-18f2-5f1e-b784-ccb3b107099e',
+        identity_type: options.identityType || 'BC_AUTH_TT',
       };
+
+      // BC_AUTH_TT使用時はbc_idが必要
+      if ((options.identityType || 'BC_AUTH_TT') === 'BC_AUTH_TT' && options.identityAuthorizedBcId) {
+        creative.identity_authorized_bc_id = options.identityAuthorizedBcId;
+      }
 
       // Set ad_format based on creative type
       if (options.videoId) {
@@ -2335,6 +2342,519 @@ export class TiktokService {
         data: error.response?.data,
         code: error.code,
       })}`);
+      throw error;
+    }
+  }
+
+  // ============================================================================
+  // 横展開用メソッド: 動画情報取得・ダウンロード・アップロード
+  // ============================================================================
+
+  /**
+   * 動画のメタ情報を取得（preview_url含む）
+   * GET /v1.3/file/video/ad/info/
+   */
+  async getVideoInfo(
+    advertiserId: string,
+    accessToken: string,
+    videoIds: string[],
+  ): Promise<any[]> {
+    try {
+      this.logger.log(`動画情報取得: ${videoIds.length}本 (advertiser: ${advertiserId})`);
+
+      const response = await this.httpGetWithRetry(
+        '/v1.3/file/video/ad/info/',
+        {
+          headers: { 'Access-Token': accessToken },
+          params: {
+            advertiser_id: advertiserId,
+            video_ids: JSON.stringify(videoIds),
+          },
+        },
+        'getVideoInfo',
+      );
+
+      // レスポンスはdata.listまたはdata（配列）の場合がある
+      const data = response.data.data;
+      const videos = data?.list || (Array.isArray(data) ? data : []);
+      this.logger.log(`動画情報取得完了: ${videos.length}本`);
+      return videos;
+    } catch (error) {
+      this.logger.error('動画情報取得失敗', error.response?.data || error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * URLから動画をダウンロード（Bufferに保持）
+   */
+  async downloadVideo(videoUrl: string): Promise<Buffer> {
+    try {
+      this.logger.log(`動画ダウンロード中: ${videoUrl.substring(0, 80)}...`);
+
+      const response = await axios.get(videoUrl, {
+        responseType: 'arraybuffer',
+        timeout: 120000, // 動画は大きいので2分タイムアウト
+      });
+
+      const buffer = Buffer.from(response.data);
+      this.logger.log(`動画ダウンロード完了: ${(buffer.length / 1024 / 1024).toFixed(2)}MB`);
+      return buffer;
+    } catch (error) {
+      this.logger.error('動画ダウンロード失敗', error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * 動画を指定アカウントにアップロード
+   * POST /v1.3/file/video/ad/upload/
+   * @returns 新しいvideo_id
+   */
+  async uploadVideoToAccount(
+    advertiserId: string,
+    accessToken: string,
+    videoBuffer: Buffer,
+    filename: string,
+  ): Promise<string> {
+    try {
+      this.logger.log(`動画アップロード中: ${filename} → advertiser ${advertiserId}`);
+
+      const md5Hash = createHash('md5').update(videoBuffer).digest('hex');
+
+      const formData = new FormData();
+      formData.append('advertiser_id', advertiserId);
+      formData.append('upload_type', 'UPLOAD_BY_FILE');
+      formData.append('video_signature', md5Hash);
+      const uniqueFilename = `${Date.now()}_${filename}`;
+      formData.append('video_file', videoBuffer, {
+        filename: uniqueFilename,
+        contentType: 'video/mp4',
+      });
+
+      const response = await this.httpClient.post(
+        '/v1.3/file/video/ad/upload/',
+        formData,
+        {
+          headers: {
+            'Access-Token': accessToken,
+            ...formData.getHeaders(),
+          },
+          timeout: 300000, // アップロードは時間がかかる（79MBで2分以上）
+          maxContentLength: Infinity,
+          maxBodyLength: Infinity,
+        },
+      );
+
+      if (response.data.code !== 0) {
+        throw new Error(`動画アップロード失敗: ${response.data.message}`);
+      }
+
+      // レスポンスが配列の場合（data: [{ video_id, ... }]）
+      const data = response.data.data;
+      const newVideoId = Array.isArray(data) ? data[0]?.video_id : data?.video_id;
+      if (!newVideoId) {
+        throw new Error('動画アップロード: video_idが返されませんでした');
+      }
+
+      this.logger.log(`動画アップロード完了: ${newVideoId}`);
+      return newVideoId;
+    } catch (error) {
+      this.logger.error('動画アップロード失敗', error.response?.data || error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * アップロードした動画の処理完了を待つ
+   * @returns 処理完了した動画情報
+   */
+  async waitForVideoReady(
+    advertiserId: string,
+    accessToken: string,
+    videoId: string,
+    maxRetries = 5,
+  ): Promise<any> {
+    let delay = 3000; // 初回3秒待機
+    for (let i = 0; i < maxRetries; i++) {
+      await new Promise(r => setTimeout(r, delay));
+      delay = Math.floor(delay * 1.5); // 指数バックオフ
+
+      const videos = await this.getVideoInfo(advertiserId, accessToken, [videoId]);
+      if (videos.length > 0) {
+        const video = videos[0];
+        // 処理完了チェック: poster_url(サムネイル)が生成されていればOK
+        if (video.poster_url || video.video_cover_url) {
+          this.logger.log(`動画処理完了: ${videoId}`);
+          return video;
+        }
+      }
+      this.logger.log(`動画処理待ち (${i + 1}/${maxRetries}): ${videoId}`);
+    }
+    this.logger.warn(`動画処理タイムアウト: ${videoId}（アップロードは成功済み、処理中の可能性）`);
+    return null;
+  }
+
+  /**
+   * 画像をアカウントにアップロード（サムネイル用）
+   * POST /v1.3/file/image/ad/upload/
+   * @returns image_id
+   */
+  async uploadImageToAccount(
+    advertiserId: string,
+    accessToken: string,
+    imageBuffer: Buffer,
+    filename: string,
+  ): Promise<string> {
+    try {
+      this.logger.log(`画像アップロード中: ${filename} → advertiser ${advertiserId}`);
+
+      const md5Hash = createHash('md5').update(imageBuffer).digest('hex');
+
+      const formData = new FormData();
+      formData.append('advertiser_id', advertiserId);
+      formData.append('upload_type', 'UPLOAD_BY_FILE');
+      formData.append('image_signature', md5Hash);
+      formData.append('image_file', imageBuffer, {
+        filename: `${Date.now()}_${filename}`,
+        contentType: 'image/jpeg',
+      });
+
+      const response = await this.httpClient.post(
+        '/v1.3/file/image/ad/upload/',
+        formData,
+        {
+          headers: {
+            'Access-Token': accessToken,
+            ...formData.getHeaders(),
+          },
+          timeout: 30000,
+        },
+      );
+
+      if (response.data.code !== 0) {
+        throw new Error(`画像アップロード失敗: ${response.data.message}`);
+      }
+
+      const imageId = response.data.data?.image_id;
+      if (!imageId) {
+        throw new Error('画像アップロード: image_idが返されませんでした');
+      }
+
+      this.logger.log(`画像アップロード完了: ${imageId}`);
+      return imageId;
+    } catch (error) {
+      this.logger.error('画像アップロード失敗', error.response?.data || error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * 動画のカバー画像をダウンロードしてアップロード（サムネイル取得用）
+   * @returns image_id
+   */
+  async uploadVideoThumbnail(
+    advertiserId: string,
+    accessToken: string,
+    videoId: string,
+  ): Promise<string> {
+    // 動画情報からcover_urlを取得
+    const videos = await this.getVideoInfo(advertiserId, accessToken, [videoId]);
+    const coverUrl = videos[0]?.video_cover_url;
+    if (!coverUrl) {
+      throw new Error(`動画 ${videoId} のカバー画像URLが取得できません`);
+    }
+
+    // カバー画像をダウンロード
+    const coverResp = await axios.get(coverUrl, { responseType: 'arraybuffer', timeout: 30000 });
+    const coverBuffer = Buffer.from(coverResp.data);
+
+    // アップロード
+    return this.uploadImageToAccount(advertiserId, accessToken, coverBuffer, `thumb_${videoId}.jpg`);
+  }
+
+  // ============================================================================
+  // 横展開用メソッド: Smart+広告作成
+  // ============================================================================
+
+  /**
+   * Smart+広告の完全データ取得（video_id解決含む）
+   * creative_listからvideo_idを取得し、取れない場合はDBフォールバック
+   */
+  async getSmartPlusAdFullDetail(
+    advertiserId: string,
+    accessToken: string,
+    smartPlusAdId: string,
+  ): Promise<{
+    ad: any;
+    videoIds: string[];
+    adTexts: string[];
+    landingPageUrls: string[];
+    adName: string;
+    adConfiguration: any;
+  }> {
+    // Smart+広告データを取得
+    const ad = await this.getSmartPlusAd(advertiserId, accessToken, smartPlusAdId);
+
+    // video_idを抽出
+    let videoIds: string[] = [];
+    const creativeList = ad.creative_list || [];
+    for (const creative of creativeList) {
+      const videoId = creative?.creative_info?.video_info?.video_id;
+      if (videoId && videoId !== 'N/A') {
+        videoIds.push(videoId);
+      }
+    }
+
+    // video_idが取れない場合、通常のad/getでフォールバック
+    if (videoIds.length === 0) {
+      this.logger.warn('Smart+のcreative_listからvideo_id取得失敗、ad/getでフォールバック');
+      try {
+        const adResp = await this.httpGetWithRetry(
+          '/v1.3/ad/get/',
+          {
+            headers: { 'Access-Token': accessToken },
+            params: {
+              advertiser_id: advertiserId,
+              filtering: JSON.stringify({ ad_ids: [smartPlusAdId] }),
+              fields: JSON.stringify(['ad_id', 'video_id', 'ad_name']),
+            },
+          },
+          'getAdForVideoId',
+        );
+        const regularAds = adResp.data.data?.list || [];
+        for (const regularAd of regularAds) {
+          if (regularAd.video_id) videoIds.push(regularAd.video_id);
+        }
+      } catch (e) {
+        this.logger.warn('ad/getフォールバックも失敗');
+      }
+    }
+
+    // それでも取れない場合、DBのCreativeテーブルからフォールバック
+    if (videoIds.length === 0) {
+      this.logger.warn('APIからvideo_id取得失敗、DBからフォールバック');
+      const dbCreatives = await this.prisma.creative.findMany({
+        where: {
+          ads: {
+            some: {
+              adGroup: {
+                campaign: {
+                  advertiser: { tiktokAdvertiserId: advertiserId },
+                },
+              },
+            },
+          },
+          tiktokVideoId: { not: null },
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 20,
+      });
+      videoIds = dbCreatives.map(c => c.tiktokVideoId!).filter(Boolean);
+    }
+
+    // 広告文を抽出
+    const adTexts: string[] = (ad.ad_text_list || []).map((t: any) => t.ad_text).filter(Boolean);
+
+    // LP URLを抽出
+    const landingPageUrls: string[] = (ad.landing_page_url_list || [])
+      .map((l: any) => l.landing_page_url)
+      .filter(Boolean);
+
+    return {
+      ad,
+      videoIds,
+      adTexts,
+      landingPageUrls,
+      adName: ad.ad_name || '',
+      adConfiguration: ad.ad_configuration || {},
+    };
+  }
+
+  /**
+   * Smart+キャンペーン作成
+   * POST /v1.3/smart_plus/campaign/create/
+   */
+  async createSmartPlusCampaign(
+    advertiserId: string,
+    accessToken: string,
+    params: {
+      campaignName: string;
+      objectiveType?: string;
+      budgetMode?: string;
+      budgetOptimizeOn?: boolean;
+    },
+  ): Promise<string> {
+    try {
+      this.logger.log(`Smart+キャンペーン作成: ${params.campaignName}`);
+
+      const { v4: uuidv4 } = await import('uuid');
+
+      const requestBody = {
+        advertiser_id: advertiserId,
+        campaign_name: params.campaignName,
+        objective_type: params.objectiveType || 'LEAD_GENERATION',
+        budget_mode: params.budgetMode || 'BUDGET_MODE_INFINITE',
+        budget_optimize_on: params.budgetOptimizeOn ?? false,
+        request_id: uuidv4(),
+      };
+
+      const response = await this.httpPostWithRetry(
+        '/v1.3/smart_plus/campaign/create/',
+        requestBody,
+        { headers: { 'Access-Token': accessToken } },
+        'createSmartPlusCampaign',
+      );
+
+      if (response.data.code !== 0) {
+        throw new Error(`Smart+キャンペーン作成失敗: ${response.data.message}`);
+      }
+
+      const campaignId = response.data.data?.campaign_id;
+      if (!campaignId) {
+        throw new Error('Smart+キャンペーン作成: campaign_idが返されませんでした');
+      }
+
+      this.logger.log(`Smart+キャンペーン作成完了: ${campaignId}`);
+      return String(campaignId);
+    } catch (error) {
+      this.logger.error('Smart+キャンペーン作成失敗', error.response?.data || error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * Smart+広告グループ作成
+   * POST /v1.3/smart_plus/adgroup/create/
+   */
+  async createSmartPlusAdGroup(
+    advertiserId: string,
+    accessToken: string,
+    params: {
+      campaignId: string;
+      adgroupName: string;
+      budget: number;
+      pixelId: string;
+      scheduleStartTime?: string;
+    },
+  ): Promise<string> {
+    try {
+      this.logger.log(`Smart+広告グループ作成: ${params.adgroupName}`);
+
+      const { v4: uuidv4 } = await import('uuid');
+
+      const requestBody: any = {
+        advertiser_id: advertiserId,
+        campaign_id: params.campaignId,
+        adgroup_name: params.adgroupName,
+        budget_mode: 'BUDGET_MODE_DYNAMIC_DAILY_BUDGET',
+        budget: params.budget,
+        billing_event: 'OCPM',
+        optimization_goal: 'CONVERT',
+        optimization_event: 'ON_WEB_REGISTER',
+        pixel_id: params.pixelId,
+        schedule_type: 'SCHEDULE_FROM_NOW',
+        targeting_spec: {
+          location_ids: ['1861060'], // 日本
+          age_groups: ['AGE_18_24', 'AGE_25_34', 'AGE_35_44', 'AGE_45_54', 'AGE_55_100'],
+          gender: 'GENDER_UNLIMITED',
+          languages: ['ja'],
+        },
+        promotion_type: 'WEBSITE',
+        request_id: uuidv4(),
+      };
+
+      if (params.scheduleStartTime) {
+        requestBody.schedule_start_time = params.scheduleStartTime;
+      }
+
+      const response = await this.httpPostWithRetry(
+        '/v1.3/smart_plus/adgroup/create/',
+        requestBody,
+        { headers: { 'Access-Token': accessToken } },
+        'createSmartPlusAdGroup',
+      );
+
+      if (response.data.code !== 0) {
+        throw new Error(`Smart+広告グループ作成失敗: ${response.data.message}`);
+      }
+
+      const adgroupId = response.data.data?.adgroup_id;
+      if (!adgroupId) {
+        throw new Error('Smart+広告グループ作成: adgroup_idが返されませんでした');
+      }
+
+      this.logger.log(`Smart+広告グループ作成完了: ${adgroupId}`);
+      return String(adgroupId);
+    } catch (error) {
+      this.logger.error('Smart+広告グループ作成失敗', error.response?.data || error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * Smart+広告作成
+   * POST /v1.3/smart_plus/ad/create/
+   */
+  async createSmartPlusAd(
+    advertiserId: string,
+    accessToken: string,
+    params: {
+      adgroupId: string;
+      adName: string;
+      creativeList: Array<{
+        videoId: string;
+        identityId: string;
+        identityType?: string;
+      }>;
+      adTextList: string[];
+      landingPageUrls: string[];
+      operationStatus?: string;
+    },
+  ): Promise<string> {
+    try {
+      this.logger.log(`Smart+広告作成: ${params.adName} (動画${params.creativeList.length}本)`);
+
+      const { v4: uuidv4 } = await import('uuid');
+
+      const requestBody: any = {
+        advertiser_id: advertiserId,
+        adgroup_id: params.adgroupId,
+        ad_name: params.adName,
+        creative_list: params.creativeList.map(c => ({
+          creative_info: {
+            ad_format: 'SINGLE_VIDEO',
+            video_info: { video_id: c.videoId },
+            identity_id: c.identityId,
+            identity_type: c.identityType || 'BC_AUTH_TT',
+          },
+        })),
+        ad_text_list: params.adTextList.map(text => ({ ad_text: text })),
+        landing_page_url_list: params.landingPageUrls.map(url => ({ landing_page_url: url })),
+        operation_status: params.operationStatus || 'ENABLE',
+        request_id: uuidv4(),
+      };
+
+      const response = await this.httpPostWithRetry(
+        '/v1.3/smart_plus/ad/create/',
+        requestBody,
+        { headers: { 'Access-Token': accessToken } },
+        'createSmartPlusAd',
+      );
+
+      if (response.data.code !== 0) {
+        throw new Error(`Smart+広告作成失敗: ${response.data.message}`);
+      }
+
+      const adId = response.data.data?.ad_id || response.data.data?.smart_plus_ad_id;
+      if (!adId) {
+        throw new Error('Smart+広告作成: ad_idが返されませんでした');
+      }
+
+      this.logger.log(`Smart+広告作成完了: ${adId}`);
+      return String(adId);
+    } catch (error) {
+      this.logger.error('Smart+広告作成失敗', error.response?.data || error.message);
       throw error;
     }
   }

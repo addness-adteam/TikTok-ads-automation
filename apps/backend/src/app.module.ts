@@ -21,6 +21,8 @@ import { IntradayOptimizationModule } from './intraday-optimization/intraday-opt
 import { AdCountRecordingModule } from './ad-count-recording/ad-count-recording.module';
 import { BudgetOptimizationV2Module } from './budget-optimization-v2/budget-optimization-v2.module';
 import { CreatorStopRateModule } from './creator-stop-rate/creator-stop-rate.module';
+import { UtageModule } from './utage/utage.module';
+import { CrossDeployModule } from './cross-deploy/cross-deploy.module';
 
 @Module({
   imports: [
@@ -47,6 +49,8 @@ import { CreatorStopRateModule } from './creator-stop-rate/creator-stop-rate.mod
     AdCountRecordingModule,
     BudgetOptimizationV2Module,
     CreatorStopRateModule,
+    UtageModule,
+    CrossDeployModule,
   ],
   controllers: [AppController],
   providers: [AppService],

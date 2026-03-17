@@ -62,6 +62,9 @@ model Advertiser {
   timezone            String      @default("UTC")
   currency            String      @default("USD")
   status              String      @default("ACTIVE")
+  pixelId             String?     // TikTokピクセルID
+  identityId          String?     // TikTokアイデンティティID（BC_AUTH_TT）
+  identityAuthorizedBcId String?  // BC認証ID（BC_AUTH_TT使用時に必要）
   createdAt           DateTime    @default(now())
   updatedAt           DateTime    @updatedAt
 
@@ -597,4 +600,34 @@ model HourlyOptimizationSnapshot {
   @@index([advertiserId, executionTime])
   @@index([adId, executionTime])
   @@map("hourly_optimization_snapshots")
+}
+
+// ============================================================================
+// 横展開ログ（Cross Deploy）
+// ============================================================================
+
+model CrossDeployLog {
+  id                    String    @id @default(uuid())
+  sourceAdvertiserId    String    // 元アカウントのTikTok advertiser_id
+  sourceAdId            String    // 元広告のID
+  targetAdvertiserId    String    // 横展開先アカウントのTikTok advertiser_id
+  mode                  String    // SMART_PLUS or REGULAR
+  status                String    // PENDING, VIDEOS_UPLOADED, UTAGE_CREATED, CAMPAIGN_CREATED, ADGROUP_CREATED, AD_CREATED, COMPLETED, FAILED
+  failedStep            String?   // 失敗したステップ名
+  errorMessage          String?   @db.Text
+  videoMapping          Json?     // { 元video_id: 新video_id } のマッピング
+  campaignId            String?   // 作成されたキャンペーンID（TikTok）
+  adgroupId             String?   // 作成された広告グループID（TikTok）
+  adId                  String?   // 作成された広告ID（TikTok）
+  utagePath             String?   // 作成されたUTAGE登録経路名
+  destinationUrl        String?   // ftid付きLP URL
+  adName                String?   // 作成された広告名
+  dailyBudget           Float?    // 設定された日予算
+  crNumber              Int?      // UTAGE CR番号
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  @@index([sourceAdId, targetAdvertiserId])
+  @@index([status])
+  @@map("cross_deploy_logs")
 }

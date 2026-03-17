@@ -174,51 +174,51 @@
 - **開始日**: 2026-03-18
 
 ### Phase 0: API調査（実装前の確認）
-- [ ] **P0-1**: smart_plus/ad/getのcreative_listの完全JSONダンプ → video_idの取得方法を確定
-- [ ] **P0-2**: file/video/ad/infoのレスポンスから動画ダウンロードURLが取れるか確認
-- [ ] **P0-3**: smart_plus/campaign/createの正確なエンドポイントとリクエスト/レスポンス形式を確認
-- [ ] **P0-4**: smart_plus/adgroup/createの正確なエンドポイントとリクエスト/レスポンス形式を確認
-- [ ] **P0-5**: smart_plus/ad/createの正確なエンドポイントとリクエスト/レスポンス形式を確認
-- [ ] **P0-6**: 各アカウントのpixel_id, identity_idをTikTok APIから取得
-- [ ] **P0-7**: UTAGEファネルマッピングのgroupId↔stepId対応検証（getLatestCrNumberで既存経路が取れるか）
+- [✅] **P0-1**: smart_plus/ad/getのcreative_listの完全JSONダンプ → video_idの取得方法を確定
+- [✅] **P0-2**: file/video/ad/infoのレスポンスから動画ダウンロードURLが取れるか確認（preview_url使用）
+- [✅] **P0-3**: smart_plus/campaign/createの正確なエンドポイント確認（/v1.3/smart_plus/campaign/create/）
+- [✅] **P0-4**: smart_plus/adgroup/createの正確なエンドポイント確認（/v1.3/smart_plus/adgroup/create/）
+- [✅] **P0-5**: smart_plus/ad/createのエンドポイント確認（/v1.3/smart_plus/ad/create/）
+- [✅] **P0-6**: 各アカウントのpixel_id, identity_idをTikTok APIから取得（全9アカウント完了）
+- [ ] **P0-7**: UTAGEファネルマッピング検証（Phase 5で実際のテスト時に確認）
 
 ### Phase 1: DB変更
-- [ ] **P1-1**: Advertiserテーブルに`pixelId`, `identityId`カラムを追加（Prismaマイグレーション）
-- [ ] **P1-2**: CrossDeployLogテーブルを新規作成（Prismaマイグレーション）
-- [ ] **P1-3**: P0-6で取得したpixel_id/identity_idをAdvertiserテーブルに保存
+- [✅] **P1-1**: Advertiserテーブルに`pixelId`, `identityId`カラムを追加（prisma db push）
+- [✅] **P1-2**: CrossDeployLogテーブルを新規作成（prisma db push）
+- [✅] **P1-3**: P0-6で取得したpixel_id/identity_idをAdvertiserテーブルに保存
 
 ### Phase 2: UTAGEモジュール
-- [ ] **P2-1**: `apps/backend/src/utage/utage.module.ts` 作成
-- [ ] **P2-2**: `apps/backend/src/utage/utage.types.ts` 作成（ファネルマッピング定数、型定義）
-- [ ] **P2-3**: `apps/backend/src/utage/utage.service.ts` 作成
-  - login() / ensureSession() / authedGet() / authedPost()
+- [✅] **P2-1**: `apps/backend/src/utage/utage.module.ts` 作成
+- [✅] **P2-2**: `apps/backend/src/utage/utage.types.ts` 作成（ファネルマッピング定数、型定義）
+- [✅] **P2-3**: `apps/backend/src/utage/utage.service.ts` 作成
+  - login() / ensureSession() / authedGet()
   - getLatestCrNumber(appeal, lpNumber)
   - createRegistrationPath(appeal, lpNumber, crNumber)
   - createRegistrationPathAndGetUrl(appeal, lpNumber)
-- [ ] **P2-4**: UTAGEモジュールの動作確認（実際にUTAGEに接続してCR番号取得テスト）
+- [ ] **P2-4**: UTAGEモジュールの動作確認（Phase 5で実テスト）
 
 ### Phase 3: TikTokService拡張
-- [ ] **P3-1**: getVideoInfo() — file/video/ad/infoで動画メタ情報取得
-- [ ] **P3-2**: downloadVideo() — URLから動画ファイルをBufferにダウンロード
-- [ ] **P3-3**: uploadVideoToAccount() — 指定アカウントに動画をアップロード + 処理完了待ち
-- [ ] **P3-4**: createSmartPlusCampaign() — Smart+キャンペーン作成
-- [ ] **P3-5**: createSmartPlusAdGroup() — Smart+広告グループ作成
-- [ ] **P3-6**: createSmartPlusAd() — Smart+広告作成（creative_list付き）
-- [ ] **P3-7**: getSmartPlusAdFullDetail() — Smart+広告の完全データ取得（video_id解決含む）
-- [ ] **P3-8**: 通常配信はCampaignBuilderServiceの既存メソッドを再利用（追加不要の可能性）
+- [✅] **P3-1**: getVideoInfo() — file/video/ad/infoで動画メタ情報取得
+- [✅] **P3-2**: downloadVideo() — URLから動画ファイルをBufferにダウンロード
+- [✅] **P3-3**: uploadVideoToAccount() + waitForVideoReady() — 指定アカウントに動画をアップロード + 処理完了待ち
+- [✅] **P3-4**: createSmartPlusCampaign() — Smart+キャンペーン作成
+- [✅] **P3-5**: createSmartPlusAdGroup() — Smart+広告グループ作成
+- [✅] **P3-6**: createSmartPlusAd() — Smart+広告作成（creative_list付き）
+- [✅] **P3-7**: getSmartPlusAdFullDetail() — Smart+広告の完全データ取得（video_id解決含む、3段フォールバック）
+- [✅] **P3-8**: 通常配信はTiktokServiceの既存createCampaign/createAdGroup/createAdを再利用
 
 ### Phase 4: CrossDeployモジュール（メインロジック）
-- [ ] **P4-1**: `types.ts` 作成（DeployMode='SMART_PLUS'|'REGULAR', CrossDeployInput, CrossDeployResult等）
-- [ ] **P4-2**: `cross-deploy.module.ts` 作成
-- [ ] **P4-3**: `cross-deploy.service.ts` 作成
+- [✅] **P4-1**: `types.ts` 作成（DeployMode='SMART_PLUS'|'REGULAR', CrossDeployInput, CrossDeployResult等）
+- [✅] **P4-2**: `cross-deploy.module.ts` 作成
+- [✅] **P4-3**: `cross-deploy.service.ts` 作成
   - preview() — 元広告データ取得+プレビュー
   - crossDeploy() — Smart+モード: 全動画→1広告 / 通常配信モード: 動画ごとに1-1-1作成
   - resumeFailedDeploy() — 途中失敗からの再開
-- [ ] **P4-4**: `cross-deploy.controller.ts` 作成
+- [✅] **P4-4**: `cross-deploy.controller.ts` 作成
   - GET /preview / POST /deploy / POST /dry-run / POST /resume/:logId
 
 ### Phase 5: 統合テスト＆デプロイ
-- [ ] **P5-1**: TypeScriptコンパイルエラーなし確認
+- [✅] **P5-1**: TypeScriptコンパイルエラーなし確認（src/内のみ、デバッグスクリプトは既知のエラー）
 - [ ] **P5-2**: preview APIの動作確認（AI_2 AIまとめ広告で）
 - [ ] **P5-3**: dry-run APIの動作確認
 - [ ] **P5-4**: 実際の横展開テスト（AI_2 → AI_4で1本テスト）
