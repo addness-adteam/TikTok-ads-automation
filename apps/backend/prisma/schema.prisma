@@ -132,6 +132,7 @@ model AdGroup {
   placementType   String?
   budgetMode      String?
   budget          Float?
+  initialBudget   Float?      // 入稿時の初期日予算（0時リセット時にこの値に戻す）
   bidType         String?
   bidPrice        Float?
   targeting       Json?

@@ -1685,6 +1685,22 @@ export class BudgetOptimizationV2Service {
     const activeAds = await this.getActiveSmartPlusAds(advertiserId, accessToken, appeal);
     this.logger.log(`[V2-RESET] Found ${activeAds.length} active Smart+ ads`);
 
+    // 各広告のadgroupIdからDBのinitialBudget（入稿時予算）を取得
+    const adgroupTiktokIds = [...new Set(activeAds.map(ad => ad.adgroupId).filter(Boolean))];
+    const adgroupInitialBudgets = new Map<string, number>();
+    if (adgroupTiktokIds.length > 0) {
+      const adgroups = await this.prisma.adGroup.findMany({
+        where: { tiktokId: { in: adgroupTiktokIds } },
+        select: { tiktokId: true, initialBudget: true },
+      });
+      for (const ag of adgroups) {
+        if (ag.initialBudget != null) {
+          adgroupInitialBudgets.set(ag.tiktokId, ag.initialBudget);
+        }
+      }
+      this.logger.log(`[V2-RESET] Found initialBudget for ${adgroupInitialBudgets.size}/${adgroupTiktokIds.length} adgroups`);
+    }
+
     // 勝ちCR判定（リセットスキップ対象を特定）
     // Google Sheetsキャッシュクリア（0時実行なので新しいデータを取得）
     this.googleSheetsService.clearCache();
@@ -1734,8 +1750,11 @@ export class BudgetOptimizationV2Service {
         continue;
       }
 
-      // 既にデフォルト予算の場合はスキップ
-      if (ad.dailyBudget === defaultBudget) {
+      // リセット先予算を決定: initialBudget（入稿時予算）があればそれを使い、なければデフォルト予算
+      const resetBudget = adgroupInitialBudgets.get(ad.adgroupId) ?? defaultBudget;
+
+      // 既にリセット先予算と同じ場合はスキップ
+      if (ad.dailyBudget === resetBudget) {
         adResults.push({
           adId: ad.adId,
           adName: ad.adName,
@@ -1743,10 +1762,10 @@ export class BudgetOptimizationV2Service {
           entityType,
           entityId,
           oldBudget: ad.dailyBudget,
-          newBudget: defaultBudget,
+          newBudget: resetBudget,
         });
         this.logger.log(
-          `[V2-RESET] SKIP ${ad.adName}: already at default ¥${defaultBudget}`,
+          `[V2-RESET] SKIP ${ad.adName}: already at initial budget ¥${resetBudget}`,
         );
         continue;
       }
@@ -1756,12 +1775,12 @@ export class BudgetOptimizationV2Service {
         if (!dryRun) {
           if (ad.isCBO) {
             await this.tiktokService.updateSmartPlusCampaignBudget(
-              advertiserId, accessToken, ad.campaignId, defaultBudget,
+              advertiserId, accessToken, ad.campaignId, resetBudget,
             );
           } else {
             await this.tiktokService.updateSmartPlusAdGroupBudgets(
               advertiserId, accessToken,
-              [{ adgroup_id: ad.adgroupId, budget: defaultBudget }],
+              [{ adgroup_id: ad.adgroupId, budget: resetBudget }],
             );
           }
 
@@ -1774,8 +1793,8 @@ export class BudgetOptimizationV2Service {
                 action: 'RESET_BUDGET',
                 source: 'BUDGET_RESET_MIDNIGHT',
                 beforeData: { budget: ad.dailyBudget },
-                afterData: { budget: defaultBudget },
-                reason: `日予算リセット: ¥${ad.dailyBudget} → ¥${defaultBudget} (${channelType}デフォルト)`,
+                afterData: { budget: resetBudget },
+                reason: `日予算リセット: ¥${ad.dailyBudget} → ¥${resetBudget} (${resetBudget !== defaultBudget ? '入稿時予算' : channelType + 'デフォルト'})`,
               },
             }),
           );
@@ -1788,10 +1807,10 @@ export class BudgetOptimizationV2Service {
           entityType,
           entityId,
           oldBudget: ad.dailyBudget,
-          newBudget: defaultBudget,
+          newBudget: resetBudget,
         });
         this.logger.log(
-          `[V2-RESET] ${dryRun ? '[DRY-RUN] ' : ''}RESET ${ad.adName}: ¥${ad.dailyBudget} → ¥${defaultBudget}`,
+          `[V2-RESET] ${dryRun ? '[DRY-RUN] ' : ''}RESET ${ad.adName}: ¥${ad.dailyBudget} → ¥${resetBudget}${resetBudget !== defaultBudget ? ' (入稿時予算)' : ''}`,
         );
       } catch (error) {
         adResults.push({
@@ -1801,7 +1820,7 @@ export class BudgetOptimizationV2Service {
           entityType,
           entityId,
           oldBudget: ad.dailyBudget,
-          newBudget: defaultBudget,
+          newBudget: resetBudget,
           error: error.message,
         });
         this.logger.error(

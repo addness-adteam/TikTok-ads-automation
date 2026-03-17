@@ -499,6 +499,7 @@ export class JobsController {
                 placementType: adgroup.placement_type,
                 budgetMode: adgroup.budget_mode,
                 budget: adgroup.budget,
+                initialBudget: adgroup.budget, // 入稿時の初期予算を記録（0時リセット時にこの値に戻す）
                 bidType: adgroup.bid_type,
                 bidPrice: adgroup.bid_price,
                 targeting: adgroup as any, // 全データを保存
