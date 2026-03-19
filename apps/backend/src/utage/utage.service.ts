@@ -1,10 +1,9 @@
 /**
  * UTAGE連携サービス（HTTP版）
- * fetch + cheerioでUTAGE登録経路の作成・URL取得を行う
+ * fetch + 正規表現でUTAGE登録経路の作成・URL取得を行う
  */
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import * as cheerio from 'cheerio';
 import {
   TIKTOK_FUNNEL_MAP,
   OPERATOR_LOGIN_URL,
@@ -61,11 +60,12 @@ export class UtageService {
   }
 
   private extractCsrfToken(html: string): string {
-    const $ = cheerio.load(html);
-    const token = $('input[name="_token"]').attr('value');
-    if (token) return token;
-    const metaToken = $('meta[name="csrf-token"]').attr('content');
-    if (metaToken) return metaToken;
+    const inputMatch = html.match(/<input[^>]+name=["']_token["'][^>]+value=["']([^"']+)["']/);
+    if (inputMatch) return inputMatch[1];
+    const inputMatch2 = html.match(/value=["']([^"']+)["'][^>]+name=["']_token["']/);
+    if (inputMatch2) return inputMatch2[1];
+    const metaMatch = html.match(/<meta[^>]+name=["']csrf-token["'][^>]+content=["']([^"']+)["']/);
+    if (metaMatch) return metaMatch[1];
     throw new Error('UTAGE: CSRFトークンが見つかりません');
   }
 
@@ -205,16 +205,18 @@ export class UtageService {
       try { return this.extractCsrfToken(formHtml); } catch { return this.csrfToken; }
     })();
 
-    // フォームのaction URLを取得
-    const $ = cheerio.load(formHtml);
+    // フォームのaction URLを取得（name="name"またはname="group_id"を含むフォームを探す）
     let formAction = '';
-    $('form').each((_, el) => {
-      const action = $(el).attr('action') || '';
-      if ($(el).find('input[name="name"], select[name="group_id"]').length > 0) {
+    const formRegex = /<form[^>]*action=["']([^"']*)["'][^>]*>([\s\S]*?)<\/form>/gi;
+    let formMatch: RegExpExecArray | null;
+    while ((formMatch = formRegex.exec(formHtml)) !== null) {
+      const action = formMatch[1];
+      const formBody = formMatch[2];
+      if (formBody.includes('name="name"') || formBody.includes('name="group_id"')) {
         formAction = action;
-        return false;
+        break;
       }
-    });
+    }
     if (!formAction) {
       formAction = `${UTAGE_BASE_URL}/funnel/${config.funnelId}/tracking`;
     }
