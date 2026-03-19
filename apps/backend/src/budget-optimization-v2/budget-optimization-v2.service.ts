@@ -1701,26 +1701,9 @@ export class BudgetOptimizationV2Service {
       this.logger.log(`[V2-RESET] Found initialBudget for ${adgroupInitialBudgets.size}/${adgroupTiktokIds.length} adgroups`);
     }
 
-    // 勝ちCR判定（リセットスキップ対象を特定）
-    // Google Sheetsキャッシュクリア（0時実行なので新しいデータを取得）
-    this.googleSheetsService.clearCache();
-    const winningAdIds = await this.getWinningCRAdIds(
-      activeAds, appeal, advertiserId, accessToken,
-    );
-
     const adResults: BudgetResetAdResult[] = [];
     // 同一entity (campaign/adgroup) の重複リセットを防止
     const processedEntities = new Set<string>();
-    // 勝ちCR判定済みentity（CBO時に同一campaign内の1つが勝ちCRなら全体スキップ）
-    const winningEntities = new Set<string>();
-    for (const ad of activeAds) {
-      if (winningAdIds.has(ad.adId)) {
-        const entityKey = ad.isCBO
-          ? `CAMPAIGN:${ad.campaignId}`
-          : `ADGROUP:${ad.adgroupId}`;
-        winningEntities.add(entityKey);
-      }
-    }
 
     for (const ad of activeAds) {
       const entityType = ad.isCBO ? 'CAMPAIGN' : 'ADGROUP';
@@ -1732,23 +1715,6 @@ export class BudgetOptimizationV2Service {
         continue;
       }
       processedEntities.add(entityKey);
-
-      // 勝ちCRはリセットスキップ（予算を維持）
-      if (winningEntities.has(entityKey)) {
-        adResults.push({
-          adId: ad.adId,
-          adName: ad.adName,
-          action: 'SKIP_WINNING_CR',
-          entityType,
-          entityId,
-          oldBudget: ad.dailyBudget,
-          newBudget: ad.dailyBudget,
-        });
-        this.logger.log(
-          `[V2-RESET] SKIP_WINNING_CR ${ad.adName}: 勝ちCRのため予算維持 ¥${ad.dailyBudget}`,
-        );
-        continue;
-      }
 
       // リセット先予算を決定: initialBudget（入稿時予算）があればそれを使い、なければデフォルト予算
       const resetBudget = adgroupInitialBudgets.get(ad.adgroupId) ?? defaultBudget;
@@ -1833,12 +1799,11 @@ export class BudgetOptimizationV2Service {
       totalAds: adResults.length,
       reset: adResults.filter(r => r.action === 'RESET').length,
       skippedAlreadyDefault: adResults.filter(r => r.action === 'SKIP_ALREADY_DEFAULT').length,
-      skippedWinningCR: adResults.filter(r => r.action === 'SKIP_WINNING_CR').length,
       errors: adResults.filter(r => r.action === 'ERROR').length,
     };
 
     this.logger.log(
-      `[V2-RESET] Done for ${advertiserId}: total=${summary.totalAds}, reset=${summary.reset}, skipDefault=${summary.skippedAlreadyDefault}, skipWinning=${summary.skippedWinningCR}, errors=${summary.errors}`,
+      `[V2-RESET] Done for ${advertiserId}: total=${summary.totalAds}, reset=${summary.reset}, skipDefault=${summary.skippedAlreadyDefault}, errors=${summary.errors}`,
     );
 
     return {

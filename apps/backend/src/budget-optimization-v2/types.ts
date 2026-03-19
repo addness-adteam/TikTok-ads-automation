@@ -223,7 +223,7 @@ export interface HourlyExecutionResult {
 // 予算リセット
 // ----------------------------------------------------------------------------
 
-export type BudgetResetAction = 'RESET' | 'SKIP_ALREADY_DEFAULT' | 'SKIP_WINNING_CR' | 'ERROR';
+export type BudgetResetAction = 'RESET' | 'SKIP_ALREADY_DEFAULT' | 'ERROR';
 
 export interface BudgetResetAdResult {
   adId: string;
@@ -247,7 +247,6 @@ export interface BudgetResetResult {
     totalAds: number;
     reset: number;
     skippedAlreadyDefault: number;
-    skippedWinningCR: number;
     errors: number;
   };
 }
