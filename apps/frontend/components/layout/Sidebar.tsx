@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { LayoutDashboard, Target, Megaphone, Image, Sliders, TrendingUp, DollarSign, ChevronDown, UserX } from 'lucide-react';
+import { LayoutDashboard, Target, Megaphone, Image, Sliders, TrendingUp, DollarSign, ChevronDown, UserX, Zap } from 'lucide-react';
 import { useAuth } from '@/lib/context/AuthContext';
 import { NotificationPanel } from '@/components/notifications/NotificationPanel';
 import { useState } from 'react';
@@ -57,6 +57,11 @@ const menuItems: MenuItem[] = [
     name: '制作者停止率',
     href: '/creator-stop-rate',
     icon: UserX,
+  },
+  {
+    name: 'ワンストップ出稿',
+    href: '/streamlined-creator',
+    icon: Zap,
   },
 ];
 

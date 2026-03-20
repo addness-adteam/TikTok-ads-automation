@@ -23,6 +23,7 @@ import { BudgetOptimizationV2Module } from './budget-optimization-v2/budget-opti
 import { CreatorStopRateModule } from './creator-stop-rate/creator-stop-rate.module';
 import { UtageModule } from './utage/utage.module';
 import { CrossDeployModule } from './cross-deploy/cross-deploy.module';
+import { StreamlinedCreatorModule } from './streamlined-creator/streamlined-creator.module';
 
 @Module({
   imports: [
@@ -51,6 +52,7 @@ import { CrossDeployModule } from './cross-deploy/cross-deploy.module';
     CreatorStopRateModule,
     UtageModule,
     CrossDeployModule,
+    StreamlinedCreatorModule,
   ],
   controllers: [AppController],
   providers: [AppService],

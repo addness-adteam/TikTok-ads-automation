@@ -2573,6 +2573,38 @@ export class TiktokService {
     return this.uploadImageToAccount(advertiserId, accessToken, coverBuffer, `thumb_${videoId}.jpg`);
   }
 
+  /**
+   * カスタムオーディエンス一覧取得
+   * GET /v1.3/dmp/custom_audience/list/
+   */
+  async getCustomAudiences(
+    advertiserId: string,
+    accessToken: string,
+  ): Promise<any[]> {
+    try {
+      this.logger.log(`カスタムオーディエンス取得: ${advertiserId}`);
+
+      const response = await this.httpClient.get('/v1.3/dmp/custom_audience/list/', {
+        headers: { 'Access-Token': accessToken },
+        params: {
+          advertiser_id: advertiserId,
+          page_size: 100,
+        },
+      });
+
+      if (response.data.code !== 0) {
+        throw new Error(`カスタムオーディエンス取得失敗: ${response.data.message}`);
+      }
+
+      const audiences = response.data.data?.list || [];
+      this.logger.log(`カスタムオーディエンス取得完了: ${audiences.length}件`);
+      return audiences;
+    } catch (error) {
+      this.logger.error('カスタムオーディエンス取得失敗', error.response?.data || error.message);
+      throw error;
+    }
+  }
+
   // ============================================================================
   // 横展開用メソッド: Smart+広告作成
   // ============================================================================
