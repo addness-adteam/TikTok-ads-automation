@@ -382,7 +382,7 @@ export class CrossDeployService {
           optimizationEvent: 'ON_WEB_REGISTER',
           targeting: {
             location_ids: ['1861060'],
-            age_groups: ['AGE_18_24', 'AGE_25_34', 'AGE_35_44', 'AGE_45_54', 'AGE_55_100'],
+            age_groups: ['AGE_25_34', 'AGE_35_44', 'AGE_45_54'],
             gender: 'GENDER_UNLIMITED',
             languages: ['ja'],
           },

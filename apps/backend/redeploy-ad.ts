@@ -173,25 +173,61 @@ async function tiktokGet(endpoint: string, params: Record<string, string>): Prom
 async function getSourceAdInfo(advertiserId: string, adId: string) {
   console.log('1. 元広告の情報を取得中...');
 
-  // 広告情報取得
+  // まず通常広告APIで取得
   const adData = await tiktokGet('/v1.3/ad/get/', {
     advertiser_id: advertiserId,
     filtering: JSON.stringify({ ad_ids: [adId] }),
     fields: JSON.stringify(['ad_id', 'ad_name', 'ad_text', 'landing_page_url', 'video_id', 'call_to_action', 'call_to_action_id', 'creative_type']),
   });
   const ad = adData.data?.list?.[0];
-  if (!ad) throw new Error(`広告が見つかりません: ${adId}`);
 
-  const adName = ad.ad_name;
-  const adText = ad.ad_text;
-  const videoId = ad.video_id;
-  const landingPageUrl = ad.landing_page_url;
+  if (ad) {
+    console.log(`   [通常広告] ${ad.ad_name}`);
+    console.log(`   動画ID: ${ad.video_id}`);
+    console.log(`   広告文: ${ad.ad_text}`);
+    return { adName: ad.ad_name, adText: ad.ad_text, videoId: ad.video_id, landingPageUrl: ad.landing_page_url };
+  }
 
-  console.log(`   広告名: ${adName}`);
+  // 通常APIで見つからない場合 → Smart+広告として取得
+  console.log('   通常広告APIで見つからず → Smart+広告として検索...');
+  const spData = await tiktokGet('/v1.3/smart_plus/ad/get/', {
+    advertiser_id: advertiserId,
+    filtering: JSON.stringify({ smart_plus_ad_ids: [adId] }),
+  });
+  const spAd = spData.data?.list?.[0];
+  if (!spAd) throw new Error(`広告が見つかりません（通常/Smart+両方）: ${adId}`);
+
+  const adName = spAd.smart_plus_ad_name || spAd.ad_name || '';
+  const creativeList = spAd.creative_list || [];
+
+  // video_idを抽出（creative_listから最初の1本）
+  let videoId = '';
+  for (const creative of creativeList) {
+    const vid = creative?.creative_info?.video_info?.video_id;
+    if (vid && vid !== 'N/A') { videoId = vid; break; }
+  }
+  if (!videoId) throw new Error('Smart+広告からvideo_idを取得できません');
+
+  // 広告文を抽出
+  const adTexts: string[] = [];
+  for (const creative of creativeList) {
+    const texts = creative?.creative_info?.ad_text_list || [];
+    for (const t of texts) { if (t && !adTexts.includes(t)) adTexts.push(t); }
+  }
+  const adText = adTexts[0] || '';
+
+  // LP URLを抽出
+  const landingPageUrls: string[] = [];
+  for (const creative of creativeList) {
+    const urls = creative?.creative_info?.landing_page_urls || [];
+    for (const u of urls) { if (u && !landingPageUrls.includes(u)) landingPageUrls.push(u); }
+  }
+
+  console.log(`   [Smart+広告] ${adName}`);
   console.log(`   動画ID: ${videoId}`);
   console.log(`   広告文: ${adText}`);
 
-  return { adName, adText, videoId, landingPageUrl };
+  return { adName, adText, videoId, landingPageUrl: landingPageUrls[0] || '' };
 }
 
 // ===== 広告名パース =====
@@ -405,7 +441,7 @@ async function createAdGroup(advertiserId: string, campaignId: string, pixelId: 
     placements: ['PLACEMENT_TIKTOK'],
     location_ids: ['1861060'],
     languages: ['ja'],
-    age_groups: ['AGE_18_24', 'AGE_25_34', 'AGE_35_44', 'AGE_45_54', 'AGE_55_100'],
+    age_groups: ['AGE_25_34', 'AGE_35_44', 'AGE_45_54'],
     gender: 'GENDER_UNLIMITED',
     budget_mode: 'BUDGET_MODE_DYNAMIC_DAILY_BUDGET',
     budget: dailyBudget,
