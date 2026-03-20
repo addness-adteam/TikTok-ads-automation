@@ -165,8 +165,9 @@ export class UtageService {
     const trackingUrl = `${UTAGE_BASE_URL}/funnel/${config.funnelId}/tracking`;
     const { html } = await this.authedGet(trackingUrl);
 
-    // TikTok広告用のパターンで検索
-    const pattern = new RegExp(`TikTok広告-${appeal}-LP${lpNumber}-CR(\\d+)`, 'g');
+    // TikTok広告用のパターンで検索（5桁ゼロ埋め形式のみマッチ）
+    // 過去の手動登録経路（CR29527等）を除外するため、CR00xxx形式に限定
+    const pattern = new RegExp(`TikTok広告-${appeal}-LP${lpNumber}-CR(0\\d{4})`, 'g');
     const matches = [...html.matchAll(pattern)];
 
     if (matches.length === 0) {
