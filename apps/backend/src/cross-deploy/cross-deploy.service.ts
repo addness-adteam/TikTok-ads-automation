@@ -42,8 +42,11 @@ export class CrossDeployService {
       sourceAdvertiserId,
       sourceAdId,
       adName: detail.adName,
+      adFormat: detail.adFormat,
       videoCount: detail.videoIds.length,
       videoIds: detail.videoIds,
+      imageCount: detail.imageIds.length,
+      imageIds: detail.imageIds,
       adTexts: detail.adTexts,
       landingPageUrls: detail.landingPageUrls,
       adConfiguration: detail.adConfiguration,
@@ -64,39 +67,11 @@ export class CrossDeployService {
       input.sourceAdId,
     );
 
-    if (sourceDetail.videoIds.length === 0) {
-      throw new Error('元広告にvideo_idが見つかりません');
-    }
+    const isImageAd = sourceDetail.adFormat === 'CAROUSEL_ADS' && sourceDetail.imageIds.length > 0;
+    const isVideoAd = sourceDetail.videoIds.length > 0;
 
-    // 使用する動画のインデックスを決定
-    let videoIndicesToUse: number[];
-    if (input.videoIndices && input.videoIndices.length > 0) {
-      videoIndicesToUse = input.videoIndices;
-    } else {
-      videoIndicesToUse = sourceDetail.videoIds.map((_, i) => i);
-    }
-
-    const videoIdsToUse = videoIndicesToUse.map(i => sourceDetail.videoIds[i]).filter(Boolean);
-    this.logger.log(`使用動画: ${videoIdsToUse.length}本 / ${sourceDetail.videoIds.length}本`);
-
-    // 2. 動画をダウンロード（1回だけ）
-    const videoBuffers: Map<string, Buffer> = new Map();
-    const videoInfos = await this.tiktokService.getVideoInfo(
-      input.sourceAdvertiserId,
-      sourceToken,
-      videoIdsToUse,
-    );
-
-    for (const videoId of videoIdsToUse) {
-      const info = videoInfos.find((v: any) => v.video_id === videoId);
-      const downloadUrl = info?.preview_url || info?.video_url;
-      if (!downloadUrl) {
-        throw new Error(`動画 ${videoId} のダウンロードURLが取得できません`);
-      }
-
-      const buffer = await this.tiktokService.downloadVideo(downloadUrl);
-      videoBuffers.set(videoId, buffer);
-      await new Promise(r => setTimeout(r, 100)); // レート制限対策
+    if (!isImageAd && !isVideoAd) {
+      throw new Error('元広告にvideo_idもimage_idも見つかりません');
     }
 
     // 3. 元広告名からappeal/LP番号を抽出
@@ -105,19 +80,82 @@ export class CrossDeployService {
     // 4. 各ターゲットアカウントで横展開実行
     const results: CrossDeployResult[] = [];
 
-    for (const targetAdvertiserId of input.targetAdvertiserIds) {
-      if (input.mode === 'SMART_PLUS') {
-        const result = await this.deploySmartPlus(
-          input, targetAdvertiserId, sourceDetail, videoIdsToUse, videoBuffers, appeal, lpNumber,
+    if (isImageAd) {
+      // === 画像（カルーセル）広告フロー ===
+      this.logger.log(`画像広告: ${sourceDetail.imageIds.length}枚`);
+
+      // 画像情報取得（image_url取得のため）
+      const imageInfos = await this.tiktokService.getImageInfo(
+        input.sourceAdvertiserId,
+        sourceToken,
+        sourceDetail.imageIds,
+      );
+
+      // 画像をダウンロード
+      const imageBuffers: Map<string, Buffer> = new Map();
+      for (const imageId of sourceDetail.imageIds) {
+        const info = imageInfos.find((img: any) => img.image_id === imageId);
+        const imageUrl = info?.image_url;
+        if (!imageUrl) {
+          throw new Error(`画像 ${imageId} のURLが取得できません`);
+        }
+        const resp = await fetch(imageUrl);
+        const buffer = Buffer.from(await resp.arrayBuffer());
+        imageBuffers.set(imageId, buffer);
+        await new Promise(r => setTimeout(r, 100));
+      }
+
+      for (const targetAdvertiserId of input.targetAdvertiserIds) {
+        const result = await this.deploySmartPlusWithImages(
+          input, targetAdvertiserId, sourceDetail, imageBuffers, appeal, lpNumber,
         );
         results.push(result);
+      }
+    } else {
+      // === 動画広告フロー（既存） ===
+      let videoIndicesToUse: number[];
+      if (input.videoIndices && input.videoIndices.length > 0) {
+        videoIndicesToUse = input.videoIndices;
       } else {
-        // REGULAR: 動画ごとに1-1-1で作成
-        for (let i = 0; i < videoIdsToUse.length; i++) {
-          const result = await this.deployRegular(
-            input, targetAdvertiserId, sourceDetail, videoIdsToUse[i], videoBuffers, appeal, lpNumber, i,
+        videoIndicesToUse = sourceDetail.videoIds.map((_, i) => i);
+      }
+
+      const videoIdsToUse = videoIndicesToUse.map(i => sourceDetail.videoIds[i]).filter(Boolean);
+      this.logger.log(`使用動画: ${videoIdsToUse.length}本 / ${sourceDetail.videoIds.length}本`);
+
+      // 動画をダウンロード（1回だけ）
+      const videoBuffers: Map<string, Buffer> = new Map();
+      const videoInfos = await this.tiktokService.getVideoInfo(
+        input.sourceAdvertiserId,
+        sourceToken,
+        videoIdsToUse,
+      );
+
+      for (const videoId of videoIdsToUse) {
+        const info = videoInfos.find((v: any) => v.video_id === videoId);
+        const downloadUrl = info?.preview_url || info?.video_url;
+        if (!downloadUrl) {
+          throw new Error(`動画 ${videoId} のダウンロードURLが取得できません`);
+        }
+
+        const buffer = await this.tiktokService.downloadVideo(downloadUrl);
+        videoBuffers.set(videoId, buffer);
+        await new Promise(r => setTimeout(r, 100));
+      }
+
+      for (const targetAdvertiserId of input.targetAdvertiserIds) {
+        if (input.mode === 'SMART_PLUS') {
+          const result = await this.deploySmartPlus(
+            input, targetAdvertiserId, sourceDetail, videoIdsToUse, videoBuffers, appeal, lpNumber,
           );
           results.push(result);
+        } else {
+          for (let i = 0; i < videoIdsToUse.length; i++) {
+            const result = await this.deployRegular(
+              input, targetAdvertiserId, sourceDetail, videoIdsToUse[i], videoBuffers, appeal, lpNumber, i,
+            );
+            results.push(result);
+          }
         }
       }
     }
@@ -263,6 +301,156 @@ export class CrossDeployService {
         crNumber: utageResult.crNumber,
         dailyBudget,
         videoMapping,
+      };
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      await this.updateLog(log.id, {
+        status: 'FAILED',
+        errorMessage: errorMsg,
+        failedStep: this.getCurrentStep(log),
+      });
+
+      return {
+        targetAdvertiserId,
+        status: 'FAILED',
+        mode: 'SMART_PLUS',
+        error: errorMsg,
+        failedStep: this.getCurrentStep(log),
+      };
+    }
+  }
+
+  /**
+   * Smart+モードの横展開 - 画像（カルーセル）広告
+   */
+  private async deploySmartPlusWithImages(
+    input: CrossDeployInput,
+    targetAdvertiserId: string,
+    sourceDetail: Awaited<ReturnType<TiktokService['getSmartPlusAdFullDetail']>>,
+    imageBuffers: Map<string, Buffer>,
+    appeal: string,
+    lpNumber: number,
+  ): Promise<CrossDeployResult> {
+    const log = await this.prisma.crossDeployLog.create({
+      data: {
+        sourceAdvertiserId: input.sourceAdvertiserId,
+        sourceAdId: input.sourceAdId,
+        targetAdvertiserId,
+        mode: 'SMART_PLUS',
+        status: 'PENDING',
+      },
+    });
+
+    try {
+      const targetToken = await this.getAccessToken(targetAdvertiserId);
+      const targetAdvertiser = await this.prisma.advertiser.findUnique({
+        where: { tiktokAdvertiserId: targetAdvertiserId },
+        include: { appeal: true },
+      });
+
+      if (!targetAdvertiser) {
+        throw new Error(`ターゲットアカウント ${targetAdvertiserId} がDBに見つかりません`);
+      }
+
+      // i. 画像をターゲットにアップロード
+      const imageMapping: Record<string, string> = {};
+      for (const [imageId, buffer] of imageBuffers) {
+        const newImageId = await this.tiktokService.uploadImageToAccount(
+          targetAdvertiserId,
+          targetToken,
+          buffer,
+          `cross_deploy_${imageId.split('/').pop()}.jpg`,
+        );
+        imageMapping[imageId] = newImageId;
+        await new Promise(r => setTimeout(r, 100));
+      }
+
+      await this.updateLog(log.id, {
+        status: 'VIDEOS_UPLOADED', // ステータス名は既存と合わせる
+        videoMapping: imageMapping,
+      });
+
+      if (input.dryRun) {
+        await this.updateLog(log.id, { status: 'COMPLETED' });
+        return {
+          targetAdvertiserId,
+          status: 'SUCCESS',
+          mode: 'SMART_PLUS',
+          videoMapping: imageMapping,
+        };
+      }
+
+      // ii. UTAGE登録経路を1つ作成
+      const utageResult = await this.utageService.createRegistrationPathAndGetUrl(appeal, lpNumber);
+      await this.updateLog(log.id, {
+        status: 'UTAGE_CREATED',
+        utagePath: utageResult.registrationPath,
+        destinationUrl: utageResult.destinationUrl,
+        crNumber: utageResult.crNumber,
+      });
+
+      const adName = this.generateAdName(input, sourceDetail.adName, utageResult.crNumber, lpNumber);
+      const dailyBudget = input.dailyBudget || DEFAULT_DAILY_BUDGET[appeal] || 3000;
+
+      // iii. キャンペーン作成
+      const campaignId = await this.tiktokService.createSmartPlusCampaign(
+        targetAdvertiserId,
+        targetToken,
+        { campaignName: adName },
+      );
+      await this.updateLog(log.id, { status: 'CAMPAIGN_CREATED', campaignId });
+
+      // iv. 広告グループ作成
+      const adgroupId = await this.tiktokService.createSmartPlusAdGroup(
+        targetAdvertiserId,
+        targetToken,
+        {
+          campaignId,
+          adgroupName: this.generateAdGroupName(),
+          budget: dailyBudget,
+          pixelId: targetAdvertiser.pixelId!,
+        },
+      );
+      await this.updateLog(log.id, { status: 'ADGROUP_CREATED', adgroupId });
+
+      // v. 広告作成（画像カルーセル）
+      const landingPageUrl = this.buildLandingPageUrl(utageResult.destinationUrl);
+      const adId = await this.tiktokService.createSmartPlusAd(
+        targetAdvertiserId,
+        targetToken,
+        {
+          adgroupId,
+          adName,
+          creativeList: Object.values(imageMapping).map(newImageId => ({
+            imageId: newImageId,
+            identityId: targetAdvertiser.identityId!,
+            identityType: 'BC_AUTH_TT',
+          })),
+          adTextList: sourceDetail.adTexts.length > 0 ? sourceDetail.adTexts : [this.getDefaultAdText(appeal)],
+          landingPageUrls: [landingPageUrl],
+        },
+      );
+
+      await this.updateLog(log.id, {
+        status: 'COMPLETED',
+        adId,
+        adName,
+        dailyBudget,
+      });
+
+      return {
+        targetAdvertiserId,
+        status: 'SUCCESS',
+        mode: 'SMART_PLUS',
+        campaignId,
+        adgroupId,
+        adId,
+        adName,
+        utagePath: utageResult.registrationPath,
+        destinationUrl: utageResult.destinationUrl,
+        crNumber: utageResult.crNumber,
+        dailyBudget,
+        videoMapping: imageMapping,
       };
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error);

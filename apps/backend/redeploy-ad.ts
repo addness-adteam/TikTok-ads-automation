@@ -401,7 +401,7 @@ async function uploadThumbnail(advertiserId: string, videoId: string): Promise<s
   form.append('advertiser_id', advertiserId);
   form.append('upload_type', 'UPLOAD_BY_FILE');
   form.append('image_signature', signature);
-  form.append('image_file', buffer, { filename: 'thumbnail.jpg', contentType: 'image/jpeg' });
+  form.append('image_file', buffer, { filename: `thumbnail_${Date.now()}.jpg`, contentType: 'image/jpeg' });
 
   const axios = require('axios');
   const resp = await axios.post(`${TIKTOK_API_BASE}/v1.3/file/image/ad/upload/`, form, {
@@ -428,8 +428,9 @@ async function createCampaign(advertiserId: string, adName: string): Promise<str
   return campaignId;
 }
 
-async function createAdGroup(advertiserId: string, campaignId: string, pixelId: string, dailyBudget: number): Promise<string> {
-  console.log('7. 広告グループ作成中...');
+async function createAdGroup(advertiserId: string, campaignId: string, pixelId: string, dailyBudget: number, ageGroups?: string[]): Promise<string> {
+  const ages = ageGroups || ['AGE_25_34', 'AGE_35_44', 'AGE_45_54'];
+  console.log(`7. 広告グループ作成中... (年齢: ${ages.join(', ')})`);
   const adgroupName = `${getJstDateStr()} ノンタゲ`;
   const data = await tiktokApi('/v1.3/adgroup/create/', {
     advertiser_id: advertiserId,
@@ -441,7 +442,7 @@ async function createAdGroup(advertiserId: string, campaignId: string, pixelId: 
     placements: ['PLACEMENT_TIKTOK'],
     location_ids: ['1861060'],
     languages: ['ja'],
-    age_groups: ['AGE_25_34', 'AGE_35_44', 'AGE_45_54'],
+    age_groups: ages,
     gender: 'GENDER_UNLIMITED',
     budget_mode: 'BUDGET_MODE_DYNAMIC_DAILY_BUDGET',
     budget: dailyBudget,
@@ -505,10 +506,14 @@ async function main() {
   const advertiserId = args[0];
   const sourceAdId = args[1];
   const budgetOverride = args[2] ? parseInt(args[2]) : undefined;
+  // 第4引数: 年齢指定 (例: "25-44" → AGE_25_34, AGE_35_44)
+  const ageOverride = args[3] || undefined;
 
   console.log(`===== 同一アカウント再出稿 =====`);
   console.log(`アカウント: ${advertiserId}`);
-  console.log(`元広告ID: ${sourceAdId}\n`);
+  console.log(`元広告ID: ${sourceAdId}`);
+  if (ageOverride) console.log(`年齢ターゲ: ${ageOverride}歳`);
+  console.log();
 
   // DB からアカウント情報取得
   const prisma = new PrismaClient();
@@ -557,7 +562,22 @@ async function main() {
 
     // 6-8. キャンペーン → 広告グループ → 広告
     const campaignId = await createCampaign(advertiserId, adName);
-    const adgroupId = await createAdGroup(advertiserId, campaignId, advertiser.pixelId, dailyBudget);
+    // 年齢指定のパース ("25-44" → ['AGE_25_34', 'AGE_35_44'])
+    let ageGroups: string[] | undefined;
+    if (ageOverride) {
+      const ageMap: Record<string, string> = {
+        '18': 'AGE_18_24', '25': 'AGE_25_34', '35': 'AGE_35_44',
+        '45': 'AGE_45_54', '55': 'AGE_55_100',
+      };
+      const [minAge, maxAge] = ageOverride.split('-').map(Number);
+      ageGroups = [];
+      for (const [key, val] of Object.entries(ageMap)) {
+        const k = Number(key);
+        if (k >= minAge && k <= maxAge) ageGroups.push(val);
+      }
+      if (ageGroups.length === 0) ageGroups = undefined; // フォールバック
+    }
+    const adgroupId = await createAdGroup(advertiserId, campaignId, advertiser.pixelId, dailyBudget, ageGroups);
     const adText = sourceAd.adText || DEFAULT_AD_TEXT[appeal] || '';
     const adId = await createAd(
       advertiserId, adgroupId, adName,

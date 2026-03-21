@@ -2574,6 +2574,39 @@ export class TiktokService {
   }
 
   /**
+   * 画像情報を取得（image_id/web_uri → image_url）
+   * GET /v1.3/file/image/ad/info/
+   */
+  async getImageInfo(
+    advertiserId: string,
+    accessToken: string,
+    imageIds: string[],
+  ): Promise<any[]> {
+    try {
+      const response = await this.httpGetWithRetry(
+        '/v1.3/file/image/ad/info/',
+        {
+          headers: { 'Access-Token': accessToken },
+          params: {
+            advertiser_id: advertiserId,
+            image_ids: JSON.stringify(imageIds),
+          },
+        },
+        'getImageInfo',
+      );
+
+      if (response.data.code !== 0) {
+        throw new Error(`画像情報取得失敗: ${response.data.message}`);
+      }
+
+      return response.data.data?.list || [];
+    } catch (error) {
+      this.logger.error('画像情報取得失敗', error.response?.data || error.message);
+      throw error;
+    }
+  }
+
+  /**
    * カスタムオーディエンス一覧取得
    * GET /v1.3/dmp/custom_audience/list/
    */
@@ -2620,6 +2653,8 @@ export class TiktokService {
   ): Promise<{
     ad: any;
     videoIds: string[];
+    imageIds: string[];
+    adFormat: string;
     adTexts: string[];
     landingPageUrls: string[];
     adName: string;
@@ -2628,13 +2663,31 @@ export class TiktokService {
     // Smart+広告データを取得
     const ad = await this.getSmartPlusAd(advertiserId, accessToken, smartPlusAdId);
 
-    // video_idを抽出
-    let videoIds: string[] = [];
+    // creative_listからad_formatを判定
     const creativeList = ad.creative_list || [];
+    let adFormat = 'SINGLE_VIDEO';
+    if (creativeList.length > 0) {
+      adFormat = creativeList[0]?.creative_info?.ad_format || 'SINGLE_VIDEO';
+    }
+
+    // video_id / image_id を抽出
+    let videoIds: string[] = [];
+    let imageIds: string[] = [];
+
     for (const creative of creativeList) {
-      const videoId = creative?.creative_info?.video_info?.video_id;
-      if (videoId && videoId !== 'N/A') {
-        videoIds.push(videoId);
+      const ci = creative?.creative_info;
+      if (ci?.ad_format === 'CAROUSEL_ADS') {
+        // カルーセル（画像）広告
+        const imgs = ci?.image_info || [];
+        for (const img of imgs) {
+          if (img.web_uri) imageIds.push(img.web_uri);
+        }
+      } else {
+        // 動画広告
+        const videoId = ci?.video_info?.video_id;
+        if (videoId && videoId !== 'N/A') {
+          videoIds.push(videoId);
+        }
       }
     }
 
@@ -2696,6 +2749,8 @@ export class TiktokService {
     return {
       ad,
       videoIds,
+      imageIds,
+      adFormat,
       adTexts,
       landingPageUrls,
       adName: ad.ad_name || '',
@@ -2835,7 +2890,8 @@ export class TiktokService {
       adgroupId: string;
       adName: string;
       creativeList: Array<{
-        videoId: string;
+        videoId?: string;
+        imageId?: string;
         identityId: string;
         identityType?: string;
       }>;
@@ -2845,7 +2901,9 @@ export class TiktokService {
     },
   ): Promise<string> {
     try {
-      this.logger.log(`Smart+広告作成: ${params.adName} (動画${params.creativeList.length}本)`);
+      const hasImages = params.creativeList.some(c => c.imageId);
+      const label = hasImages ? `画像${params.creativeList.length}枚` : `動画${params.creativeList.length}本`;
+      this.logger.log(`Smart+広告作成: ${params.adName} (${label})`);
 
       const { v4: uuidv4 } = await import('uuid');
 
@@ -2853,14 +2911,28 @@ export class TiktokService {
         advertiser_id: advertiserId,
         adgroup_id: params.adgroupId,
         ad_name: params.adName,
-        creative_list: params.creativeList.map(c => ({
-          creative_info: {
-            ad_format: 'SINGLE_VIDEO',
-            video_info: { video_id: c.videoId },
-            identity_id: c.identityId,
-            identity_type: c.identityType || 'BC_AUTH_TT',
-          },
-        })),
+        creative_list: params.creativeList.map(c => {
+          if (c.imageId) {
+            // カルーセル（画像）広告
+            return {
+              creative_info: {
+                ad_format: 'CAROUSEL_ADS',
+                image_info: [{ web_uri: c.imageId }],
+                identity_id: c.identityId,
+                identity_type: c.identityType || 'BC_AUTH_TT',
+              },
+            };
+          }
+          // 動画広告
+          return {
+            creative_info: {
+              ad_format: 'SINGLE_VIDEO',
+              video_info: { video_id: c.videoId },
+              identity_id: c.identityId,
+              identity_type: c.identityType || 'BC_AUTH_TT',
+            },
+          };
+        }),
         ad_text_list: params.adTextList.map(text => ({ ad_text: text })),
         landing_page_url_list: params.landingPageUrls.map(url => ({ landing_page_url: url })),
         operation_status: params.operationStatus || 'ENABLE',

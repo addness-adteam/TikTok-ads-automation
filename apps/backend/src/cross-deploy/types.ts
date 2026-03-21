@@ -36,8 +36,11 @@ export interface PreviewResult {
   sourceAdvertiserId: string;
   sourceAdId: string;
   adName: string;
+  adFormat: string;
   videoCount: number;
   videoIds: string[];
+  imageCount: number;
+  imageIds: string[];
   adTexts: string[];
   landingPageUrls: string[];
   adConfiguration: any;
