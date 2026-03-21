@@ -276,7 +276,8 @@ export class CrossDeployService {
       await this.updateLog(log.id, { status: 'ADGROUP_CREATED', adgroupId });
 
       // vi. creative_list構築（動画 + 画像を混合）
-      const creativeList: Array<{ videoId?: string; imageId?: string; identityId: string; identityType: string }> = [];
+      const bcId = targetAdvertiser.identityAuthorizedBcId || undefined;
+      const creativeList: Array<{ videoId?: string; imageId?: string; identityId: string; identityType: string; identityAuthorizedBcId?: string }> = [];
 
       // 動画クリエイティブ
       for (const newVideoId of Object.values(videoMapping)) {
@@ -284,6 +285,7 @@ export class CrossDeployService {
           videoId: newVideoId,
           identityId: targetAdvertiser.identityId!,
           identityType: 'BC_AUTH_TT',
+          identityAuthorizedBcId: bcId,
         });
       }
 
@@ -293,6 +295,7 @@ export class CrossDeployService {
           imageId: newImageId,
           identityId: targetAdvertiser.identityId!,
           identityType: 'BC_AUTH_TT',
+          identityAuthorizedBcId: bcId,
         });
       }
 

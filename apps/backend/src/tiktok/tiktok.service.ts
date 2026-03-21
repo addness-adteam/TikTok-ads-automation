@@ -2828,8 +2828,6 @@ export class TiktokService {
     try {
       this.logger.log(`Smart+広告グループ作成: ${params.adgroupName}`);
 
-      const { v4: uuidv4 } = await import('uuid');
-
       const requestBody: any = {
         advertiser_id: advertiserId,
         campaign_id: params.campaignId,
@@ -2837,23 +2835,19 @@ export class TiktokService {
         budget_mode: 'BUDGET_MODE_DYNAMIC_DAILY_BUDGET',
         budget: params.budget,
         billing_event: 'OCPM',
+        bid_type: 'BID_TYPE_NO_BID',
         optimization_goal: 'CONVERT',
         optimization_event: 'ON_WEB_REGISTER',
         pixel_id: params.pixelId,
         schedule_type: 'SCHEDULE_FROM_NOW',
+        schedule_start_time: params.scheduleStartTime || this.getScheduleStartTime(),
         targeting_spec: {
           location_ids: ['1861060'], // 日本
-          age_groups: ['AGE_18_24', 'AGE_25_34', 'AGE_35_44', 'AGE_45_54', 'AGE_55_100'],
-          gender: 'GENDER_UNLIMITED',
-          languages: ['ja'],
         },
-        promotion_type: 'WEBSITE',
-        request_id: uuidv4(),
+        promotion_type: 'LEAD_GENERATION',
+        promotion_target_type: 'EXTERNAL_WEBSITE',
+        request_id: String(Date.now()) + String(Math.floor(Math.random() * 100000)),
       };
-
-      if (params.scheduleStartTime) {
-        requestBody.schedule_start_time = params.scheduleStartTime;
-      }
 
       const response = await this.httpPostWithRetry(
         '/v1.3/smart_plus/adgroup/create/',
@@ -2894,18 +2888,18 @@ export class TiktokService {
         imageId?: string;
         identityId: string;
         identityType?: string;
+        identityAuthorizedBcId?: string;
       }>;
       adTextList: string[];
       landingPageUrls: string[];
+      callToActionId?: string;
       operationStatus?: string;
     },
   ): Promise<string> {
     try {
-      const hasImages = params.creativeList.some(c => c.imageId);
-      const label = hasImages ? `画像${params.creativeList.length}枚` : `動画${params.creativeList.length}本`;
-      this.logger.log(`Smart+広告作成: ${params.adName} (${label})`);
-
-      const { v4: uuidv4 } = await import('uuid');
+      const videoCount = params.creativeList.filter(c => c.videoId).length;
+      const imageCount = params.creativeList.filter(c => c.imageId).length;
+      this.logger.log(`Smart+広告作成: ${params.adName} (動画${videoCount}本 + 画像${imageCount}枚)`);
 
       const requestBody: any = {
         advertiser_id: advertiserId,
@@ -2920,6 +2914,8 @@ export class TiktokService {
                 image_info: [{ web_uri: c.imageId }],
                 identity_id: c.identityId,
                 identity_type: c.identityType || 'BC_AUTH_TT',
+                identity_authorized_bc_id: c.identityAuthorizedBcId,
+                music_info: { music_id: '6954068488952498177' },
               },
             };
           }
@@ -2930,14 +2926,20 @@ export class TiktokService {
               video_info: { video_id: c.videoId },
               identity_id: c.identityId,
               identity_type: c.identityType || 'BC_AUTH_TT',
+              identity_authorized_bc_id: c.identityAuthorizedBcId,
             },
           };
         }),
         ad_text_list: params.adTextList.map(text => ({ ad_text: text })),
         landing_page_url_list: params.landingPageUrls.map(url => ({ landing_page_url: url })),
         operation_status: params.operationStatus || 'ENABLE',
-        request_id: uuidv4(),
+        request_id: String(Date.now()) + String(Math.floor(Math.random() * 100000)),
       };
+
+      // CTA: call_to_action_listではなくad_configurationで渡す
+      if (params.callToActionId) {
+        requestBody.ad_configuration = { call_to_action_id: params.callToActionId };
+      }
 
       const response = await this.httpPostWithRetry(
         '/v1.3/smart_plus/ad/create/',
@@ -2961,5 +2963,13 @@ export class TiktokService {
       this.logger.error('Smart+広告作成失敗', error.response?.data || error.message);
       throw error;
     }
+  }
+
+  /**
+   * JST現在時刻+5分のスケジュール開始時刻を返す
+   */
+  private getScheduleStartTime(): string {
+    const t = new Date(Date.now() + 9 * 60 * 60 * 1000 + 5 * 60 * 1000);
+    return `${t.getUTCFullYear()}-${String(t.getUTCMonth() + 1).padStart(2, '0')}-${String(t.getUTCDate()).padStart(2, '0')} ${String(t.getUTCHours()).padStart(2, '0')}:${String(t.getUTCMinutes()).padStart(2, '0')}:${String(t.getUTCSeconds()).padStart(2, '0')}`;
   }
 }
