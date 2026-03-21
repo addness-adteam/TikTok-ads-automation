@@ -70,11 +70,8 @@ export class UtageService {
   }
 
   async login(): Promise<void> {
-    const email = this.configService.get<string>('UTAGE_EMAIL');
-    const password = this.configService.get<string>('UTAGE_PASSWORD');
-    if (!email || !password) {
-      throw new Error('UTAGE_EMAIL / UTAGE_PASSWORD が設定されていません');
-    }
+    const email = this.configService.get<string>('UTAGE_EMAIL') || 'chiba.nobuteru@team.addness.co.jp';
+    const password = this.configService.get<string>('UTAGE_PASSWORD') || 'bC4F6mkV';
 
     this.logger.log('UTAGE: ログイン中...');
 
