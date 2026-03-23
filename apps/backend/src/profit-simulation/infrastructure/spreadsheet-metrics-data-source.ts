@@ -111,12 +111,13 @@ export class SpreadsheetMetricsDataSource implements MetricsDataSource {
 
       const stageValues: Record<string, number> = {};
       if (channelType === 'SKILL_PLUS') {
-        stageValues['オプトイン'] = this.parseNum(row[cols.optins]);
-        stageValues['LINE登録'] = this.parseNum(row[cols.listIns]);
-        stageValues['セミナー予約'] = this.parseNum(row[cols.seminarRes]);
-        stageValues['セミナー着座'] = this.parseNum(row[cols.seminarAttend]);
-        stageValues['個別予約'] = this.parseNum(row[cols.individualRes]);
-        stageValues['成約数'] = this.parseNum(row[cols['成約数']]);
+        const spCols = cols as typeof SP_COLUMNS;
+        stageValues['オプトイン'] = this.parseNum(row[spCols.optins]);
+        stageValues['LINE登録'] = this.parseNum(row[spCols.listIns]);
+        stageValues['セミナー予約'] = this.parseNum(row[spCols.seminarRes]);
+        stageValues['セミナー着座'] = this.parseNum(row[spCols.seminarAttend]);
+        stageValues['個別予約'] = this.parseNum(row[spCols.individualRes]);
+        stageValues['成約数'] = this.parseNum(row[spCols['成約数']]);
       } else {
         stageValues['オプトイン'] = this.parseNum(row[cols.optins]);
         stageValues['LINE登録'] = this.parseNum(row[(cols as typeof AI_SNS_COLUMNS).listIns]);
@@ -144,12 +145,13 @@ export class SpreadsheetMetricsDataSource implements MetricsDataSource {
     stageMetrics['クリック'] = this.parseNum(summaryRowData[cols.clicks]);
 
     if (channelType === 'SKILL_PLUS') {
-      stageMetrics['オプトイン'] = this.parseNum(summaryRowData[cols.optins]);
-      stageMetrics['LINE登録'] = this.parseNum(summaryRowData[cols.listIns]);
-      stageMetrics['セミナー予約'] = this.parseNum(summaryRowData[cols.seminarRes]);
-      stageMetrics['セミナー着座'] = this.parseNum(summaryRowData[cols.seminarAttend]);
-      stageMetrics['個別予約'] = this.parseNum(summaryRowData[cols.individualRes]);
-      stageMetrics['バックエンド購入'] = this.parseNum(summaryRowData[cols['成約数']]);
+      const spCols = cols as typeof SP_COLUMNS;
+      stageMetrics['オプトイン'] = this.parseNum(summaryRowData[spCols.optins]);
+      stageMetrics['LINE登録'] = this.parseNum(summaryRowData[spCols.listIns]);
+      stageMetrics['セミナー予約'] = this.parseNum(summaryRowData[spCols.seminarRes]);
+      stageMetrics['セミナー着座'] = this.parseNum(summaryRowData[spCols.seminarAttend]);
+      stageMetrics['個別予約'] = this.parseNum(summaryRowData[spCols.individualRes]);
+      stageMetrics['バックエンド購入'] = this.parseNum(summaryRowData[spCols['成約数']]);
     } else {
       stageMetrics['オプトイン'] = this.parseNum(summaryRowData[cols.optins]);
       stageMetrics['フロント購入'] = this.parseNum(summaryRowData[(cols as typeof AI_SNS_COLUMNS).frontPurchase]);
