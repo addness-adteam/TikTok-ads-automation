@@ -1055,6 +1055,7 @@ export class TiktokService {
       targeting?: any;
       scheduleStartTime?: string;
       scheduleEndTime?: string;
+      commentDisabled?: boolean;
     },
     accessToken: string,
   ) {
@@ -1112,6 +1113,10 @@ export class TiktokService {
 
       if (options.targeting?.spending_power) {
         requestBody.spending_power = options.targeting.spending_power;
+      }
+
+      if (options.commentDisabled) {
+        requestBody.comment_disabled = true;
       }
 
       // Log request body for debugging

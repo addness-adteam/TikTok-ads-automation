@@ -60,6 +60,17 @@ const ACCOUNT_APPEAL_MAP: Record<string, string> = {
   '7474920444831875080': 'スキルプラス', '7592868952431362066': 'スキルプラス', '7616545514662051858': 'スキルプラス',
 };
 
+// 除外オーディエンス: アカウントごとのTikTok用除外オーディエンスID
+const EXCLUSION_AUDIENCE_MAP: Record<string, string> = {
+  '7468288053866561553': '194405484', // AI_1
+  '7523128243466551303': '194405486', // AI_2
+  '7543540647266074641': '194405488', // AI_3
+  '7580666710525493255': '194416060', // AI_4（名前: TikTok除外リスト）
+};
+
+// AI導線のオプトイン除外オーディエンス（全アカウント共通ID）
+const AI_OPTIN_EXCLUSION_AUDIENCE_ID = '194977234';
+
 // ===== ユーティリティ =====
 let sessionCookies = '';
 
@@ -89,8 +100,8 @@ function getJstDateStr(): string {
 }
 
 function getScheduleStartTime(): string {
-  // 現在JSTから5分後を開始時刻とする
-  const t = new Date(Date.now() + 9 * 60 * 60 * 1000 + 5 * 60 * 1000);
+  // 現在UTCから5分後を開始時刻とする（TikTok APIはUTCで受け取る）
+  const t = new Date(Date.now() + 5 * 60 * 1000);
   return `${t.getUTCFullYear()}-${String(t.getUTCMonth() + 1).padStart(2, '0')}-${String(t.getUTCDate()).padStart(2, '0')} ${String(t.getUTCHours()).padStart(2, '0')}:${String(t.getUTCMinutes()).padStart(2, '0')}:${String(t.getUTCSeconds()).padStart(2, '0')}`;
 }
 
@@ -232,7 +243,7 @@ async function downloadAndUploadVideos(
     form.append('advertiser_id', targetAdvertiserId);
     form.append('upload_type', 'UPLOAD_BY_FILE');
     form.append('video_signature', md5Hash);
-    form.append('video_file', buffer, { filename: `cross_deploy_${videoId}.mp4`, contentType: 'video/mp4' });
+    form.append('video_file', buffer, { filename: `cross_deploy_${videoId}_${Date.now()}.mp4`, contentType: 'video/mp4' });
 
     const uploadResp = await axios.post(`${TIKTOK_API_BASE}/v1.3/file/video/ad/upload/`, form, {
       headers: { 'Access-Token': ACCESS_TOKEN, ...form.getHeaders() },
@@ -241,19 +252,31 @@ async function downloadAndUploadVideos(
       maxBodyLength: Infinity,
     });
     if (uploadResp.data.code !== 0) throw new Error(`動画アップロード失敗: ${uploadResp.data.message}`);
-    const newVideoId = uploadResp.data.data.video_id;
+    const respData = uploadResp.data.data;
+    // data が配列の場合は data[0].video_id、オブジェクトの場合は data.video_id
+    const newVideoId = Array.isArray(respData)
+      ? respData[0]?.video_id
+      : (respData.video_id || respData.id);
+    if (!newVideoId) {
+      throw new Error(`動画アップロード後のvideo_idが取得できません: ${JSON.stringify(respData).substring(0, 200)}`);
+    }
     mapping[videoId] = newVideoId;
     console.log(`   アップロード完了 → ${newVideoId}`);
 
-    // 動画の処理完了を待つ
-    await waitForVideoReady(targetAdvertiserId, newVideoId);
+    // 動画の処理完了を待ち、カバー画像をアップロード
+    const coverUrl = await waitForVideoReady(targetAdvertiserId, newVideoId);
+    if (coverUrl) {
+      const coverImageId = await uploadCoverImage(targetAdvertiserId, coverUrl, newVideoId);
+      if (coverImageId) videoCoverMap.set(newVideoId, coverImageId);
+    }
     await new Promise(r => setTimeout(r, 200));
   }
 
   return mapping;
 }
 
-async function waitForVideoReady(advertiserId: string, videoId: string): Promise<void> {
+/** 動画の処理完了を待ち、video_cover_urlを返す */
+async function waitForVideoReady(advertiserId: string, videoId: string): Promise<string | null> {
   for (let i = 0; i < 10; i++) {
     await new Promise(r => setTimeout(r, 3000));
     try {
@@ -262,10 +285,65 @@ async function waitForVideoReady(advertiserId: string, videoId: string): Promise
         video_ids: JSON.stringify([videoId]),
       });
       const video = data.data?.list?.[0];
-      if (video?.video_cover_url) return;
+      if (video?.video_cover_url) {
+        console.log(`   サムネイル取得OK`);
+        return video.video_cover_url;
+      }
     } catch { /* retry */ }
   }
   console.log(`   ⚠ サムネイル生成待ちタイムアウト（続行）`);
+  return null;
+}
+
+// video_id → cover_image_id のマッピングを保持
+const videoCoverMap = new Map<string, string>();
+
+/** ターゲットアカウントのCTA IDを既存Smart+広告から取得 */
+const ctaCache = new Map<string, string>();
+async function getCtaId(advertiserId: string): Promise<string> {
+  if (ctaCache.has(advertiserId)) return ctaCache.get(advertiserId)!;
+  const data = await tiktokGet('/v1.3/smart_plus/ad/get/', {
+    advertiser_id: advertiserId,
+    page_size: '5',
+  });
+  const ads = data.data?.list || [];
+  const ctaId = ads[0]?.ad_configuration?.call_to_action_id || '';
+  console.log(`   CTA ID: ${ctaId} (既存広告から取得)`);
+  ctaCache.set(advertiserId, ctaId);
+  return ctaId;
+}
+
+/** サムネイルURLをダウンロードしてターゲットアカウントにimage uploadし、image_idを返す */
+async function uploadCoverImage(advertiserId: string, coverUrl: string, videoId: string): Promise<string | null> {
+  try {
+    const resp = await fetch(coverUrl);
+    if (!resp.ok) return null;
+    const buffer = Buffer.from(await resp.arrayBuffer());
+
+    const FormData = require('form-data');
+    const axios = require('axios');
+    const form = new FormData();
+    form.append('advertiser_id', advertiserId);
+    form.append('upload_type', 'UPLOAD_BY_FILE');
+    form.append('image_signature', crypto.createHash('md5').update(buffer).digest('hex'));
+    form.append('image_file', buffer, { filename: `cover_${videoId}_${Date.now()}.jpg`, contentType: 'image/jpeg' });
+
+    const uploadResp = await axios.post(`${TIKTOK_API_BASE}/v1.3/file/image/ad/upload/`, form, {
+      headers: { 'Access-Token': ACCESS_TOKEN, ...form.getHeaders() },
+      timeout: 30000,
+    });
+    if (uploadResp.data.code !== 0) {
+      console.log(`   ⚠ カバー画像アップロード失敗: ${uploadResp.data.message}`);
+      return null;
+    }
+    const respData = uploadResp.data.data;
+    const imageId = Array.isArray(respData) ? respData[0]?.image_id : respData.image_id;
+    console.log(`   カバー画像アップロード完了 → ${imageId}`);
+    return imageId;
+  } catch (e: any) {
+    console.log(`   ⚠ カバー画像処理エラー: ${e.message}`);
+    return null;
+  }
 }
 
 async function downloadAndUploadImages(
@@ -458,14 +536,30 @@ async function createSmartPlusCampaign(advertiserId: string, campaignName: strin
 }
 
 async function createSmartPlusAdGroup(
-  advertiserId: string, campaignId: string, pixelId: string, budget: number,
+  advertiserId: string, campaignId: string, pixelId: string, budget: number, appeal?: string,
 ): Promise<string> {
   console.log(`8. Smart+広告グループ作成中... (日予算: ¥${budget})`);
+
+  // 除外オーディエンス構築
+  const excludedAudiences: string[] = [];
+  const exclusionId = EXCLUSION_AUDIENCE_MAP[advertiserId];
+  if (exclusionId) excludedAudiences.push(exclusionId);
+  if (appeal === 'AI') excludedAudiences.push(AI_OPTIN_EXCLUSION_AUDIENCE_ID);
+
+  const targetingSpec: any = {
+    location_ids: ['1861060'],
+    age_groups: ['AGE_25_34', 'AGE_35_44', 'AGE_45_54'],
+  };
+  if (excludedAudiences.length > 0) {
+    targetingSpec.excluded_custom_audience_ids = excludedAudiences;
+  }
+
+  console.log(`   除外オーディエンス: ${excludedAudiences.length > 0 ? excludedAudiences.join(', ') : 'なし'}`);
 
   const data = await tiktokApi('/v1.3/smart_plus/adgroup/create/', {
     advertiser_id: advertiserId,
     campaign_id: campaignId,
-    adgroup_name: `${getJstDateStr()} ノンタゲ`,
+    adgroup_name: `${getJstDateStr()} 25-54`,
     budget_mode: 'BUDGET_MODE_DYNAMIC_DAILY_BUDGET',
     budget: budget,
     billing_event: 'OCPM',
@@ -475,11 +569,12 @@ async function createSmartPlusAdGroup(
     pixel_id: pixelId,
     promotion_type: 'LEAD_GENERATION',
     promotion_target_type: 'EXTERNAL_WEBSITE',
+    placement_type: 'PLACEMENT_TYPE_NORMAL',
+    placements: ['PLACEMENT_TIKTOK'],
+    comment_disabled: true,
     schedule_type: 'SCHEDULE_FROM_NOW',
     schedule_start_time: getScheduleStartTime(),
-    targeting_spec: {
-      location_ids: ['1861060'],
-    },
+    targeting_spec: targetingSpec,
     request_id: String(Date.now()) + String(Math.floor(Math.random() * 100000)),
   });
   const adgroupId = String(data.data.adgroup_id);
@@ -500,15 +595,19 @@ async function createSmartPlusAd(
   const creative_list: any[] = [];
 
   for (const newVideoId of Object.values(videoMapping)) {
-    creative_list.push({
-      creative_info: {
-        ad_format: 'SINGLE_VIDEO',
-        video_info: { video_id: newVideoId },
-        identity_id: identityId,
-        identity_type: 'BC_AUTH_TT',
-        identity_authorized_bc_id: identityBcId,
-      },
-    });
+    const coverImageId = videoCoverMap.get(newVideoId);
+    const creativeInfo: any = {
+      ad_format: 'SINGLE_VIDEO',
+      video_info: { video_id: newVideoId },
+      identity_id: identityId,
+      identity_type: 'BC_AUTH_TT',
+      identity_authorized_bc_id: identityBcId,
+    };
+    // Smart+動画広告にはカバー画像（image_info）が必須 — web_uriで指定
+    if (coverImageId) {
+      creativeInfo.image_info = [{ web_uri: coverImageId }];
+    }
+    creative_list.push({ creative_info: creativeInfo });
   }
 
   for (const newImageId of Object.values(imageMapping)) {
@@ -532,7 +631,7 @@ async function createSmartPlusAd(
     ad_text_list: adTexts.map(text => ({ ad_text: text })),
     landing_page_url_list: [{ landing_page_url: landingPageUrl }],
     ad_configuration: {
-      call_to_action_id: '7617403265080101906',
+      call_to_action_id: await getCtaId(advertiserId),
     },
     operation_status: 'ENABLE',
     request_id: String(Date.now()) + String(Math.floor(Math.random() * 100000)),
@@ -615,7 +714,7 @@ async function main() {
 
     // 7-9. Smart+キャンペーン → 広告グループ → 広告
     const campaignId = await createSmartPlusCampaign(targetAdvertiserId, adName);
-    const adgroupId = await createSmartPlusAdGroup(targetAdvertiserId, campaignId, targetAdvertiser.pixelId, dailyBudget);
+    const adgroupId = await createSmartPlusAdGroup(targetAdvertiserId, campaignId, targetAdvertiser.pixelId, dailyBudget, appeal);
     const adTexts = source.adTexts.length > 0 ? source.adTexts : [DEFAULT_AD_TEXT[appeal] || ''];
     const adId = await createSmartPlusAd(
       targetAdvertiserId, adgroupId, adName,

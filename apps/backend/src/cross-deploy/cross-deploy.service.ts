@@ -439,6 +439,22 @@ export class CrossDeployService {
 
       // iv. 広告グループ作成（通常配信）
       const adgroupName = this.generateAdGroupName();
+
+      // 除外オーディエンス構築
+      const excludedAudiences: string[] = [];
+      const exclusionMap: Record<string, string> = {
+        '7468288053866561553': '194405484', // AI_1
+        '7523128243466551303': '194405486', // AI_2
+        '7543540647266074641': '194405488', // AI_3
+        '7580666710525493255': '194416060', // AI_4
+      };
+      if (exclusionMap[targetAdvertiserId]) {
+        excludedAudiences.push(exclusionMap[targetAdvertiserId]);
+      }
+      if (appeal === 'AI') {
+        excludedAudiences.push('194977234'); // AIオプトイン（全期間）
+      }
+
       const adgroupResp = await this.tiktokService.createAdGroup(
         targetAdvertiserId,
         campaignId,
@@ -452,11 +468,13 @@ export class CrossDeployService {
           optimizationGoal: 'CONVERT',
           pixelId: targetAdvertiser.pixelId!,
           optimizationEvent: 'ON_WEB_REGISTER',
+          commentDisabled: true,
           targeting: {
             location_ids: ['1861060'],
             age_groups: ['AGE_25_34', 'AGE_35_44', 'AGE_45_54'],
             gender: 'GENDER_UNLIMITED',
             languages: ['ja'],
+            excluded_custom_audiences: excludedAudiences.length > 0 ? excludedAudiences : undefined,
           },
         },
         targetToken,
