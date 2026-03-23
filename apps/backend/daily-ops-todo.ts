@@ -1119,6 +1119,219 @@ function applyRules(todos: TodoItem[], rules: OpsRule[]): TodoItem[] {
   return todos;
 }
 
+// ===== ⑨ ファネルボトルネック分析（profit-simulationドメインロジック使用） =====
+// 要件定義書 docs/PROFIT_SIMULATION_SPEC.md の Step 1〜6 を実行
+
+import { calculateProfitSimulation, calculateTotalProfitSummary } from './src/profit-simulation/domain/profit-simulation';
+import { judgeDirection, calculateRequiredAcquisition } from './src/profit-simulation/domain/direction-judgment';
+import { detectBottlenecks } from './src/profit-simulation/domain/bottleneck-detection';
+import type { ChannelType, ProfitSimulation, MonthlyMetricsData, KPITargets } from './src/profit-simulation/domain/types';
+import { parseKpiPercentage, parseKpiAmount } from './src/profit-simulation/infrastructure/kpi-value-parser';
+
+const SIM_SHEET_NAMES: Record<ChannelType, string> = {
+  AI: 'AI', SNS: 'SNS', SKILL_PLUS: 'スキルプラス（オートウェビナー用）',
+};
+const SIM_AI_SNS_COLS = {
+  impressions: 2, clicks: 5, optins: 11, listIns: 13, cpc: 17, optCPA: 18,
+  frontPurchase: 21, secretRoom: 24, 成約数: 27, revenue: 34, optinLTV: 36,
+  individualRes: 38, adSpend: 44,
+} as const;
+const SIM_SP_COLS = {
+  impressions: 2, clicks: 5, optins: 7, listIns: 9, cpc: 12, optCPA: 13,
+  seminarRes: 14, seminarAttend: 17, individualRes: 23, closings: 25,
+  revenue: 26, optinLTV: 28, adSpend: 32,
+} as const;
+const SIM_KPI_COLS: Record<ChannelType, { itemCol: number; allowCol: number; targetCol: number }> = {
+  AI: { itemCol: 47, allowCol: 48, targetCol: 49 },
+  SNS: { itemCol: 47, allowCol: 48, targetCol: 49 },
+  SKILL_PLUS: { itemCol: 36, allowCol: 37, targetCol: 38 },
+};
+const SIM_KPI_PERCENTAGE_ITEMS = [
+  'ROAS', 'オプト→フロント率', 'フロント→個別率', '個別→着座率', '着座→成約率',
+  'オプト→メイン', 'メイン→企画', '企画→セミナー予約率',
+  'セミナー予約→セミナー着座率', 'セミナー着座→個別予約率',
+  '個別予約→個別着座率', '個別着座→成約率',
+];
+
+function simParseNum(val: any): number {
+  if (val === undefined || val === null || val === '') return 0;
+  const s = String(val).replace(/[¥,%、,]/g, '').trim();
+  return parseFloat(s) || 0;
+}
+
+async function simFindMonthBlock(sheets: any, sheetName: string, month: number) {
+  const rows = await readSheet(sheets, INDIVIDUAL_RESERVATION_SHEET_ID, `'${sheetName}'!A:A`);
+  const monthStr = `${month}月`;
+  let summaryRow = -1;
+  for (let i = 0; i < rows.length; i++) {
+    if (String(rows[i]?.[0] || '').trim() === monthStr) { summaryRow = i + 1; break; }
+  }
+  if (summaryRow === -1) throw new Error(`${monthStr}が見つかりません`);
+  let dailyEndRow = summaryRow;
+  for (let i = summaryRow; i < rows.length; i++) {
+    const v = String(rows[i]?.[0] || '').trim();
+    if (i > summaryRow && (v === '' || v.match(/^\d+月$/) || v === '返金')) break;
+    if (v.match(/^\d{4}\/\d{1,2}\/\d{1,2}$/)) dailyEndRow = i + 1;
+  }
+  return { summaryRow, dailyStartRow: summaryRow + 1, dailyEndRow };
+}
+
+async function simGetMetrics(sheets: any, channelType: ChannelType, year: number, month: number): Promise<MonthlyMetricsData> {
+  const sheetName = SIM_SHEET_NAMES[channelType];
+  const cols = channelType === 'SKILL_PLUS' ? SIM_SP_COLS : SIM_AI_SNS_COLS;
+  const { summaryRow, dailyStartRow, dailyEndRow } = await simFindMonthBlock(sheets, sheetName, month);
+  const summaryData = await readSheet(sheets, INDIVIDUAL_RESERVATION_SHEET_ID, `'${sheetName}'!A${summaryRow}:AX${summaryRow}`);
+  const s = summaryData[0] || [];
+  const dailyRows = await readSheet(sheets, INDIVIDUAL_RESERVATION_SHEET_ID, `'${sheetName}'!A${dailyStartRow}:AX${dailyEndRow}`);
+  const dailyData = dailyRows.filter(r => /^\d{4}\/\d{1,2}\/\d{1,2}$/.test(String(r[0] || '').trim())).map(r => ({
+    date: String(r[0]).trim(), impressions: simParseNum(r[cols.impressions]), clicks: simParseNum(r[cols.clicks]),
+    optins: simParseNum(r[cols.optins]), adSpend: simParseNum(r[cols.adSpend]), revenue: simParseNum(r[(cols as any).revenue]),
+    cpc: simParseNum(r[cols.cpc]), stageValues: {} as Record<string, number>,
+  }));
+
+  const stageMetrics: Record<string, number> = {};
+  stageMetrics['インプレッション'] = simParseNum(s[cols.impressions]);
+  stageMetrics['クリック'] = simParseNum(s[cols.clicks]);
+  stageMetrics['オプトイン'] = simParseNum(s[cols.optins]);
+  stageMetrics['LINE登録'] = simParseNum(s[cols.listIns]);
+  if (channelType === 'SKILL_PLUS') {
+    const sp = cols as typeof SIM_SP_COLS;
+    stageMetrics['セミナー予約'] = simParseNum(s[sp.seminarRes]);
+    stageMetrics['セミナー着座'] = simParseNum(s[sp.seminarAttend]);
+    stageMetrics['個別予約'] = simParseNum(s[sp.individualRes]);
+    stageMetrics['バックエンド購入'] = simParseNum(s[sp.closings]);
+  } else {
+    const ai = cols as typeof SIM_AI_SNS_COLS;
+    stageMetrics['フロント購入'] = simParseNum(s[ai.frontPurchase]);
+    stageMetrics['秘密の部屋購入'] = simParseNum(s[ai.secretRoom]);
+    stageMetrics['個別予約'] = simParseNum(s[ai.individualRes]);
+    stageMetrics['バックエンド購入'] = simParseNum(s[ai['成約数']]);
+  }
+
+  return {
+    channelType, year, month, adSpend: simParseNum(s[cols.adSpend]), totalRevenue: simParseNum(s[(cols as any).revenue]),
+    optinCount: simParseNum(s[cols.optins]), clickCount: simParseNum(s[cols.clicks]),
+    impressions: simParseNum(s[cols.impressions]), optinLTV: simParseNum(s[(cols as any).optinLTV]),
+    stageMetrics, dailyData,
+  };
+}
+
+async function simGetKPI(sheets: any, channelType: ChannelType): Promise<KPITargets> {
+  const sheetName = SIM_SHEET_NAMES[channelType];
+  const kpiCols = SIM_KPI_COLS[channelType];
+  const rows = await readSheet(sheets, INDIVIDUAL_RESERVATION_SHEET_ID, `'${sheetName}'!A:AZ`);
+  const conversionRates: Record<string, number> = {};
+  let targetROAS = 0, avgPaymentAmount = 0, cpa = 0;
+  for (const row of rows) {
+    const item = String(row[kpiCols.itemCol] || '').trim();
+    const allow = String(row[kpiCols.allowCol] || '').trim();
+    if (!item || !allow) continue;
+    if (SIM_KPI_PERCENTAGE_ITEMS.includes(item)) {
+      const v = parseKpiPercentage(allow);
+      if (!isNaN(v)) { conversionRates[item] = v; if (item === 'ROAS') targetROAS = v; }
+    } else if (item === '商品単価') { avgPaymentAmount = parseKpiAmount(allow) || 0; }
+    else if (item === 'CPA') { cpa = parseKpiAmount(allow) || 0; }
+  }
+  return { conversionRates, targetROAS, avgPaymentAmount, cpa };
+}
+
+async function simGetTargetProfit(sheets: any, channelType: ChannelType): Promise<number> {
+  const sheetName = SIM_SHEET_NAMES[channelType];
+  const kpiCols = SIM_KPI_COLS[channelType];
+  const rows = await readSheet(sheets, INDIVIDUAL_RESERVATION_SHEET_ID, `'${sheetName}'!A:AZ`);
+  for (const row of rows) {
+    const item = String(row[kpiCols.itemCol] || '').trim();
+    if (item === '目標粗利額') {
+      const val = String(row[kpiCols.targetCol] || row[kpiCols.allowCol] || '').trim();
+      if (val) return parseKpiAmount(val) || 0;
+    }
+  }
+  return 0;
+}
+
+const CHANNEL_LABELS: Record<ChannelType, string> = { AI: 'AI', SNS: 'SNS', SKILL_PLUS: 'スキルプラス' };
+
+async function analyzeFunnelBottlenecks(sheets: any) {
+  const jstNow = new Date(Date.now() + 9 * 60 * 60 * 1000);
+  const year = jstNow.getUTCFullYear();
+  const month = jstNow.getUTCMonth() + 1;
+  const dayOfMonth = jstNow.getUTCDate();
+  const totalDaysInMonth = new Date(year, month, 0).getDate();
+
+  console.log(`\n── ⑨ 利益シミュレーション & ボトルネック特定（${month}月 ${dayOfMonth}/${totalDaysInMonth}日経過） ──`);
+
+  const ALL_CHANNELS: ChannelType[] = ['AI', 'SNS', 'SKILL_PLUS'];
+  const channelResults: ProfitSimulation[] = [];
+
+  for (const channelType of ALL_CHANNELS) {
+    const label = CHANNEL_LABELS[channelType];
+    try {
+      const metrics = await simGetMetrics(sheets, channelType, year, month);
+      const kpi = await simGetKPI(sheets, channelType);
+      const targetProfit = await simGetTargetProfit(sheets, channelType);
+
+      // Step 2: シミュレーション
+      const actualDays = metrics.dailyData.filter(d => d.adSpend > 0 || d.optins > 0).length || dayOfMonth;
+      const simulation = calculateProfitSimulation({
+        channelType, year, month, actualDays, totalDaysInMonth,
+        actualAdSpend: metrics.adSpend, actualRevenue: metrics.totalRevenue, targetProfit,
+      });
+      channelResults.push(simulation);
+
+      // Step 3-4: 方向判定
+      const cpa = metrics.optinCount > 0 ? metrics.adSpend / metrics.optinCount : 0;
+      const requiredAcquisition = calculateRequiredAcquisition(targetProfit, metrics.optinLTV, cpa);
+      const targetROAS = metrics.adSpend > 0
+        ? (targetProfit + simulation.projectedAdSpend) / simulation.projectedAdSpend
+        : kpi.targetROAS;
+      const currentROAS = metrics.adSpend > 0 ? metrics.totalRevenue / metrics.adSpend : 0;
+      const judgment = judgeDirection({ currentROAS, targetROAS, currentAcquisition: metrics.optinCount, requiredAcquisition });
+
+      // Step 5-6: ボトルネック特定
+      const bottlenecks = detectBottlenecks(channelType, metrics.stageMetrics, kpi);
+
+      // 表示
+      const profitIcon = simulation.isOnTrack ? '✅' : '❌';
+      console.log(`\n  [${label}] 粗利: ¥${simulation.actualProfit.toLocaleString()} → 月末推定 ¥${simulation.projectedProfit.toLocaleString()} / 目標 ¥${targetProfit.toLocaleString()} ${profitIcon}`);
+
+      // ステージ実績をファネル形式で表示
+      const sm = metrics.stageMetrics;
+      if (channelType === 'SKILL_PLUS') {
+        console.log(`    imp ${sm['インプレッション']?.toLocaleString()} → click ${sm['クリック']?.toLocaleString()} → オプト ${sm['オプトイン']} → リスト ${sm['LINE登録']} → セミナー予約 ${sm['セミナー予約']} → 着座 ${sm['セミナー着座']} → 個別予約 ${sm['個別予約']} → 成約 ${sm['バックエンド購入']}`);
+      } else {
+        console.log(`    imp ${sm['インプレッション']?.toLocaleString()} → click ${sm['クリック']?.toLocaleString()} → オプト ${sm['オプトイン']} → フロント ${sm['フロント購入']} → 個別予約 ${sm['個別予約']} → 成約 ${sm['バックエンド購入']}`);
+      }
+
+      // 方向判定
+      const dirLabels: Record<string, string> = {
+        ON_TRACK: '✅ 目標到達見込み',
+        IMPROVE_ROAS: '📈 ROAS改善が必要',
+        INCREASE_ACQUISITION: '📊 集客数を増やす必要あり',
+        BOTH: '⚠️ ROAS改善 + 集客数増の両方が必要',
+      };
+      console.log(`    判定: ${dirLabels[judgment.direction]} (ROAS ${(currentROAS * 100).toFixed(0)}%→目標${(targetROAS * 100).toFixed(0)}%, 集客 ${metrics.optinCount}→必要${isFinite(requiredAcquisition) ? requiredAcquisition : '∞'})`);
+
+      // ボトルネック
+      if (bottlenecks.length > 0) {
+        console.log(`    ボトルネック（KPI許容値との乖離・粗利インパクト順）:`);
+        for (const b of bottlenecks) {
+          console.log(`      #${b.rank} ${b.stage}: 現状 ${(b.currentRate * 100).toFixed(1)}% vs 許容 ${(b.targetRate * 100).toFixed(1)}% (${b.gapPoints}pt) → 粗利インパクト ¥${b.profitImpact.toLocaleString()}`);
+        }
+      } else {
+        console.log(`    ✅ 全KPI許容値以内`);
+      }
+    } catch (e: any) {
+      console.log(`  [${label}] エラー: ${e.message}`);
+    }
+  }
+
+  // 全体サマリー
+  if (channelResults.length > 0) {
+    const summary = calculateTotalProfitSummary(channelResults, { year, month });
+    console.log(`\n  【全体】月末推定粗利 ¥${summary.totalProjectedProfit.toLocaleString()} / 目標 ¥${summary.totalTargetProfit.toLocaleString()} ${summary.isOnTrack ? '✅' : '❌'}`);
+  }
+}
+
 // ===== メイン =====
 async function main() {
   const jstNow = new Date(Date.now() + 9 * 60 * 60 * 1000);
@@ -1201,6 +1414,10 @@ async function main() {
       }
     }
   }
+
+  // ⑨ ファネルボトルネック分析（スプシ月次集計行から）
+  console.log('\n  ⑨ ファネルボトルネック分析中...');
+  await analyzeFunnelBottlenecks(sheets);
 
   if (utageMetrics.length > 0) {
     console.log(`\n── ⑧ アカウント別 7日実績（スプシ/UTAGE） ──`);
