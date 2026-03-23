@@ -1001,6 +1001,13 @@ export class TiktokService {
         },
       });
 
+      // TikTok APIのビジネスエラーチェック（HTTP 200でもcode!=0はエラー）
+      if (response.data.code && response.data.code !== 0) {
+        const errMsg = `TikTok API error: code=${response.data.code}, message=${response.data.message}`;
+        this.logger.error(errMsg);
+        throw new Error(errMsg);
+      }
+
       this.logger.log('Campaign created successfully');
       this.logger.log('Campaign data:', JSON.stringify(response.data, null, 2));
 
@@ -1072,7 +1079,7 @@ export class TiktokService {
         billing_event: 'OCPM', // Optimized Cost per Mille for automatic bidding
         optimization_goal: options.optimizationGoal || 'CONVERT', // API v1.3: CONVERT for LEAD_GENERATION campaigns
         schedule_type: 'SCHEDULE_FROM_NOW', // API v1.3: SCHEDULE_FROM_NOW for continuous campaigns
-        schedule_start_time: options.scheduleStartTime,
+        schedule_start_time: options.scheduleStartTime || this.getScheduleStartTime(),
         pacing: 'PACING_MODE_SMOOTH', // Smooth pacing for better delivery
         skip_learning_phase: true, // Skip learning phase
         video_download_disabled: true, // Disable video downloads
@@ -1115,6 +1122,13 @@ export class TiktokService {
           'Access-Token': accessToken,
         },
       });
+
+      // TikTok APIのビジネスエラーチェック（HTTP 200でもcode!=0はエラー）
+      if (response.data.code && response.data.code !== 0) {
+        const errMsg = `TikTok API error: code=${response.data.code}, message=${response.data.message}`;
+        this.logger.error(errMsg);
+        throw new Error(errMsg);
+      }
 
       this.logger.log('AdGroup created successfully');
       this.logger.log('AdGroup data:', JSON.stringify(response.data, null, 2));
@@ -1228,6 +1242,13 @@ export class TiktokService {
           'Access-Token': accessToken,
         },
       });
+
+      // TikTok APIのビジネスエラーチェック（HTTP 200でもcode!=0はエラー）
+      if (response.data.code && response.data.code !== 0) {
+        const errMsg = `TikTok API error: code=${response.data.code}, message=${response.data.message}`;
+        this.logger.error(errMsg);
+        throw new Error(errMsg);
+      }
 
       this.logger.log('Ad created successfully');
       this.logger.log('Ad data:', JSON.stringify(response.data, null, 2));
