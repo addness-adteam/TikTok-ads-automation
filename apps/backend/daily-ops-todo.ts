@@ -1469,6 +1469,130 @@ function analyzeAutoEvaluation(reportData: any[], ads: any[], utageMetrics: Acco
     (verdictOrder[a.metrics?.verdict] || 9) - (verdictOrder[b.metrics?.verdict] || 9));
 }
 
+// ===== ⑪ 仮説検証追跡 =====
+import { checkProgress, evaluateHypothesis } from './src/ad-evaluation/domain/hypothesis-tracker';
+import { PrismaHypothesisRepository } from './src/ad-evaluation/infrastructure/prisma-hypothesis-repository';
+
+async function trackHypotheses(reportData: any[], ads: any[]): Promise<TodoItem[]> {
+  const todos: TodoItem[] = [];
+  const repo = new PrismaHypothesisRepository(prisma);
+
+  // RUNNING状態の仮説を取得
+  const running = await repo.findByStatus('RUNNING');
+  if (running.length === 0) return todos;
+
+  console.log(`\n  ⑪ 仮説検証追跡: ${running.length}件のRUNNING仮説`);
+
+  // 最新レポートデータ
+  const dates = [...new Set(reportData.map(r => r.date))].sort().reverse();
+  const latestDate = dates[0];
+  const latestData = latestDate ? reportData.filter(r => r.date === latestDate) : [];
+
+  for (const h of running) {
+    if (!h.adId && !h.adName) continue;
+
+    // この仮説に対応する広告のレポートデータを探す
+    const matchingRow = latestData.find(r => {
+      if (h.adId) {
+        const ad = ads.find(a => a.tiktokId === h.adId);
+        return ad && ad.name === r.adName;
+      }
+      return h.adName && r.adName === h.adName;
+    });
+
+    // DB上の広告ステータスも確認
+    const adRecord = h.adId ? ads.find(a => a.tiktokId === h.adId) : ads.find(a => a.name === h.adName);
+    const isStillRunning = adRecord?.status === 'ENABLE';
+
+    const metrics = {
+      daysActive: 7,
+      spend: matchingRow?.sevenDaySpend || 0,
+      optins: matchingRow?.sevenDayCV || 0,
+      frontPurchases: matchingRow?.sevenDayFrontSales || 0,
+      individualReservations: matchingRow?.sevenDayIndRes || 0,
+      isStillRunning,
+    };
+
+    const progress = checkProgress(metrics);
+
+    if (progress.shouldEvaluate) {
+      // 停止済み → 自動効果測定
+      const appeal = h.channelType === 'SKILL_PLUS' ? 'スキルプラス' : h.channelType;
+      const kpi = EVAL_KPI_MAP[appeal];
+      if (!kpi) continue;
+
+      const adPerf: AdPerformance = {
+        adName: h.adName || '',
+        adId: h.adId || '',
+        channelType: h.channelType,
+        account: h.account || '',
+        status: 'STOPPED',
+        daysActive: metrics.daysActive,
+        spend: metrics.spend,
+        optins: metrics.optins,
+        frontPurchases: metrics.frontPurchases,
+        individualReservations: metrics.individualReservations,
+        closings: 0,
+      };
+
+      const evalResult = evaluateAd(adPerf, kpi);
+
+      // DB更新
+      const evaluated = evaluateHypothesis(h as any, {
+        verdict: evalResult.verdict,
+        interpretation: evalResult.interpretation,
+        nextAction: `${evalResult.nextAction.type}: ${evalResult.nextAction.reason}`,
+        spend: metrics.spend,
+        optins: metrics.optins,
+        frontPurchases: metrics.frontPurchases,
+        individualReservations: metrics.individualReservations,
+        cpa: evalResult.metrics.cpa,
+        indResCPO: evalResult.metrics.indResCPO,
+      });
+
+      await repo.update(h.id, evaluated);
+
+      const verdictIcon = evalResult.verdict === 'SUCCESS' ? '✅' : evalResult.verdict === 'FAILURE' ? '❌' : '🟡';
+      const crMatch = (h.adName || '').match(/CR(\d+)/);
+      const crNum = crMatch ? crMatch[1] : '?';
+
+      todos.push({
+        category: '⑪ 仮説検証',
+        priority: evalResult.verdict === 'SUCCESS' ? 'HIGH' : 'MEDIUM',
+        action: `${verdictIcon} CR${crNum}(${h.account}) 仮説検証完了: ${evalResult.interpretation}`,
+        detail: `仮説: ${h.hypothesis}\n      結果: 【${evalResult.nextAction.type}】${evalResult.nextAction.reason}`,
+        adName: h.adName,
+        adId: h.adId,
+        account: h.account,
+        metrics: { verdict: evalResult.verdict, hypothesisId: h.id },
+      });
+
+    } else {
+      // 配信中 → 経過報告
+      const crMatch = (h.adName || '').match(/CR(\d+)/);
+      const crNum = crMatch ? crMatch[1] : '?';
+
+      let action = `🔵 CR${crNum}(${h.account}) ${progress.summary}`;
+      if (progress.earlyWarning) {
+        action = `⚠️ CR${crNum}(${h.account}) ${progress.summary} — ${progress.earlyWarning}`;
+      }
+
+      todos.push({
+        category: '⑪ 仮説検証',
+        priority: progress.earlyWarning ? 'MEDIUM' : 'LOW',
+        action,
+        detail: `仮説: ${h.hypothesis}`,
+        adName: h.adName,
+        adId: h.adId,
+        account: h.account,
+        metrics: { verdict: 'MONITORING', hypothesisId: h.id },
+      });
+    }
+  }
+
+  return todos;
+}
+
 // ===== メイン =====
 async function main() {
   const jstNow = new Date(Date.now() + 9 * 60 * 60 * 1000);
@@ -1537,6 +1661,10 @@ async function main() {
   const evalTodos = analyzeAutoEvaluation(reportData, ads, utageMetrics);
   allTodos.push(...evalTodos);
 
+  // ⑪ 仮説検証追跡（RUNNING状態の仮説をチェック→停止されていたら自動効果測定）
+  const hypothesisTodos = await trackHypotheses(reportData, ads);
+  allTodos.push(...hypothesisTodos);
+
   // ルール適用
   if (rules.length > 0) {
     applyRules(allTodos, rules);
@@ -1582,7 +1710,7 @@ async function main() {
   }
 
   // カテゴリ別に表示
-  const categories = ['⑩ 効果測定', '⑦ 個別予約CPO', '① 再出稿', '② 横展開', '⑥ Smart+化', '⑤ LP比較', '⑤ LP検証', '③ 停止CR分析', '④ 時間帯'];
+  const categories = ['⑪ 仮説検証', '⑩ 効果測定', '⑦ 個別予約CPO', '① 再出稿', '② 横展開', '⑥ Smart+化', '⑤ LP比較', '⑤ LP検証', '③ 停止CR分析', '④ 時間帯'];
   let todoNumber = 1;
 
   for (const cat of categories) {
@@ -1592,7 +1720,7 @@ async function main() {
     const priorityEmoji = { HIGH: '🔴', MEDIUM: '🟡', LOW: '⚪' };
     console.log(`\n── ${cat} (${ items.length}件) ──`);
     for (const item of items) {
-      const prefix = cat === '⑩ 効果測定' ? '' : `${priorityEmoji[item.priority]} `;
+      const prefix = (cat === '⑩ 効果測定' || cat === '⑪ 仮説検証') ? '' : `${priorityEmoji[item.priority]} `;
       console.log(`  [${todoNumber}] ${prefix}${item.action}`);
       console.log(`      ${item.detail}`);
       if (item.adId) console.log(`      ad_id: ${item.adId}`);

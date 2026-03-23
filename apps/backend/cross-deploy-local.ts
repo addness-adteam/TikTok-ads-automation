@@ -730,6 +730,26 @@ async function main() {
     console.log(`広告ID: ${adId}`);
     console.log(`日予算: ¥${dailyBudget}`);
     console.log(`動画: ${Object.keys(videoMapping).length}本, 画像: ${Object.keys(imageMapping).length}枚`);
+
+    // 仮説検証を自動登録
+    try {
+      const sourceAccName = Object.entries(ACCOUNT_APPEAL_MAP).find(([id]) => id === sourceAdvertiserId)?.[0] || sourceAdvertiserId;
+      const targetAccName = targetAdvertiser.name || targetAdvertiserId;
+      const hypothesis = `${source.adName}を${targetAccName}に横展開。元アカウントでの実績を基に、横展開先でも同等の成績が出るか検証`;
+      await prisma.hypothesisTest.create({
+        data: {
+          channelType: appeal === 'スキルプラス' ? 'SKILL_PLUS' : appeal,
+          hypothesis,
+          status: 'RUNNING',
+          adId: adId,
+          adName: adName,
+          account: targetAccName,
+        },
+      });
+      console.log(`\n📋 仮説検証を登録しました（自動追跡開始）`);
+    } catch (e: any) {
+      console.log(`\n⚠ 仮説登録スキップ: ${e.message}`);
+    }
   } finally {
     await prisma.$disconnect();
   }
