@@ -11,6 +11,8 @@
  *   ⑤ LP別CVR比較（同じCRでLP別の成績差）
  *   ⑥ Smart+化提案（同導線で勝ちCR6本以上あるか）
  *   ⑦ 前日個別予約CPOチェック（個別予約シートから直接算出→再出稿判断）
+ *   ⑨ 利益シミュレーション & ボトルネック特定（profit-simulationドメインロジック）
+ *   ⑩ 停止CR自動効果測定（ad-evaluationドメインロジック）
  *
  * ルールファイル: daily-ops-rules.md にFBベースの思考ルールを蓄積
  */
@@ -1332,6 +1334,141 @@ async function analyzeFunnelBottlenecks(sheets: any) {
   }
 }
 
+// ===== ⑩ 停止CR自動効果測定 =====
+import { evaluateAd } from './src/ad-evaluation/domain/evaluate-ad';
+import type { AdPerformance } from './src/ad-evaluation/domain/types';
+
+const EVAL_KPI_MAP: Record<string, { allowableCPA: number; allowableFrontCPO: number | null; allowableIndResCPO: number }> = {
+  'AI': { allowableCPA: 4032, allowableFrontCPO: 39378, allowableIndResCPO: 53795 },
+  'SNS': { allowableCPA: 2499, allowableFrontCPO: 31637, allowableIndResCPO: 37753 },
+  'スキルプラス': { allowableCPA: 6000, allowableFrontCPO: null, allowableIndResCPO: 48830 },
+};
+
+function analyzeAutoEvaluation(reportData: any[], ads: any[], utageMetrics: AccountUTAGEMetrics[]): TodoItem[] {
+  const todos: TodoItem[] = [];
+
+  // 直近の日付を取得
+  const dates = [...new Set(reportData.map(r => r.date))].sort().reverse();
+  const latestDate = dates[0];
+  if (!latestDate) return todos;
+
+  // 最新日付でPAUSEされた or 配信中のCRを特定
+  const latestData = reportData.filter(r => r.date === latestDate);
+
+  // CR単位でユニーク化（同じCR名が複数アカウントにある場合は最も消化額が大きいものを代表）
+  const crMap = new Map<string, any>();
+  for (const row of latestData) {
+    const crMatch = row.adName.match(/(CR\d+)/);
+    if (!crMatch) continue;
+    const key = `${row.appeal}:${crMatch[1]}`;
+    const existing = crMap.get(key);
+    if (!existing || row.sevenDaySpend > existing.sevenDaySpend) {
+      crMap.set(key, row);
+    }
+  }
+
+  // UTAGE metricsからCR別のオプト/フロント/個別予約を取得するためのマップ
+  const utageByPath = new Map<string, { cv: number; front: number; indRes: number }>();
+  for (const m of utageMetrics) {
+    for (const [regPath, data] of m.crPaths) {
+      utageByPath.set(regPath, data);
+    }
+  }
+
+  for (const [key, row] of crMap) {
+    const appeal = row.appeal;
+    const kpi = EVAL_KPI_MAP[appeal];
+    if (!kpi) continue;
+
+    const isPaused = row.action === 'PAUSE' || row.pauseDecision === 'PAUSE';
+    const isActive = row.action !== 'PAUSE' && row.action !== 'SKIP' && row.pauseDecision !== 'PAUSE';
+
+    // 効果測定対象: 停止されたCR + 配信中CR
+    const ad: AdPerformance = {
+      adName: row.adName,
+      adId: ads.find(a => a.name === row.adName)?.tiktokId || '',
+      channelType: appeal === 'スキルプラス' ? 'SKILL_PLUS' : appeal as 'AI' | 'SNS',
+      account: row.account,
+      status: isPaused ? 'STOPPED' : 'ENABLE',
+      daysActive: 7, // 7日レポートベース
+      spend: row.sevenDaySpend,
+      optins: row.sevenDayCV,
+      frontPurchases: row.sevenDayFrontSales,
+      individualReservations: row.sevenDayIndRes,
+      closings: 0,
+    };
+
+    const result = evaluateAd(ad, kpi);
+
+    // 判定アイコン
+    const verdictIcons: Record<string, string> = {
+      SUCCESS: '✅', PARTIAL_SUCCESS: '🟡', FAILURE: '❌',
+      INSUFFICIENT_DATA: '⚪', MONITORING: '🔵',
+    };
+    const icon = verdictIcons[result.verdict] || '?';
+
+    // 次アクションの日本語ラベル
+    const actionLabels: Record<string, string> = {
+      CROSS_DEPLOY: '横展開', REDEPLOY: '再出稿', CHANGE_LP: 'LP変更',
+      CHANGE_HOOK: 'フック差し替え', ABANDON: '廃止', INVESTIGATE: '要調査',
+      CONTINUE: '経過観察',
+    };
+    const actionLabel = actionLabels[result.nextAction.type] || result.nextAction.type;
+
+    const crMatch = row.adName.match(/CR(\d+)/);
+    const crNum = crMatch ? crMatch[1] : '?';
+    const adParts = row.adName.split('/');
+    const crDisplayName = adParts.length >= 3 ? `${adParts[1]}/${adParts[2]}` : row.adName;
+
+    // MONITORINGは配信中なので簡潔に
+    if (result.verdict === 'MONITORING') {
+      // 配信中CRは件数が多いので、CVが出ているものだけ表示
+      if (row.sevenDayCV >= 5) {
+        todos.push({
+          category: '⑩ 効果測定',
+          priority: 'LOW',
+          action: `${icon} CR${crNum}「${crDisplayName}」(${row.account}): 配信中 7日CV=${row.sevenDayCV}, CPA=¥${row.sevenDayCPA.toFixed(0)}`,
+          detail: `${result.interpretation}`,
+          adName: row.adName,
+          account: row.account,
+          metrics: { verdict: result.verdict },
+        });
+      }
+      continue;
+    }
+
+    // INSUFFICIENT_DATAは省略
+    if (result.verdict === 'INSUFFICIENT_DATA') continue;
+
+    // 停止CRの効果測定結果
+    const priority = result.verdict === 'SUCCESS' ? 'HIGH'
+      : result.verdict === 'FAILURE' ? 'MEDIUM' : 'MEDIUM';
+
+    todos.push({
+      category: '⑩ 効果測定',
+      priority,
+      action: `${icon} CR${crNum}「${crDisplayName}」(${row.account}): ${result.interpretation}`,
+      detail: `次アクション: 【${actionLabel}】${result.nextAction.reason}`,
+      adName: row.adName,
+      adId: ad.adId,
+      account: row.account,
+      metrics: {
+        verdict: result.verdict,
+        nextActionType: result.nextAction.type,
+        spend: result.metrics.spend,
+        optins: result.metrics.optins,
+        cpa: result.metrics.cpa,
+        indResCPO: result.metrics.indResCPO,
+      },
+    });
+  }
+
+  // SUCCESS → FAILURE → PARTIAL の順にソート
+  const verdictOrder: Record<string, number> = { SUCCESS: 0, FAILURE: 1, PARTIAL_SUCCESS: 2, MONITORING: 3 };
+  return todos.sort((a, b) =>
+    (verdictOrder[a.metrics?.verdict] || 9) - (verdictOrder[b.metrics?.verdict] || 9));
+}
+
 // ===== メイン =====
 async function main() {
   const jstNow = new Date(Date.now() + 9 * 60 * 60 * 1000);
@@ -1396,6 +1533,10 @@ async function main() {
   console.log('\n  ⑧ スプシからアカウント別CV/フロント/個別予約を集計中...');
   const utageMetrics = await getAccountUTAGEMetrics(sheets, ads);
 
+  // ⑩ 停止CR自動効果測定
+  const evalTodos = analyzeAutoEvaluation(reportData, ads, utageMetrics);
+  allTodos.push(...evalTodos);
+
   // ルール適用
   if (rules.length > 0) {
     applyRules(allTodos, rules);
@@ -1441,7 +1582,7 @@ async function main() {
   }
 
   // カテゴリ別に表示
-  const categories = ['⑦ 個別予約CPO', '① 再出稿', '② 横展開', '⑥ Smart+化', '⑤ LP比較', '⑤ LP検証', '③ 停止CR分析', '④ 時間帯'];
+  const categories = ['⑩ 効果測定', '⑦ 個別予約CPO', '① 再出稿', '② 横展開', '⑥ Smart+化', '⑤ LP比較', '⑤ LP検証', '③ 停止CR分析', '④ 時間帯'];
   let todoNumber = 1;
 
   for (const cat of categories) {
@@ -1451,7 +1592,8 @@ async function main() {
     const priorityEmoji = { HIGH: '🔴', MEDIUM: '🟡', LOW: '⚪' };
     console.log(`\n── ${cat} (${ items.length}件) ──`);
     for (const item of items) {
-      console.log(`  [${todoNumber}] ${priorityEmoji[item.priority]} ${item.action}`);
+      const prefix = cat === '⑩ 効果測定' ? '' : `${priorityEmoji[item.priority]} `;
+      console.log(`  [${todoNumber}] ${prefix}${item.action}`);
       console.log(`      ${item.detail}`);
       if (item.adId) console.log(`      ad_id: ${item.adId}`);
       todoNumber++;
