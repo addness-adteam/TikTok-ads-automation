@@ -1,0 +1,30 @@
+name: Daily Profit Simulation
+
+on:
+  schedule:
+    # 毎日11時（日本時間）= 2時（UTC）
+    - cron: '0 2 * * *'
+  workflow_dispatch: # 手動実行も可能
+
+env:
+  API_BASE_URL: https://tik-tok-ads-automation-backend.vercel.app
+
+jobs:
+  run-simulation:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Run Profit Simulation
+        run: |
+          echo "利益シミュレーション実行中..."
+          response=$(curl -s -w "\n%{http_code}" "${{ env.API_BASE_URL }}/api/profit-simulation/run")
+          http_code=$(echo "$response" | tail -n1)
+          body=$(echo "$response" | head -n -1)
+
+          if [ "$http_code" -ge 200 ] && [ "$http_code" -lt 300 ]; then
+            echo "シミュレーション完了"
+            echo "$body" | jq '.summary.totalProjectedProfit, .summary.isOnTrack, .allTodos | length' 2>/dev/null || echo "$body"
+          else
+            echo "エラー: HTTP $http_code"
+            echo "$body"
+            exit 1
+          fi

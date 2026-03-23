@@ -24,6 +24,7 @@ import { CreatorStopRateModule } from './creator-stop-rate/creator-stop-rate.mod
 import { UtageModule } from './utage/utage.module';
 import { CrossDeployModule } from './cross-deploy/cross-deploy.module';
 import { StreamlinedCreatorModule } from './streamlined-creator/streamlined-creator.module';
+import { ProfitSimulationModule } from './profit-simulation/profit-simulation.module';
 
 @Module({
   imports: [
@@ -53,6 +54,7 @@ import { StreamlinedCreatorModule } from './streamlined-creator/streamlined-crea
     UtageModule,
     CrossDeployModule,
     StreamlinedCreatorModule,
+    ProfitSimulationModule,
   ],
   controllers: [AppController],
   providers: [AppService],

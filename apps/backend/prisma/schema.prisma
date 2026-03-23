@@ -631,3 +631,44 @@ model CrossDeployLog {
   @@index([status])
   @@map("cross_deploy_logs")
 }
+
+// ============================================================================
+// 利益最大化シミュレーション
+// ============================================================================
+
+model ProfitSimulationTodo {
+  id               String   @id @default(uuid())
+  channelType      String   // 'AI' | 'SNS' | 'SKILL_PLUS'
+  period           String   // '2026-03' 形式
+  bottleneckStage  String
+  currentRate      Float
+  targetRate       Float
+  gapPoints        Float
+  profitImpact     Float
+  action           String
+  actionType       String   // TodoActionType
+  isAutoExecutable Boolean
+  priority         String   // 'HIGH' | 'MEDIUM' | 'LOW'
+  status           String   @default("PENDING") // 'PENDING' | 'APPROVED' | 'REJECTED' | 'EXECUTED'
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  feedbacks ProfitSimulationFeedback[]
+
+  @@index([channelType, period])
+  @@index([status])
+  @@map("profit_simulation_todos")
+}
+
+model ProfitSimulationFeedback {
+  id        String   @id @default(uuid())
+  todoId    String
+  todo      ProfitSimulationTodo @relation(fields: [todoId], references: [id])
+  decision  String   // 'APPROVED' | 'REJECTED' | 'MODIFIED'
+  reason    String
+  rule      String?  // 汎用化したルール
+  createdAt DateTime @default(now())
+
+  @@index([todoId])
+  @@map("profit_simulation_feedbacks")
+}
