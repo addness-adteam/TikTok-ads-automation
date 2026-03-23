@@ -672,3 +672,39 @@ model ProfitSimulationFeedback {
   @@index([todoId])
   @@map("profit_simulation_feedbacks")
 }
+
+// ============================================================================
+// 仮説検証テスト（HypothesisTest）
+// ユーザーが出稿時に仮説を登録 → 配信中は経過追跡 → 停止後に自動効果測定
+// ============================================================================
+
+model HypothesisTest {
+  id              String   @id @default(uuid())
+  adId            String?  // TikTok広告ID（出稿後に紐付け）
+  adName          String?  // 広告名
+  channelType     String   // 'AI' | 'SNS' | 'SKILL_PLUS'
+  account         String?  // アカウント名（AI_1等）
+  hypothesis      String   // 仮説テキスト（例: 「AI_3で個別予約CPO ¥22,615のCRをAI_2でも同等成績が出るはず」）
+  status          String   @default("PENDING") // PENDING → RUNNING → STOPPED → EVALUATED
+
+  // 効果測定結果（EVALUATED時に自動入力）
+  verdict         String?  // SUCCESS | PARTIAL_SUCCESS | FAILURE
+  interpretation  String?  // 結果の解釈
+  nextAction      String?  // 次アクション提案
+
+  // メトリクス（効果測定時にスナップショット）
+  spend           Float?
+  optins          Int?
+  frontPurchases  Int?
+  individualRes   Int?
+  cpa             Float?
+  indResCPO       Float?
+
+  createdAt       DateTime @default(now())
+  evaluatedAt     DateTime?
+  updatedAt       DateTime @updatedAt
+
+  @@index([status])
+  @@index([adId])
+  @@map("hypothesis_tests")
+}

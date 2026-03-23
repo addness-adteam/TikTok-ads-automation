@@ -51,6 +51,55 @@ export interface NextAction {
   reason: string;
 }
 
+// ============================================================================
+// 仮説検証（HypothesisTest）
+// ============================================================================
+
+export type HypothesisStatus = 'PENDING' | 'RUNNING' | 'STOPPED' | 'EVALUATED';
+
+export interface HypothesisState {
+  id?: string;
+  channelType: 'AI' | 'SNS' | 'SKILL_PLUS';
+  hypothesis: string;
+  status: HypothesisStatus;
+  adId?: string;
+  adName?: string;
+  account?: string;
+
+  // 効果測定結果（EVALUATED時）
+  verdict?: string;
+  interpretation?: string;
+  nextAction?: string;
+
+  // メトリクス
+  spend?: number;
+  optins?: number;
+  frontPurchases?: number;
+  individualRes?: number;
+  cpa?: number;
+  indResCPO?: number | null;
+
+  evaluatedAt?: Date;
+}
+
+export interface TrackingProgress {
+  shouldEvaluate: boolean;
+  summary: string;
+  earlyWarning?: string;
+}
+
+export interface EvaluationInput {
+  verdict: string;
+  interpretation: string;
+  nextAction: string;
+  spend: number;
+  optins: number;
+  frontPurchases: number;
+  individualReservations: number;
+  cpa: number;
+  indResCPO: number | null;
+}
+
 /** 効果測定結果 */
 export interface EvaluationResult {
   adName: string;
