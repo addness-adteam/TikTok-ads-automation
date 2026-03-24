@@ -7,13 +7,13 @@ import { Loader2, AlertCircle, CheckCircle, Plus, X, Zap, Upload, Eye } from 'lu
 interface Advertiser {
   id: string;
   name: string;
-  advertiserId: string;
+  advertiserId: string;       // mapped from tiktokAdvertiserId
   appealId: string | null;
   appeal?: { name: string };
 }
 
 interface CustomAudience {
-  custom_audience_id: string;
+  custom_audience_id: string; // mapped from audience_id
   name: string;
 }
 
@@ -108,8 +108,12 @@ export default function StreamlinedCreatorPage() {
     try {
       setIsLoading(true);
       const res = await fetch(`${apiUrl}/api/advertisers`);
-      const data = await res.json();
-      setAdvertisers(data);
+      const json = await res.json();
+      const list = Array.isArray(json) ? json : json.data || [];
+      setAdvertisers(list.map((a: any) => ({
+        ...a,
+        advertiserId: a.advertiserId || a.tiktokAdvertiserId,
+      })));
     } catch (err) {
       setError('アカウント一覧の取得に失敗しました');
     } finally {
@@ -122,7 +126,11 @@ export default function StreamlinedCreatorPage() {
       setIsLoadingAudiences(true);
       const res = await fetch(`${apiUrl}/api/streamlined-creator/custom-audiences?advertiserId=${advertiserId}`);
       const data = await res.json();
-      setCustomAudiences(Array.isArray(data) ? data : []);
+      const audiences = Array.isArray(data) ? data : data.data || [];
+      setCustomAudiences(audiences.map((a: any) => ({
+        ...a,
+        custom_audience_id: a.custom_audience_id || a.audience_id,
+      })));
     } catch {
       setCustomAudiences([]);
     } finally {
