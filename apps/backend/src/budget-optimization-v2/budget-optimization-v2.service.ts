@@ -987,9 +987,9 @@ export class BudgetOptimizationV2Service {
     accessToken: string,
     appeal: any,
   ): Promise<V2SmartPlusAd[]> {
-    const response = await this.tiktokService.getSmartPlusAds(advertiserId, accessToken);
+    const response = await this.tiktokService.getSmartPlusAds(advertiserId, accessToken, undefined, 'ENABLE');
     const rawAds = response.data?.list || [];
-    const activeAds = rawAds.filter((ad: any) => ad.operation_status === 'ENABLE');
+    const activeAds = rawAds; // APIでENABLEフィルタ済み
 
     // Smart+ ad GETはad-levelにbudgetを持たないため、adgroup/campaignから予算を取得
     const adgroupIds = [...new Set(activeAds.map((ad: any) => ad.adgroup_id).filter(Boolean))];
@@ -1458,7 +1458,7 @@ export class BudgetOptimizationV2Service {
   }
 
   private generateIndividualReservationPath(lpName: string, creativeName: string, appealName: string): string {
-    return `TikTok広告-${appealName}-${lpName}`;
+    return `TikTok広告-${appealName}-${lpName}-${creativeName}`;
   }
 
   private getJSTHour(date: Date): number {

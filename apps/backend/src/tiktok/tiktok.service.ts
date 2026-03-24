@@ -1782,7 +1782,7 @@ export class TiktokService {
    * GET /v1.3/smart_plus/ad/get/
    * リトライ対応: タイムアウト、レート制限、サーバーエラー時に自動リトライ
    */
-  async getSmartPlusAds(advertiserId: string, accessToken: string, smartPlusAdIds?: string[]) {
+  async getSmartPlusAds(advertiserId: string, accessToken: string, smartPlusAdIds?: string[], operationStatus?: string) {
     try {
       this.logger.log(`Fetching Smart+ ads for advertiser: ${advertiserId}`);
 
@@ -1791,10 +1791,15 @@ export class TiktokService {
         page_size: 100, // 最大値
       };
 
+      const filtering: any = {};
       if (smartPlusAdIds && smartPlusAdIds.length > 0) {
-        params.filtering = JSON.stringify({
-          smart_plus_ad_ids: smartPlusAdIds,
-        });
+        filtering.smart_plus_ad_ids = smartPlusAdIds;
+      }
+      if (operationStatus) {
+        filtering.operation_status = operationStatus;
+      }
+      if (Object.keys(filtering).length > 0) {
+        params.filtering = JSON.stringify(filtering);
       }
 
       this.logger.log(`Request params: ${JSON.stringify(params)}`);

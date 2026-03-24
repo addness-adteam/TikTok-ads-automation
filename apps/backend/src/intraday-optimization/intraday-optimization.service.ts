@@ -353,8 +353,8 @@ export class IntradayOptimizationService {
   private async getActiveAds(advertiserId: string, accessToken: string): Promise<any[]> {
     try {
       // 1. Smart+広告を先に取得（/smart_plus/ad/get/ からは正しいad_nameが返される）
-      const smartPlusResponse = await this.tiktokService.getSmartPlusAds(advertiserId, accessToken);
-      const smartPlusAds = smartPlusResponse.data?.list?.filter((ad: any) => ad.operation_status === 'ENABLE') || [];
+      const smartPlusResponse = await this.tiktokService.getSmartPlusAds(advertiserId, accessToken, undefined, 'ENABLE');
+      const smartPlusAds = smartPlusResponse.data?.list || [];
 
       // 2. Smart+広告のIDセットを作成
       const smartPlusAdIds = new Set(smartPlusAds.map((ad: any) => ad.smart_plus_ad_id));

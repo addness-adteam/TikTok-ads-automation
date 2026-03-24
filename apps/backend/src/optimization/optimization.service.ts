@@ -533,8 +533,8 @@ export class OptimizationService {
    */
   private async getActiveAds(advertiserId: string, accessToken: string) {
     // 新スマートプラス広告を取得
-    const smartPlusAdsResponse = await this.tiktokService.getSmartPlusAds(advertiserId, accessToken);
-    const smartPlusAds = smartPlusAdsResponse.data?.list?.filter((ad: any) => ad.operation_status === 'ENABLE') || [];
+    const smartPlusAdsResponse = await this.tiktokService.getSmartPlusAds(advertiserId, accessToken, undefined, 'ENABLE');
+    const smartPlusAds = smartPlusAdsResponse.data?.list || [];
 
     // 新スマートプラス広告のIDセットを作成
     const smartPlusAdIds = new Set(smartPlusAds.map((ad: any) => ad.smart_plus_ad_id));
