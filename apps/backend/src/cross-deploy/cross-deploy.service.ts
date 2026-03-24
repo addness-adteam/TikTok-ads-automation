@@ -139,23 +139,14 @@ export class CrossDeployService {
     const results: CrossDeployResult[] = [];
 
     for (const targetAdvertiserId of input.targetAdvertiserIds) {
-      if (input.mode === 'SMART_PLUS') {
-        const result = await this.deploySmartPlus(
-          input, targetAdvertiserId, sourceDetail, videoIdsToUse, videoBuffers, imageBuffers, appeal, lpNumber,
-        );
-        results.push(result);
-      } else {
-        // REGULAR: 動画のみ対応（1動画=1広告の構造のため）
-        if (!hasVideos) {
-          throw new Error('通常配信モードでは動画が必要です。画像のみの広告はSMART_PLUSモードで横展開してください。');
-        }
-        for (let i = 0; i < videoIdsToUse.length; i++) {
-          const result = await this.deployRegular(
-            input, targetAdvertiserId, sourceDetail, videoIdsToUse[i], videoBuffers, appeal, lpNumber, i,
-          );
-          results.push(result);
-        }
+      // 常にSmart+モードで出稿（通常広告は予算調整V2で認識されにくいため）
+      if (input.mode === 'REGULAR') {
+        this.logger.warn(`[横展開] REGULARモード指定がありましたが、Smart+モードで出稿します`);
       }
+      const result = await this.deploySmartPlus(
+        input, targetAdvertiserId, sourceDetail, videoIdsToUse, videoBuffers, imageBuffers, appeal, lpNumber,
+      );
+      results.push(result);
     }
 
     this.logger.log(`横展開完了: 成功=${results.filter(r => r.status === 'SUCCESS').length}, 失敗=${results.filter(r => r.status === 'FAILED').length}`);

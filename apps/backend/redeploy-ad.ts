@@ -17,7 +17,7 @@
  *
  * 注意:
  *   - 同一アカウント内の再出稿専用（別アカウントへは /自動出稿 を使う）
- *   - 通常配信（REGULAR）の1-1-1構成で作成される
+ *   - Smart+配信で作成される（予算調整V2で確実に認識されるため）
  *   - 動画は元広告のものをそのまま再利用
  */
 
@@ -378,115 +378,150 @@ async function createRegistrationPath(appeal: string, lpNumber: number, crNumber
   return { registrationPath, destinationUrl: urlMatch[0] };
 }
 
-// ===== TikTok広告作成 =====
-async function uploadThumbnail(advertiserId: string, videoId: string): Promise<string> {
-  console.log('5. サムネイル画像アップロード中...');
+// ===== Smart+ TikTok広告作成 =====
 
-  // 動画情報取得
-  const videoData = await tiktokGet('/v1.3/file/video/ad/info/', {
-    advertiser_id: advertiserId,
-    video_ids: JSON.stringify([videoId]),
-  });
-  const videos = videoData.data?.list || (Array.isArray(videoData.data) ? videoData.data : []);
-  const coverUrl = videos[0]?.video_cover_url || videos[0]?.preview_url;
-  if (!coverUrl) throw new Error('サムネイルURLが取得できません');
-
-  // ダウンロード＆アップロード
-  const imgResp = await fetch(coverUrl);
-  const buffer = Buffer.from(await imgResp.arrayBuffer());
-  const signature = crypto.createHash('md5').update(buffer).digest('hex');
-
-  const FormData = require('form-data');
-  const form = new FormData();
-  form.append('advertiser_id', advertiserId);
-  form.append('upload_type', 'UPLOAD_BY_FILE');
-  form.append('image_signature', signature);
-  form.append('image_file', buffer, { filename: `thumbnail_${Date.now()}.jpg`, contentType: 'image/jpeg' });
-
-  const axios = require('axios');
-  const resp = await axios.post(`${TIKTOK_API_BASE}/v1.3/file/image/ad/upload/`, form, {
-    headers: { 'Access-Token': ACCESS_TOKEN, ...form.getHeaders() },
-    timeout: 30000,
-  });
-  if (resp.data.code !== 0) throw new Error(`サムネイルアップロード失敗: ${resp.data.message}`);
-
-  const imageId = resp.data.data.image_id;
-  console.log(`   画像ID: ${imageId}`);
-  return imageId;
+/** 動画のカバー画像URLを取得 */
+async function getVideoCoverUrl(advertiserId: string, videoId: string): Promise<string | null> {
+  console.log('5. カバー画像URL取得中...');
+  for (let i = 0; i < 10; i++) {
+    try {
+      const data = await tiktokGet('/v1.3/file/video/ad/info/', {
+        advertiser_id: advertiserId,
+        video_ids: JSON.stringify([videoId]),
+      });
+      const video = data.data?.list?.[0];
+      if (video?.video_cover_url) {
+        console.log(`   カバー画像OK`);
+        return video.video_cover_url;
+      }
+    } catch { /* retry */ }
+    await new Promise(r => setTimeout(r, 2000));
+  }
+  console.log('   カバー画像取得できず（続行）');
+  return null;
 }
 
-async function createCampaign(advertiserId: string, adName: string): Promise<string> {
-  console.log('6. キャンペーン作成中...');
-  const data = await tiktokApi('/v1.2/campaign/create/', {
+/** カバー画像をアップロードしてweb_uriを返す */
+async function uploadCoverImage(advertiserId: string, coverUrl: string): Promise<string | null> {
+  try {
+    const imgResp = await fetch(coverUrl);
+    if (!imgResp.ok) return null;
+    const buffer = Buffer.from(await imgResp.arrayBuffer());
+
+    const FormData = require('form-data');
+    const axios = require('axios');
+    const form = new FormData();
+    form.append('advertiser_id', advertiserId);
+    form.append('upload_type', 'UPLOAD_BY_FILE');
+    form.append('image_signature', crypto.createHash('md5').update(buffer).digest('hex'));
+    form.append('image_file', buffer, { filename: `cover_${Date.now()}.jpg`, contentType: 'image/jpeg' });
+
+    const resp = await axios.post(`${TIKTOK_API_BASE}/v1.3/file/image/ad/upload/`, form, {
+      headers: { 'Access-Token': ACCESS_TOKEN, ...form.getHeaders() },
+      timeout: 30000,
+    });
+    if (resp.data.code !== 0) return null;
+
+    const webUri = resp.data.data?.web_uri || resp.data.data?.image_id;
+    console.log(`   カバー画像アップロード完了: ${webUri}`);
+    return webUri;
+  } catch {
+    return null;
+  }
+}
+
+/** 既存Smart+広告からCTA IDを取得 */
+async function getCtaId(advertiserId: string): Promise<string> {
+  const data = await tiktokGet('/v1.3/smart_plus/ad/get/', {
+    advertiser_id: advertiserId,
+    page_size: '5',
+  });
+  const ads = data.data?.list || [];
+  const ctaId = ads[0]?.ad_configuration?.call_to_action_id || '';
+  console.log(`   CTA ID: ${ctaId}`);
+  return ctaId;
+}
+
+async function createSmartPlusCampaign(advertiserId: string, adName: string): Promise<string> {
+  console.log('6. Smart+キャンペーン作成中...');
+  const data = await tiktokApi('/v1.3/smart_plus/campaign/create/', {
     advertiser_id: advertiserId,
     campaign_name: adName,
     objective_type: 'LEAD_GENERATION',
     budget_mode: 'BUDGET_MODE_INFINITE',
+    budget_optimize_on: false,
+    request_id: String(Date.now()) + String(Math.floor(Math.random() * 100000)),
   });
   const campaignId = String(data.data.campaign_id);
   console.log(`   キャンペーンID: ${campaignId}`);
   return campaignId;
 }
 
-async function createAdGroup(advertiserId: string, campaignId: string, pixelId: string, dailyBudget: number, ageGroups?: string[]): Promise<string> {
-  const ages = ageGroups || ['AGE_25_34', 'AGE_35_44', 'AGE_45_54'];
-  console.log(`7. 広告グループ作成中... (年齢: ${ages.join(', ')})`);
-  const adgroupName = `${getJstDateStr()} ノンタゲ`;
-  const data = await tiktokApi('/v1.3/adgroup/create/', {
+async function createSmartPlusAdGroup(advertiserId: string, campaignId: string, pixelId: string, dailyBudget: number): Promise<string> {
+  console.log(`7. Smart+広告グループ作成中... (日予算: ¥${dailyBudget})`);
+  const data = await tiktokApi('/v1.3/smart_plus/adgroup/create/', {
     advertiser_id: advertiserId,
     campaign_id: campaignId,
-    adgroup_name: adgroupName,
+    adgroup_name: `${getJstDateStr()} ノンタゲ`,
+    budget_mode: 'BUDGET_MODE_DYNAMIC_DAILY_BUDGET',
+    budget: dailyBudget,
+    billing_event: 'OCPM',
+    bid_type: 'BID_TYPE_NO_BID',
+    optimization_goal: 'CONVERT',
+    optimization_event: 'ON_WEB_REGISTER',
+    pixel_id: pixelId,
     promotion_type: 'LEAD_GENERATION',
     promotion_target_type: 'EXTERNAL_WEBSITE',
     placement_type: 'PLACEMENT_TYPE_NORMAL',
     placements: ['PLACEMENT_TIKTOK'],
-    location_ids: ['1861060'],
-    languages: ['ja'],
-    age_groups: ages,
-    gender: 'GENDER_UNLIMITED',
-    budget_mode: 'BUDGET_MODE_DYNAMIC_DAILY_BUDGET',
-    budget: dailyBudget,
-    bid_type: 'BID_TYPE_NO_BID',
-    billing_event: 'OCPM',
-    optimization_goal: 'CONVERT',
-    pixel_id: pixelId,
-    optimization_event: 'ON_WEB_REGISTER',
+    comment_disabled: true,
     schedule_type: 'SCHEDULE_FROM_NOW',
     schedule_start_time: getJstScheduleTime(),
-    pacing: 'PACING_MODE_SMOOTH',
-    skip_learning_phase: true,
-    video_download_disabled: true,
-    click_attribution_window: 'SEVEN_DAYS',
-    view_attribution_window: 'ONE_DAY',
+    targeting_spec: {
+      location_ids: ['1861060'],
+      age_groups: ['AGE_25_34', 'AGE_35_44', 'AGE_45_54'],
+    },
+    request_id: String(Date.now()) + String(Math.floor(Math.random() * 100000)),
   });
   const adgroupId = String(data.data.adgroup_id);
   console.log(`   広告グループID: ${adgroupId}`);
   return adgroupId;
 }
 
-async function createAd(
+async function createSmartPlusAd(
   advertiserId: string, adgroupId: string, adName: string,
-  videoId: string, imageId: string, adText: string,
+  videoId: string, coverWebUri: string | null, adText: string,
   landingPageUrl: string, identityId: string, identityBcId: string,
 ): Promise<string> {
-  console.log('8. 広告作成中...');
-  const data = await tiktokApi('/v1.3/ad/create/', {
+  console.log('8. Smart+広告作成中...');
+
+  const creativeInfo: any = {
+    ad_format: 'SINGLE_VIDEO',
+    video_info: { video_id: videoId },
+    identity_id: identityId,
+    identity_type: 'BC_AUTH_TT',
+    identity_authorized_bc_id: identityBcId,
+  };
+  if (coverWebUri) {
+    creativeInfo.image_info = [{ web_uri: coverWebUri }];
+  }
+
+  const ctaId = await getCtaId(advertiserId);
+
+  const data = await tiktokApi('/v1.3/smart_plus/ad/create/', {
     advertiser_id: advertiserId,
     adgroup_id: adgroupId,
-    creatives: [{
-      ad_name: adName,
-      ad_text: adText,
-      call_to_action: 'LEARN_MORE',
-      landing_page_url: landingPageUrl,
-      identity_id: identityId,
-      identity_type: 'BC_AUTH_TT',
-      identity_authorized_bc_id: identityBcId,
-      video_id: videoId,
-      image_ids: [imageId],
-      ad_format: 'SINGLE_VIDEO',
-    }],
+    ad_name: adName,
+    creative_list: [{ creative_info: creativeInfo }],
+    ad_text_list: [{ ad_text: adText }],
+    landing_page_url_list: [{ landing_page_url: landingPageUrl }],
+    ad_configuration: {
+      call_to_action_id: ctaId,
+    },
+    operation_status: 'ENABLE',
+    request_id: String(Date.now()) + String(Math.floor(Math.random() * 100000)),
   });
-  const adId = String(data.data.ad_ids?.[0] || data.data.ad_id);
+  const adId = String(data.data?.ad_id || data.data?.smart_plus_ad_id);
   console.log(`   広告ID: ${adId}`);
   return adId;
 }
@@ -506,13 +541,10 @@ async function main() {
   const advertiserId = args[0];
   const sourceAdId = args[1];
   const budgetOverride = args[2] ? parseInt(args[2]) : undefined;
-  // 第4引数: 年齢指定 (例: "25-44" → AGE_25_34, AGE_35_44)
-  const ageOverride = args[3] || undefined;
 
-  console.log(`===== 同一アカウント再出稿 =====`);
+  console.log(`===== 同一アカウント再出稿（Smart+） =====`);
   console.log(`アカウント: ${advertiserId}`);
   console.log(`元広告ID: ${sourceAdId}`);
-  if (ageOverride) console.log(`年齢ターゲ: ${ageOverride}歳`);
   console.log();
 
   // DB からアカウント情報取得
@@ -557,31 +589,20 @@ async function main() {
     console.log(`\n広告名: ${adName}`);
     console.log(`LP URL: ${landingPageUrl}\n`);
 
-    // 5. サムネイルアップロード
-    const imageId = await uploadThumbnail(advertiserId, sourceAd.videoId);
-
-    // 6-8. キャンペーン → 広告グループ → 広告
-    const campaignId = await createCampaign(advertiserId, adName);
-    // 年齢指定のパース ("25-44" → ['AGE_25_34', 'AGE_35_44'])
-    let ageGroups: string[] | undefined;
-    if (ageOverride) {
-      const ageMap: Record<string, string> = {
-        '18': 'AGE_18_24', '25': 'AGE_25_34', '35': 'AGE_35_44',
-        '45': 'AGE_45_54', '55': 'AGE_55_100',
-      };
-      const [minAge, maxAge] = ageOverride.split('-').map(Number);
-      ageGroups = [];
-      for (const [key, val] of Object.entries(ageMap)) {
-        const k = Number(key);
-        if (k >= minAge && k <= maxAge) ageGroups.push(val);
-      }
-      if (ageGroups.length === 0) ageGroups = undefined; // フォールバック
+    // 5. カバー画像取得＆アップロード
+    const coverUrl = await getVideoCoverUrl(advertiserId, sourceAd.videoId);
+    let coverWebUri: string | null = null;
+    if (coverUrl) {
+      coverWebUri = await uploadCoverImage(advertiserId, coverUrl);
     }
-    const adgroupId = await createAdGroup(advertiserId, campaignId, advertiser.pixelId, dailyBudget, ageGroups);
+
+    // 6-8. Smart+キャンペーン → 広告グループ → 広告
+    const campaignId = await createSmartPlusCampaign(advertiserId, adName);
+    const adgroupId = await createSmartPlusAdGroup(advertiserId, campaignId, advertiser.pixelId, dailyBudget);
     const adText = sourceAd.adText || DEFAULT_AD_TEXT[appeal] || '';
-    const adId = await createAd(
+    const adId = await createSmartPlusAd(
       advertiserId, adgroupId, adName,
-      sourceAd.videoId, imageId, adText,
+      sourceAd.videoId, coverWebUri, adText,
       landingPageUrl, advertiser.identityId, advertiser.identityAuthorizedBcId,
     );
 
