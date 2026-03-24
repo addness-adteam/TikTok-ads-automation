@@ -987,13 +987,28 @@ export class BudgetOptimizationV2Service {
     accessToken: string,
     appeal: any,
   ): Promise<V2SmartPlusAd[]> {
+    // === Smart+広告を取得 ===
     const response = await this.tiktokService.getSmartPlusAds(advertiserId, accessToken, undefined, 'ENABLE');
-    const rawAds = response.data?.list || [];
-    const activeAds = rawAds; // APIでENABLEフィルタ済み
+    const smartPlusRawAds = response.data?.list || [];
+    this.logger.log(`[V2] Fetched ${smartPlusRawAds.length} Smart+ ads`);
 
-    // Smart+ ad GETはad-levelにbudgetを持たないため、adgroup/campaignから予算を取得
-    const adgroupIds = [...new Set(activeAds.map((ad: any) => ad.adgroup_id).filter(Boolean))];
-    const campaignIds = [...new Set(activeAds.map((ad: any) => ad.campaign_id).filter(Boolean))];
+    // === 通常広告を取得 ===
+    let regularRawAds: any[] = [];
+    try {
+      const regularResponse = await this.tiktokService.getAds(advertiserId, accessToken, undefined, 'ENABLE');
+      const allRegularAds = regularResponse.data?.list || [];
+      // Smart+広告と重複するad_idを除外（通常ad/getでもSmart+広告が返る場合がある）
+      const smartPlusAdIds = new Set(smartPlusRawAds.map((ad: any) => ad.smart_plus_ad_id));
+      regularRawAds = allRegularAds.filter((ad: any) => !smartPlusAdIds.has(ad.ad_id));
+      this.logger.log(`[V2] Fetched ${allRegularAds.length} regular ads, ${regularRawAds.length} after dedup`);
+    } catch (error) {
+      this.logger.error(`[V2] Failed to fetch regular ads: ${error.message}`);
+    }
+
+    // === 全広告のadgroup/campaign IDを集約 ===
+    const allAds = [...smartPlusRawAds, ...regularRawAds];
+    const adgroupIds = [...new Set(allAds.map((ad: any) => ad.adgroup_id).filter(Boolean))];
+    const campaignIds = [...new Set(allAds.map((ad: any) => ad.campaign_id).filter(Boolean))];
 
     // AdGroup予算をバッチ取得
     const adgroupBudgetMap = new Map<string, number>();
@@ -1012,9 +1027,9 @@ export class BudgetOptimizationV2Service {
       }
     }
 
-    // CBO広告用: campaign予算をバッチ取得
+    // CBO広告用: campaign予算をバッチ取得（Smart+のみ — 通常広告はCBOなし）
     const campaignBudgetMap = new Map<string, number>();
-    const cboAds = activeAds.filter((ad: any) => ad.budget_optimize_on === true || ad.budget_optimize_on === 'ON');
+    const cboAds = smartPlusRawAds.filter((ad: any) => ad.budget_optimize_on === true || ad.budget_optimize_on === 'ON');
     const cboCampaignIds = [...new Set(cboAds.map((ad: any) => ad.campaign_id).filter(Boolean))] as string[];
     if (cboCampaignIds.length > 0) {
       for (const campaignId of cboCampaignIds) {
@@ -1030,12 +1045,12 @@ export class BudgetOptimizationV2Service {
       this.logger.log(`[V2] Fetched campaign budgets: ${campaignBudgetMap.size} campaigns with budget`);
     }
 
-    return activeAds.map((ad: any) => {
+    // === Smart+広告をV2SmartPlusAdに変換 ===
+    const smartPlusAds: V2SmartPlusAd[] = smartPlusRawAds.map((ad: any) => {
       const adName = ad.ad_name || '';
       const validation = validateAdNameFormat(adName);
       const isCBO = ad.budget_optimize_on === true || ad.budget_optimize_on === 'ON';
 
-      // 予算取得: CBO → campaign予算、非CBO → adgroup予算
       let dailyBudget = 0;
       if (isCBO) {
         dailyBudget = campaignBudgetMap.get(ad.campaign_id) || 0;
@@ -1044,7 +1059,7 @@ export class BudgetOptimizationV2Service {
       }
 
       if (dailyBudget === 0) {
-        this.logger.warn(`[V2] Budget is 0 for ad ${ad.smart_plus_ad_id || ad.ad_id} (${adName}), isCBO=${isCBO}`);
+        this.logger.warn(`[V2] Budget is 0 for Smart+ ad ${ad.smart_plus_ad_id || ad.ad_id} (${adName}), isCBO=${isCBO}`);
       }
 
       return {
@@ -1056,9 +1071,38 @@ export class BudgetOptimizationV2Service {
         status: ad.operation_status,
         dailyBudget,
         isCBO,
+        isSmartPlus: true,
         parsedName: validation.isValid ? validation.parsed! : null,
       };
     });
+
+    // === 通常広告をV2SmartPlusAdに変換 ===
+    const regularAds: V2SmartPlusAd[] = regularRawAds.map((ad: any) => {
+      const adName = ad.ad_name || '';
+      const validation = validateAdNameFormat(adName);
+      const dailyBudget = adgroupBudgetMap.get(ad.adgroup_id) || 0;
+
+      if (dailyBudget === 0) {
+        this.logger.warn(`[V2] Budget is 0 for regular ad ${ad.ad_id} (${adName})`);
+      }
+
+      return {
+        adId: ad.ad_id,
+        adName,
+        adgroupId: ad.adgroup_id || '',
+        campaignId: ad.campaign_id || '',
+        advertiserId,
+        status: ad.operation_status,
+        dailyBudget,
+        isCBO: false,
+        isSmartPlus: false,
+        parsedName: validation.isValid ? validation.parsed! : null,
+      };
+    });
+
+    const combined = [...smartPlusAds, ...regularAds];
+    this.logger.log(`[V2] Total active ads: ${combined.length} (Smart+: ${smartPlusAds.length}, Regular: ${regularAds.length})`);
+    return combined;
   }
 
   /**
@@ -1213,13 +1257,18 @@ export class BudgetOptimizationV2Service {
     );
 
     try {
-      if (ad.isCBO) {
-        // CBO: キャンペーン単位で予算更新
+      if (!ad.isSmartPlus) {
+        // 通常広告: AdGroup単位で予算更新（通常API）
+        await this.tiktokService.updateAdGroup(
+          advertiserId, accessToken, ad.adgroupId, { budget: newBudget },
+        );
+      } else if (ad.isCBO) {
+        // Smart+ CBO: キャンペーン単位で予算更新
         await this.tiktokService.updateSmartPlusCampaignBudget(
           advertiserId, accessToken, ad.campaignId, newBudget,
         );
       } else {
-        // 非CBO: AdGroup単位で予算更新
+        // Smart+ 非CBO: AdGroup単位で予算更新
         await this.tiktokService.updateSmartPlusAdGroupBudgets(
           advertiserId, accessToken,
           [{ adgroup_id: ad.adgroupId, budget: newBudget }],
@@ -1236,7 +1285,7 @@ export class BudgetOptimizationV2Service {
             source: 'BUDGET_OPTIMIZATION_V2',
             beforeData: { budget: oldBudget },
             afterData: { budget: newBudget },
-            reason: `V2予算増額: ¥${oldBudget} → ¥${newBudget}`,
+            reason: `V2予算増額: ¥${oldBudget} → ¥${newBudget} (${ad.isSmartPlus ? 'Smart+' : '通常'})`,
           },
         }),
       );
@@ -1300,7 +1349,12 @@ export class BudgetOptimizationV2Service {
     );
 
     try {
-      if (ad.isCBO) {
+      if (!ad.isSmartPlus) {
+        // 通常広告: AdGroup単位で予算更新（通常API）
+        await this.tiktokService.updateAdGroup(
+          advertiserId, accessToken, ad.adgroupId, { budget: newBudget },
+        );
+      } else if (ad.isCBO) {
         await this.tiktokService.updateSmartPlusCampaignBudget(
           advertiserId, accessToken, ad.campaignId, newBudget,
         );
@@ -1739,7 +1793,11 @@ export class BudgetOptimizationV2Service {
       // リセット実行
       try {
         if (!dryRun) {
-          if (ad.isCBO) {
+          if (!ad.isSmartPlus) {
+            await this.tiktokService.updateAdGroup(
+              advertiserId, accessToken, ad.adgroupId, { budget: resetBudget },
+            );
+          } else if (ad.isCBO) {
             await this.tiktokService.updateSmartPlusCampaignBudget(
               advertiserId, accessToken, ad.campaignId, resetBudget,
             );

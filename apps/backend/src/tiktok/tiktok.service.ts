@@ -678,7 +678,7 @@ export class TiktokService {
    * GET /v1.3/ad/get/
    * リトライ対応: タイムアウト、レート制限、サーバーエラー時に自動リトライ
    */
-  async getAds(advertiserId: string, accessToken: string, adgroupIds?: string[]) {
+  async getAds(advertiserId: string, accessToken: string, adgroupIds?: string[], operationStatus?: string) {
     try {
       this.logger.log(`Fetching ads for advertiser: ${advertiserId}`);
 
@@ -687,10 +687,15 @@ export class TiktokService {
         page_size: 100, // TikTok API v1.3の最大値
       };
 
+      const filtering: any = {};
       if (adgroupIds && adgroupIds.length > 0) {
-        params.filtering = JSON.stringify({
-          adgroup_ids: adgroupIds,
-        });
+        filtering.adgroup_ids = adgroupIds;
+      }
+      if (operationStatus) {
+        filtering.operation_status = operationStatus;
+      }
+      if (Object.keys(filtering).length > 0) {
+        params.filtering = JSON.stringify(filtering);
       }
 
       this.logger.log(`Request params: ${JSON.stringify(params)}`);

@@ -126,6 +126,8 @@ export interface V2SmartPlusAd {
   dailyBudget: number;
   /** CBO有効かどうか */
   isCBO: boolean;
+  /** Smart+広告かどうか（falseなら通常広告） */
+  isSmartPlus: boolean;
   /** 広告名からパースした情報 */
   parsedName: {
     date: string;
