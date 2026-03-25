@@ -1022,7 +1022,7 @@ async function analyzeRecentIndividualReservationCPO(
 
   console.log(`    直近${checkDays}日の個別予約: ${[...allReservations.values()].reduce((s, v) => s + v.count, 0)}件（${allReservations.size}種類のLP-CR）`);
 
-  // 日次レポートから最新日の各CRの消化額を取得
+  // 日次レポートから各CRの消化額を取得（最新日→見つからなければ直近7日で最新のものを使用）
   const dates = [...new Set(reportData.map(r => r.date))].sort().reverse();
   const latestDate = dates[0];
   const latestReport = latestDate ? reportData.filter(r => r.date === latestDate) : [];
@@ -1033,11 +1033,26 @@ async function analyzeRecentIndividualReservationCPO(
     const kpi = KPI[appeal];
     if (!kpi) continue;
 
-    // 日次レポートから該当CRの消化額を探す
-    const matchingRows = latestReport.filter(r => {
+    // 日次レポートから該当CRの消化額を探す（最新日優先）
+    let matchingRows = latestReport.filter(r => {
       const adLpCr = extractLPCRFromAdName(r.adName);
       return adLpCr === lpCr && r.appeal === appeal;
     });
+
+    // 最新日に見つからない場合（PAUSE済みCR等）、直近7日分から最新のデータを探す
+    if (matchingRows.length === 0) {
+      for (const d of dates.slice(1)) {
+        const dateRows = reportData.filter(r => r.date === d);
+        const found = dateRows.filter(r => {
+          const adLpCr = extractLPCRFromAdName(r.adName);
+          return adLpCr === lpCr && r.appeal === appeal;
+        });
+        if (found.length > 0) {
+          matchingRows = found;
+          break;
+        }
+      }
+    }
 
     // 同じLP-CRの全広告の消化額を合算（直近7日の消化を使用）
     let totalSpend = 0;
