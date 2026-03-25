@@ -66,6 +66,22 @@ const DEFAULT_AD_TEXT: Record<string, string> = {
   'スキルプラス': 'スキルで独立するなら学んでおきたい本質のスキル活用術特商法（https://skill.addness.co.jp/tokushoho）',
 };
 
+// アカウント→除外オーディエンスID マッピング
+// 「TikTok用除外オーディエンス」+ AI系は「TikTokAIオプトイン（全期間）」も追加
+// ※ cross-deploy.service.ts の exclusionMap と同期すること
+const EXCLUDED_AUDIENCE_MAP: Record<string, string[]> = {
+  '7468288053866561553': ['194977234', '194405484'],  // AI_1: AIオプトイン + 除外
+  '7523128243466551303': ['194977234', '194405486'],  // AI_2: AIオプトイン + 除外
+  '7543540647266074641': ['194977234', '194405488'],  // AI_3: AIオプトイン + 除外
+  '7580666710525493255': ['194977234', '194416060'],  // AI_4: AIオプトイン + 除外
+  '7247073333517238273': [],                           // SNS1
+  '7543540100849156112': ['194405491'],                // SNS2: 除外
+  '7543540381615800337': [],                           // SNS3
+  '7474920444831875080': [],                           // SP1
+  '7592868952431362066': [],                           // SP2
+  '7616545514662051858': [],                           // SP3
+};
+
 // アカウント→appeal マッピング
 const ACCOUNT_APPEAL_MAP: Record<string, string> = {
   '7468288053866561553': 'AI',
@@ -457,12 +473,23 @@ async function createSmartPlusCampaign(advertiserId: string, adName: string): Pr
   return campaignId;
 }
 
-async function createSmartPlusAdGroup(advertiserId: string, campaignId: string, pixelId: string, dailyBudget: number): Promise<string> {
-  console.log(`7. Smart+広告グループ作成中... (日予算: ¥${dailyBudget})`);
+async function createSmartPlusAdGroup(advertiserId: string, campaignId: string, pixelId: string, dailyBudget: number, ageGroups: string[] = ['AGE_25_34', 'AGE_35_44', 'AGE_45_54']): Promise<string> {
+  const ageLabel = ageGroups.map(g => g.replace('AGE_', '').replace('_', '-')).join(', ');
+  const excludedAudiences = EXCLUDED_AUDIENCE_MAP[advertiserId] || [];
+  console.log(`7. Smart+広告グループ作成中... (日予算: ¥${dailyBudget}, 年齢: ${ageLabel}, 除外オーディエンス: ${excludedAudiences.length}件)`);
+
+  const targetingSpec: any = {
+    location_ids: ['1861060'],
+    age_groups: ageGroups,
+  };
+  if (excludedAudiences.length > 0) {
+    targetingSpec.excluded_audience_ids = excludedAudiences;
+  }
+
   const data = await tiktokApi('/v1.3/smart_plus/adgroup/create/', {
     advertiser_id: advertiserId,
     campaign_id: campaignId,
-    adgroup_name: `${getJstDateStr()} ノンタゲ`,
+    adgroup_name: `${getJstDateStr()} ${ageLabel}`,
     budget_mode: 'BUDGET_MODE_DYNAMIC_DAILY_BUDGET',
     budget: dailyBudget,
     billing_event: 'OCPM',
@@ -477,14 +504,46 @@ async function createSmartPlusAdGroup(advertiserId: string, campaignId: string, 
     comment_disabled: true,
     schedule_type: 'SCHEDULE_FROM_NOW',
     schedule_start_time: getJstScheduleTime(),
-    targeting_spec: {
-      location_ids: ['1861060'],
-      age_groups: ['AGE_25_34', 'AGE_35_44', 'AGE_45_54'],
-    },
+    targeting_spec: targetingSpec,
     request_id: String(Date.now()) + String(Math.floor(Math.random() * 100000)),
   });
   const adgroupId = String(data.data.adgroup_id);
   console.log(`   広告グループID: ${adgroupId}`);
+
+  // ターゲティング検証（5秒待ってからAPIで確認）
+  console.log('   ターゲティング検証中（5秒待機）...');
+  await new Promise(resolve => setTimeout(resolve, 5000));
+  try {
+    const verifyResp = await tiktokGet('/v1.3/smart_plus/adgroup/get/', {
+      advertiser_id: advertiserId,
+      adgroup_ids: JSON.stringify([adgroupId]),
+    });
+    const actual = verifyResp.data?.list?.[0]?.targeting_spec;
+    const actualAges = actual?.age_groups || [];
+    const actualExcluded = actual?.excluded_audience_ids || [];
+    const ageOk = ageGroups.every(g => actualAges.includes(g)) && actualAges.length === ageGroups.length;
+    const excludeOk = excludedAudiences.length === 0 || excludedAudiences.every(id => actualExcluded.includes(id));
+
+    if (!ageOk || !excludeOk) {
+      console.log(`   ⚠ ターゲティング不一致検出 → 修正API実行`);
+      console.log(`     年齢: 期待=${JSON.stringify(ageGroups)} 実際=${JSON.stringify(actualAges)}`);
+      console.log(`     除外: 期待=${JSON.stringify(excludedAudiences)} 実際=${JSON.stringify(actualExcluded)}`);
+      // Smart+ adgroup update で修正
+      await tiktokApi('/v1.3/smart_plus/adgroup/update/', {
+        advertiser_id: advertiserId,
+        adgroup_id: adgroupId,
+        targeting_spec: targetingSpec,
+      });
+      console.log('   ✅ ターゲティング修正完了');
+      // 再度待機
+      await new Promise(resolve => setTimeout(resolve, 3000));
+    } else {
+      console.log(`   ✅ ターゲティング検証OK（年齢: ${ageLabel}, 除外: ${actualExcluded.length}件）`);
+    }
+  } catch (verifyError: any) {
+    console.log(`   ⚠ ターゲティング検証失敗（続行）: ${verifyError.message}`);
+  }
+
   return adgroupId;
 }
 
@@ -530,21 +589,43 @@ async function createSmartPlusAd(
 async function main() {
   const args = process.argv.slice(2);
   if (args.length < 2) {
-    console.log('使い方: npx tsx apps/backend/redeploy-ad.ts <advertiser_id> <source_ad_id> [daily_budget]');
+    console.log('使い方: npx tsx apps/backend/redeploy-ad.ts <advertiser_id> <source_ad_id> [daily_budget] [--age 25-44]');
     console.log('');
     console.log('例:');
     console.log('  npx tsx apps/backend/redeploy-ad.ts 7474920444831875080 1859709464799409');
     console.log('  npx tsx apps/backend/redeploy-ad.ts 7474920444831875080 1859709464799409 3000');
+    console.log('  npx tsx apps/backend/redeploy-ad.ts 7474920444831875080 1859709464799409 3000 --age 25-44');
     process.exit(1);
   }
 
   const advertiserId = args[0];
   const sourceAdId = args[1];
-  const budgetOverride = args[2] ? parseInt(args[2]) : undefined;
+
+  // --age オプション解析
+  const ageIdx = args.indexOf('--age');
+  let ageGroups = ['AGE_25_34', 'AGE_35_44', 'AGE_45_54']; // デフォルト 25-54
+  if (ageIdx !== -1 && args[ageIdx + 1]) {
+    const ageSpec = args[ageIdx + 1];
+    if (ageSpec === '25-44') {
+      ageGroups = ['AGE_25_34', 'AGE_35_44'];
+    } else if (ageSpec === '25-34') {
+      ageGroups = ['AGE_25_34'];
+    } else if (ageSpec === '35-44') {
+      ageGroups = ['AGE_35_44'];
+    } else if (ageSpec === '25-54') {
+      ageGroups = ['AGE_25_34', 'AGE_35_44', 'AGE_45_54'];
+    } else {
+      console.log(`⚠ 不明な年齢指定: ${ageSpec} → デフォルト(25-54)を使用`);
+    }
+  }
+  // --age以外の位置引数からbudgetを取得
+  const budgetArg = args[2] && args[2] !== '--age' ? parseInt(args[2]) : undefined;
+  const budgetOverride = budgetArg && !isNaN(budgetArg) ? budgetArg : undefined;
 
   console.log(`===== 同一アカウント再出稿（Smart+） =====`);
   console.log(`アカウント: ${advertiserId}`);
   console.log(`元広告ID: ${sourceAdId}`);
+  console.log(`年齢ターゲット: ${ageGroups.map(g => g.replace('AGE_', '').replace('_', '-')).join(', ')}`);
   console.log();
 
   // DB からアカウント情報取得
@@ -598,7 +679,7 @@ async function main() {
 
     // 6-8. Smart+キャンペーン → 広告グループ → 広告
     const campaignId = await createSmartPlusCampaign(advertiserId, adName);
-    const adgroupId = await createSmartPlusAdGroup(advertiserId, campaignId, advertiser.pixelId, dailyBudget);
+    const adgroupId = await createSmartPlusAdGroup(advertiserId, campaignId, advertiser.pixelId, dailyBudget, ageGroups);
     const adText = sourceAd.adText || DEFAULT_AD_TEXT[appeal] || '';
     const adId = await createSmartPlusAd(
       advertiserId, adgroupId, adName,
