@@ -120,6 +120,28 @@ export class BudgetOptimizationV2Controller {
   }
 
   /**
+   * 予算調整対象のAdvertiser IDリストを返す（GitHub Actions用）
+   * GET /api/budget-optimization-v2/target-advertisers
+   */
+  @Get('target-advertisers')
+  async getTargetAdvertisers() {
+    try {
+      const advertisers = await this.prisma.advertiser.findMany({
+        where: { appeal: { isNot: null } },
+        select: { tiktokAdvertiserId: true, name: true },
+      });
+      const ids = advertisers.map(a => a.tiktokAdvertiserId);
+      return { success: true, data: { advertiserIds: ids, advertisers } };
+    } catch (error) {
+      this.logger.error('[V2] Get target advertisers failed:', error);
+      throw new HttpException(
+        { success: false, error: error.message },
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  /**
    * スナップショット閲覧
    * GET /api/budget-optimization-v2/snapshots/:advertiserId?date=YYYY-MM-DD
    */
