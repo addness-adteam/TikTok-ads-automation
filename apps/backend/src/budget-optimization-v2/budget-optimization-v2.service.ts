@@ -988,9 +988,14 @@ export class BudgetOptimizationV2Service {
     appeal: any,
   ): Promise<V2SmartPlusAd[]> {
     // === Smart+広告を取得 ===
-    const response = await this.tiktokService.getSmartPlusAds(advertiserId, accessToken, undefined, 'ENABLE');
-    const smartPlusRawAds = response.data?.list || [];
-    this.logger.log(`[V2] Fetched ${smartPlusRawAds.length} Smart+ ads`);
+    let smartPlusRawAds: any[] = [];
+    try {
+      const response = await this.tiktokService.getSmartPlusAds(advertiserId, accessToken, undefined, 'ENABLE');
+      smartPlusRawAds = response.data?.list || [];
+      this.logger.log(`[V2] Fetched ${smartPlusRawAds.length} Smart+ ads`);
+    } catch (error) {
+      this.logger.warn(`[V2] Failed to fetch Smart+ ads for ${advertiserId} (may not support Smart+): ${error.message}`);
+    }
 
     // === 通常広告を取得 ===
     let regularRawAds: any[] = [];
