@@ -443,8 +443,48 @@ interface TodoItem {
   metrics?: Record<string, any>;
 }
 
+/** 個別予約シートから直近の個別予約をLP-CRキーで取得（⑦と同じデータソース） */
+async function getRecentIndividualReservations(sheets: any, checkDays: number = 7): Promise<Map<string, number>> {
+  const jstNow = new Date(Date.now() + 9 * 60 * 60 * 1000);
+  const startDate = new Date(jstNow);
+  startDate.setUTCDate(startDate.getUTCDate() - checkDays);
+  const rangeStart = new Date(`${startDate.getUTCFullYear()}-${String(startDate.getUTCMonth() + 1).padStart(2, '0')}-${String(startDate.getUTCDate()).padStart(2, '0')}T00:00:00+09:00`);
+  const rangeEnd = new Date(`${jstNow.getUTCFullYear()}-${String(jstNow.getUTCMonth() + 1).padStart(2, '0')}-${String(jstNow.getUTCDate()).padStart(2, '0')}T23:59:59+09:00`);
+
+  const result = new Map<string, number>();
+  for (const [appeal, config] of Object.entries(RESERVATION_SHEET_CONFIG)) {
+    try {
+      const rows = await readSheet(sheets, INDIVIDUAL_RESERVATION_SHEET_ID, `${config.sheetName}!A:AZ`);
+      if (rows.length < 2) continue;
+      for (let i = 1; i < rows.length; i++) {
+        const row = rows[i];
+        const dateValue = row[config.dateCol];
+        const pathValue = row[config.pathCol];
+        if (!dateValue || !pathValue) continue;
+        const dateStr = String(dateValue).trim();
+        const slashMatch = dateStr.match(/^(\d{4})\/(\d{1,2})\/(\d{1,2})/);
+        if (!slashMatch) continue;
+        const rowDate = new Date(Date.UTC(parseInt(slashMatch[1]), parseInt(slashMatch[2]) - 1, parseInt(slashMatch[3]), -9, 0, 0));
+        if (rowDate < rangeStart || rowDate > rangeEnd) continue;
+        const lines = String(pathValue).split('\n');
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed) continue;
+          const lpCrMatch = trimmed.match(/(LP\d+-CR\d+)/i);
+          if (!lpCrMatch) continue;
+          const lpCr = lpCrMatch[1].toUpperCase();
+          result.set(lpCr, (result.get(lpCr) || 0) + 1);
+        }
+      }
+    } catch (e) {
+      // シート読み取りエラーは無視
+    }
+  }
+  return result;
+}
+
 /** ① 過去CRの再出稿候補 */
-function analyzeRedeployCandidates(reportData: any[], ads: any[]): TodoItem[] {
+function analyzeRedeployCandidates(reportData: any[], ads: any[], indResMap?: Map<string, number>): TodoItem[] {
   const todos: TodoItem[] = [];
 
   // 停止されたCRを特定（PAUSEアクションがあり、かつ成績が良かったもの）
@@ -473,11 +513,15 @@ function analyzeRedeployCandidates(reportData: any[], ads: any[]): TodoItem[] {
     const kpi = KPI[appeal];
     if (!kpi) continue;
 
-    // 良い成績があったかチェック
+    // 良い成績があったかチェック（個別予約はシート直接読みの値も考慮）
+    const lpCrForFilter = extractLPCRFromAdName(pauseRow.adName);
+    const sheetIndResForFilter = lpCrForFilter && indResMap ? (indResMap.get(lpCrForFilter) || 0) : 0;
     const goodDays = history.filter(row => {
       if (row.sevenDayCV === 0) return false;
-      // 個別予約CPOがKPI以内
-      if (row.sevenDayIndRes > 0 && row.sevenDayIndResCPO > 0 && row.sevenDayIndResCPO <= kpi.allowableIndResCPO) return true;
+      // 個別予約CPOがKPI以内（シート直接読みの値も考慮）
+      const rowIndRes = Math.max(row.sevenDayIndRes, sheetIndResForFilter);
+      if (rowIndRes > 0 && row.sevenDayIndResCPO > 0 && row.sevenDayIndResCPO <= kpi.allowableIndResCPO) return true;
+      if (rowIndRes > 0 && row.sevenDaySpend > 0 && (row.sevenDaySpend / rowIndRes) <= kpi.allowableIndResCPO) return true;
       // フロントCPOがKPI以内（SNS/AIのみ）
       if (kpi.allowableFrontCPO && row.sevenDayFrontSales > 0 && row.sevenDayFrontCPO > 0 && row.sevenDayFrontCPO <= kpi.allowableFrontCPO) return true;
       // CPAが許容値以内かつCV数が多い
@@ -489,6 +533,11 @@ function analyzeRedeployCandidates(reportData: any[], ads: any[]): TodoItem[] {
       const bestDay = goodDays.sort((a, b) => (b.sevenDayCV - a.sevenDayCV))[0];
       const crMatch = pauseRow.adName.match(/CR(\d+)/);
       const crNum = crMatch ? crMatch[1] : '?';
+
+      // 個別予約シートから直接取得した値で補正（V2レポートの値が0でもシートに実績がある場合）
+      const lpCr = extractLPCRFromAdName(pauseRow.adName);
+      const sheetIndRes = lpCr && indResMap ? (indResMap.get(lpCr) || 0) : 0;
+      const effectiveIndRes = Math.max(bestDay.sevenDayIndRes, sheetIndRes);
 
       // DBから広告IDを検索
       const ad = ads.find(a => a.name === pauseRow.adName);
@@ -515,18 +564,18 @@ function analyzeRedeployCandidates(reportData: any[], ads: any[]): TodoItem[] {
           adName: pauseRow.adName,
           adId,
           account: pauseRow.account,
-          metrics: { cv: bestDay.sevenDayCV, cpa: bestDay.sevenDayCPA, indRes: bestDay.sevenDayIndRes, isStale: true },
+          metrics: { cv: bestDay.sevenDayCV, cpa: bestDay.sevenDayCPA, indRes: effectiveIndRes, isStale: true },
         });
       } else {
         todos.push({
           category: '① 再出稿',
-          priority: bestDay.sevenDayIndRes > 0 ? 'HIGH' : 'MEDIUM',
+          priority: effectiveIndRes > 0 ? 'HIGH' : 'MEDIUM',
           action: `CR${crNum}を${pauseRow.account}に再出稿`,
-          detail: `過去実績: 7日CV=${bestDay.sevenDayCV}, CPA=¥${bestDay.sevenDayCPA.toFixed(0)}, 個別予約=${bestDay.sevenDayIndRes}件${bestDay.sevenDayIndResCPO > 0 ? ` (CPO ¥${bestDay.sevenDayIndResCPO.toFixed(0)})` : ''}`,
+          detail: `過去実績: 7日CV=${bestDay.sevenDayCV}, CPA=¥${bestDay.sevenDayCPA.toFixed(0)}, 個別予約=${effectiveIndRes}件${bestDay.sevenDayIndResCPO > 0 ? ` (CPO ¥${bestDay.sevenDayIndResCPO.toFixed(0)})` : ''}`,
           adName: pauseRow.adName,
           adId,
           account: pauseRow.account,
-          metrics: { cv: bestDay.sevenDayCV, cpa: bestDay.sevenDayCPA, indRes: bestDay.sevenDayIndRes, indResCPO: bestDay.sevenDayIndResCPO },
+          metrics: { cv: bestDay.sevenDayCV, cpa: bestDay.sevenDayCPA, indRes: effectiveIndRes, indResCPO: bestDay.sevenDayIndResCPO },
         });
       }
     }
@@ -540,7 +589,7 @@ function analyzeRedeployCandidates(reportData: any[], ads: any[]): TodoItem[] {
 }
 
 /** ② 横展開候補 */
-function analyzeCrossDeployCandidates(reportData: any[], ads: any[]): TodoItem[] {
+function analyzeCrossDeployCandidates(reportData: any[], ads: any[], indResMap?: Map<string, number>): TodoItem[] {
   const todos: TodoItem[] = [];
 
   // 直近データの日付を取得
@@ -577,11 +626,14 @@ function analyzeCrossDeployCandidates(reportData: any[], ads: any[]): TodoItem[]
 
     if (missingAccounts.length > 0) {
       const ad = ads.find(a => a.name === row.adName);
+      const lpCr2 = extractLPCRFromAdName(row.adName);
+      const sheetIndRes2 = lpCr2 && indResMap ? (indResMap.get(lpCr2) || 0) : 0;
+      const effectiveIndRes2 = Math.max(row.sevenDayIndRes, sheetIndRes2);
       todos.push({
         category: '② 横展開',
-        priority: row.sevenDayIndRes > 0 ? 'HIGH' : 'MEDIUM',
+        priority: effectiveIndRes2 > 0 ? 'HIGH' : 'MEDIUM',
         action: `${crNum}を${missingAccounts.join(', ')}に横展開`,
-        detail: `現在${row.account}で配信中: 7日CV=${row.sevenDayCV}, CPA=¥${row.sevenDayCPA.toFixed(0)}, 個別予約=${row.sevenDayIndRes}件`,
+        detail: `現在${row.account}で配信中: 7日CV=${row.sevenDayCV}, CPA=¥${row.sevenDayCPA.toFixed(0)}, 個別予約=${effectiveIndRes2}件`,
         adName: row.adName,
         adId: ad?.tiktokId || '',
         account: row.account,
@@ -1621,12 +1673,15 @@ async function main() {
   // 各分析を実行
   const allTodos: TodoItem[] = [];
 
+  // 個別予約シートから直近7日分を事前取得（①②⑦で共有）
+  const indResMap = await getRecentIndividualReservations(sheets, 7);
+
   // ① 再出稿候補
-  const redeployTodos = analyzeRedeployCandidates(reportData, ads);
+  const redeployTodos = analyzeRedeployCandidates(reportData, ads, indResMap);
   allTodos.push(...redeployTodos);
 
   // ② 横展開候補
-  const crossDeployTodos = analyzeCrossDeployCandidates(reportData, ads);
+  const crossDeployTodos = analyzeCrossDeployCandidates(reportData, ads, indResMap);
   allTodos.push(...crossDeployTodos);
 
   // ③ 停止CR分析
