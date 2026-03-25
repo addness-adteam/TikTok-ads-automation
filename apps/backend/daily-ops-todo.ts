@@ -534,6 +534,11 @@ function analyzeRedeployCandidates(reportData: any[], ads: any[], indResMap?: Ma
       const crMatch = pauseRow.adName.match(/CR(\d+)/);
       const crNum = crMatch ? crMatch[1] : '?';
 
+      // 広告名から制作者/クリエイティブ名を抽出（R008: CR番号だけでなく広告名も表示）
+      const nameParts = pauseRow.adName.split('/');
+      const creatorCrName = nameParts.length >= 3 ? `${nameParts[1]}/${nameParts[2]}` : '';
+      const crDisplayLabel = creatorCrName ? `CR${crNum}「${creatorCrName}」` : `CR${crNum}`;
+
       // 個別予約シートから直接取得した値で補正（V2レポートの値が0でもシートに実績がある場合）
       const lpCr = extractLPCRFromAdName(pauseRow.adName);
       const sheetIndRes = lpCr && indResMap ? (indResMap.get(lpCr) || 0) : 0;
@@ -559,7 +564,7 @@ function analyzeRedeployCandidates(reportData: any[], ads: any[], indResMap?: Ma
         todos.push({
           category: '① 再出稿',
           priority: 'MEDIUM',
-          action: `CR${crNum}: 枯れの可能性あり → 動画ID変更 or 別アカウントで出稿を検討`,
+          action: `${crDisplayLabel}: 枯れの可能性あり → 動画ID変更 or 別アカウントで出稿を検討`,
           detail: `直近で同CRが0〜1CV停止。過去実績: 7日CV=${bestDay.sevenDayCV}, CPA=¥${bestDay.sevenDayCPA.toFixed(0)}。別アカウントまたはフック差し替えで再テスト推奨`,
           adName: pauseRow.adName,
           adId,
@@ -570,7 +575,7 @@ function analyzeRedeployCandidates(reportData: any[], ads: any[], indResMap?: Ma
         todos.push({
           category: '① 再出稿',
           priority: effectiveIndRes > 0 ? 'HIGH' : 'MEDIUM',
-          action: `CR${crNum}を${pauseRow.account}に再出稿`,
+          action: `${crDisplayLabel}を${pauseRow.account}に再出稿`,
           detail: `過去実績: 7日CV=${bestDay.sevenDayCV}, CPA=¥${bestDay.sevenDayCPA.toFixed(0)}, 個別予約=${effectiveIndRes}件${bestDay.sevenDayIndResCPO > 0 ? ` (CPO ¥${bestDay.sevenDayIndResCPO.toFixed(0)})` : ''}`,
           adName: pauseRow.adName,
           adId,
@@ -629,10 +634,14 @@ function analyzeCrossDeployCandidates(reportData: any[], ads: any[], indResMap?:
       const lpCr2 = extractLPCRFromAdName(row.adName);
       const sheetIndRes2 = lpCr2 && indResMap ? (indResMap.get(lpCr2) || 0) : 0;
       const effectiveIndRes2 = Math.max(row.sevenDayIndRes, sheetIndRes2);
+      // R008: CR番号だけでなく制作者/クリエイティブ名も表示
+      const parts2 = row.adName.split('/');
+      const creatorCr2 = parts2.length >= 3 ? `${parts2[1]}/${parts2[2]}` : '';
+      const crLabel2 = creatorCr2 ? `${crNum}「${creatorCr2}」` : crNum;
       todos.push({
         category: '② 横展開',
         priority: effectiveIndRes2 > 0 ? 'HIGH' : 'MEDIUM',
-        action: `${crNum}を${missingAccounts.join(', ')}に横展開`,
+        action: `${crLabel2}を${missingAccounts.join(', ')}に横展開`,
         detail: `現在${row.account}で配信中: 7日CV=${row.sevenDayCV}, CPA=¥${row.sevenDayCPA.toFixed(0)}, 個別予約=${effectiveIndRes2}件`,
         adName: row.adName,
         adId: ad?.tiktokId || '',
@@ -667,10 +676,15 @@ function analyzeStoppedCRs(reportData: any[]): TodoItem[] {
     const crMatch = row.adName.match(/CR(\d+)/);
     if (!crMatch) continue;
 
+    // R008: 制作者/クリエイティブ名も表示
+    const parts3 = row.adName.split('/');
+    const creatorCr3 = parts3.length >= 3 ? `${parts3[1]}/${parts3[2]}` : '';
+    const crLabel3 = creatorCr3 ? `CR${crMatch[1]}「${creatorCr3}」` : `CR${crMatch[1]}`;
+
     todos.push({
       category: '③ 停止CR分析',
       priority: 'LOW',
-      action: `CR${crMatch[1]}の停止理由を分析`,
+      action: `${crLabel3}の停止理由を分析`,
       detail: `${row.reason} | 7日CPA=¥${row.sevenDayCPA.toFixed(0)}, CV=${row.sevenDayCV}, 広告費=¥${row.sevenDaySpend.toFixed(0)}`,
       adName: row.adName,
       account: row.account,
