@@ -2509,23 +2509,27 @@ export class TiktokService {
     advertiserId: string,
     accessToken: string,
     videoId: string,
-    maxRetries = 5,
+    maxRetries = 10,
   ): Promise<any> {
-    let delay = 3000; // 初回3秒待機
+    let delay = 5000; // 初回5秒待機
     for (let i = 0; i < maxRetries; i++) {
       await new Promise(r => setTimeout(r, delay));
-      delay = Math.floor(delay * 1.5); // 指数バックオフ
+      delay = Math.min(delay * 1.5, 15000); // 指数バックオフ（最大15秒）
 
       const videos = await this.getVideoInfo(advertiserId, accessToken, [videoId]);
       if (videos.length > 0) {
         const video = videos[0];
-        // 処理完了チェック: poster_url(サムネイル)が生成されていればOK
-        if (video.poster_url || video.video_cover_url) {
-          this.logger.log(`動画処理完了: ${videoId}`);
+        // 処理完了チェック: displayableかつcover_urlが非空
+        const hasCover = (video.video_cover_url && video.video_cover_url !== '') || (video.poster_url && video.poster_url !== '');
+        const isReady = video.displayable === true || (video.duration > 0 && hasCover);
+        if (isReady && hasCover) {
+          this.logger.log(`動画処理完了: ${videoId} (displayable=${video.displayable}, duration=${video.duration})`);
           return video;
         }
+        this.logger.log(`動画処理待ち (${i + 1}/${maxRetries}): ${videoId} (displayable=${video.displayable}, format=${video.format}, duration=${video.duration})`);
+      } else {
+        this.logger.log(`動画処理待ち (${i + 1}/${maxRetries}): ${videoId} (情報なし)`);
       }
-      this.logger.log(`動画処理待ち (${i + 1}/${maxRetries}): ${videoId}`);
     }
     this.logger.warn(`動画処理タイムアウト: ${videoId}（アップロードは成功済み、処理中の可能性）`);
     return null;

@@ -86,6 +86,15 @@ export class StreamlinedCreatorService {
       const { buffer, filename } = await this.gigafileService.downloadVideo(input.gigafileUrl);
       this.logger.log(`動画DL完了: ${filename} (${(buffer.length / 1024 / 1024).toFixed(2)}MB)`);
 
+      // DLバリデーション: 1MB未満は動画ではなくHTMLやエラーレスポンスの可能性
+      if (buffer.length < 1024 * 1024) {
+        const preview = buffer.toString('utf-8', 0, Math.min(500, buffer.length));
+        if (preview.includes('<html') || preview.includes('<!DOCTYPE') || preview.includes('gigafile')) {
+          throw new Error(`ギガファイル便: 動画ではなくHTMLがダウンロードされました（${buffer.length}bytes）。DL URLの構築に失敗した可能性があります。`);
+        }
+        this.logger.warn(`動画サイズが小さいです: ${buffer.length}bytes。正常なファイルか確認してください。`);
+      }
+
       // 2. TikTokへ動画アップロード
       currentStep = 'VIDEO_UPLOAD';
       const videoId = await this.tiktokService.uploadVideoToAccount(
@@ -98,7 +107,10 @@ export class StreamlinedCreatorService {
 
       // 3. 動画処理完了待ち
       currentStep = 'VIDEO_PROCESSING';
-      await this.tiktokService.waitForVideoReady(input.advertiserId, token, videoId);
+      const videoInfo = await this.tiktokService.waitForVideoReady(input.advertiserId, token, videoId);
+      if (!videoInfo) {
+        throw new Error(`動画 ${videoId} の処理がタイムアウトしました。TikTok側での動画処理に時間がかかっています。数分後に再試行してください。`);
+      }
 
       // 4. サムネイル取得
       currentStep = 'THUMBNAIL_UPLOAD';
