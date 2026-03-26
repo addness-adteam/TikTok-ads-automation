@@ -14,8 +14,8 @@ export class CreateSingleInput {
   lpNumber: number;
   /** CR制作者名 */
   creatorName: string;
-  /** CR名 */
-  crName: string;
+  /** CR名（省略時は動画ファイル名から自動抽出） */
+  crName?: string;
   /** 日予算 (省略時はデフォルト) */
   dailyBudget?: number;
   /** 除外オーディエンスID配列 */
@@ -72,8 +72,8 @@ export class CreateBatchInput {
   lpNumber: number;
   /** CR制作者名 */
   creatorName: string;
-  /** CR名 */
-  crName: string;
+  /** CR名（省略時は動画ファイル名から自動抽出） */
+  crName?: string;
   /** 日予算 (省略時はデフォルト) */
   dailyBudget?: number;
   /** 除外オーディエンスID配列 */

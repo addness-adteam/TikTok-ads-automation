@@ -45,8 +45,7 @@ export class GigafileService {
     if (info) {
       const targetFileKey = info.isMultiFile ? info.files[0].file : info.fileKey;
       this.logger.log(`DL対象: server=${info.server}, file=${targetFileKey}${info.isMultiFile ? ` (${info.files.length}ファイル中の1番目)` : ''}`);
-      const buffer = await this.downloadFileWithSession(info.server, targetFileKey);
-      return { buffer, filename };
+      return this.downloadFileWithSession(info.server, targetFileKey);
     }
 
     // フォールバック: 旧方式
@@ -74,9 +73,8 @@ export class GigafileService {
     for (let i = 0; i < info.files.length; i++) {
       const fileEntry = info.files[i];
       this.logger.log(`[${i + 1}/${info.files.length}] DL中: ${fileEntry.file} (${(fileEntry.size / 1024 / 1024).toFixed(1)}MB)`);
-      const buffer = await this.downloadFileWithSession(info.server, fileEntry.file);
-      const filename = `video_${i + 1}_${Date.now()}.mp4`;
-      results.push({ buffer, filename });
+      const result = await this.downloadFileWithSession(info.server, fileEntry.file);
+      results.push(result);
     }
 
     this.logger.log(`全ファイルダウンロード完了: ${results.length}件`);
@@ -88,7 +86,7 @@ export class GigafileService {
    * 1. 個別ファイルページにGET → gfsid cookieを取得
    * 2. download.php?file=xxx にcookie付きGET → バイナリ取得
    */
-  private async downloadFileWithSession(server: string, fileKey: string): Promise<Buffer> {
+  private async downloadFileWithSession(server: string, fileKey: string): Promise<{ buffer: Buffer; filename: string }> {
     // Step 1: 個別ファイルページにアクセスしてセッションcookieを取得
     const filePageUrl = `https://${server}/${fileKey}`;
     this.logger.log(`セッション取得: ${filePageUrl}`);
@@ -127,8 +125,21 @@ export class GigafileService {
       }
     }
 
-    this.logger.log(`DL完了: ${(buffer.length / 1024 / 1024).toFixed(2)}MB`);
-    return buffer;
+    // Content-Dispositionからファイル名を抽出
+    const disposition = response.headers['content-disposition'] || '';
+    let filename = `video_${Date.now()}.mp4`;
+    // filename*=UTF-8''xxx 形式
+    const utf8Match = disposition.match(/filename\*=UTF-8''([^;\s]+)/i);
+    if (utf8Match) {
+      filename = decodeURIComponent(utf8Match[1]);
+    } else {
+      // filename="xxx" 形式
+      const basicMatch = disposition.match(/filename="?([^";\s]+)"?/i);
+      if (basicMatch) filename = basicMatch[1];
+    }
+
+    this.logger.log(`DL完了: ${filename} (${(buffer.length / 1024 / 1024).toFixed(2)}MB)`);
+    return { buffer, filename };
   }
 
   private async fetchPage(url: string): Promise<string> {

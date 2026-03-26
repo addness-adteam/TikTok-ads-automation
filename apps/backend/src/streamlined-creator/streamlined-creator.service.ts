@@ -138,10 +138,11 @@ export class StreamlinedCreatorService {
       );
       this.logger.log(`UTAGE登録経路作成完了: CR${String(utageResult.crNumber).padStart(5, '0')}`);
 
-      // 6. 広告名生成
+      // 6. 広告名生成（CR名: ユーザー入力 or ファイル名から自動抽出）
+      const effectiveCrName = input.crName || this.extractCrNameFromFilename(filename);
       const adName = this.generateAdName(
         input.creatorName,
-        input.crName,
+        effectiveCrName,
         input.lpNumber,
         utageResult.crNumber,
       );
@@ -310,9 +311,10 @@ export class StreamlinedCreatorService {
           input.appeal, input.lpNumber,
         );
 
-        // 広告名
+        // 広告名（CR名: ユーザー入力 or ファイル名から自動抽出）
+        const effectiveCrName = input.crName || this.extractCrNameFromFilename(filename);
         const adName = this.generateAdName(
-          input.creatorName, input.crName, input.lpNumber, utageResult.crNumber,
+          input.creatorName, effectiveCrName, input.lpNumber, utageResult.crNumber,
         );
         const dailyBudget = input.dailyBudget || DEFAULT_BUDGET[input.appeal] || 3000;
         const adText = input.adText || AD_TEXT[input.appeal] || AD_TEXT['AI'];
@@ -404,7 +406,21 @@ export class StreamlinedCreatorService {
   }
 
   /**
+   * 配信開始日の日付文字列（YYMMDD）を返す
+   * JST 15時以降 → 翌日（翌日0時から配信開始のため）
+   * JST 15時前 → 当日（即配信開始のため）
+   */
+  private getDeliveryDateStr(): string {
+    const jst = new Date(Date.now() + 9 * 60 * 60 * 1000);
+    if (jst.getUTCHours() >= 15) {
+      jst.setUTCDate(jst.getUTCDate() + 1);
+    }
+    return `${String(jst.getUTCFullYear()).slice(2)}${String(jst.getUTCMonth() + 1).padStart(2, '0')}${String(jst.getUTCDate()).padStart(2, '0')}`;
+  }
+
+  /**
    * 広告名生成: YYMMDD/制作者名/CR名/LP{n}-CR{5桁}
+   * 日付は配信開始日を使用
    */
   private generateAdName(
     creatorName: string,
@@ -412,21 +428,24 @@ export class StreamlinedCreatorService {
     lpNumber: number,
     crNumber: number,
   ): string {
-    const now = new Date();
-    const jst = new Date(now.getTime() + 9 * 60 * 60 * 1000);
-    const dateStr = `${String(jst.getUTCFullYear()).slice(2)}${String(jst.getUTCMonth() + 1).padStart(2, '0')}${String(jst.getUTCDate()).padStart(2, '0')}`;
+    const dateStr = this.getDeliveryDateStr();
     const crStr = String(crNumber).padStart(5, '0');
     return `${dateStr}/${creatorName}/${crName}/LP${lpNumber}-CR${crStr}`;
   }
 
   /**
-   * 広告グループ名: YYMMDD ノンタゲ
+   * 広告グループ名: YYMMDD ノンタゲ（配信開始日）
    */
   private generateAdGroupName(): string {
-    const now = new Date();
-    const jst = new Date(now.getTime() + 9 * 60 * 60 * 1000);
-    const dateStr = `${String(jst.getUTCFullYear()).slice(2)}${String(jst.getUTCMonth() + 1).padStart(2, '0')}${String(jst.getUTCDate()).padStart(2, '0')}`;
-    return `${dateStr} ノンタゲ`;
+    return `${this.getDeliveryDateStr()} ノンタゲ`;
+  }
+
+  /**
+   * 動画ファイル名からCR名を抽出（拡張子を除去）
+   * 例: "庭_女性演者_冒頭1.mp4" → "庭_女性演者_冒頭1"
+   */
+  private extractCrNameFromFilename(filename: string): string {
+    return filename.replace(/\.[^.]+$/, '').trim() || filename;
   }
 
   /**
