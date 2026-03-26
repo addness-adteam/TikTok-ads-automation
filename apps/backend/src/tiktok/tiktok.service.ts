@@ -3005,7 +3005,8 @@ export class TiktokService {
    * JST現在時刻+5分のスケジュール開始時刻を返す
    */
   private getScheduleStartTime(): string {
-    const t = new Date(Date.now() + 9 * 60 * 60 * 1000 + 5 * 60 * 1000);
+    // 現在UTC+5分を開始時刻とする（TikTok APIはUTCで解釈する）
+    const t = new Date(Date.now() + 5 * 60 * 1000);
     return `${t.getUTCFullYear()}-${String(t.getUTCMonth() + 1).padStart(2, '0')}-${String(t.getUTCDate()).padStart(2, '0')} ${String(t.getUTCHours()).padStart(2, '0')}:${String(t.getUTCMinutes()).padStart(2, '0')}:${String(t.getUTCSeconds()).padStart(2, '0')}`;
   }
 }

@@ -149,12 +149,14 @@ function getJstDateStr(): string {
 
 function getJstScheduleTime(): string {
   if (isAfter15Jst()) {
-    // 翌日0時JSTから配信開始
+    // 翌日0時JST = 当日15:00 UTC（TikTok APIはUTCで解釈する）
     const d = getDeliveryDate();
-    return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')} 00:00:00`;
+    // dはJSTの翌日日付。UTC換算で前日15:00にする
+    d.setUTCDate(d.getUTCDate() - 1);
+    return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')} 15:00:00`;
   } else {
-    // 今すぐ開始（現在時刻+5分）
-    const t = new Date(Date.now() + 9 * 60 * 60 * 1000 + 5 * 60 * 1000);
+    // 今すぐ開始（現在UTC+5分）
+    const t = new Date(Date.now() + 5 * 60 * 1000);
     return `${t.getUTCFullYear()}-${String(t.getUTCMonth() + 1).padStart(2, '0')}-${String(t.getUTCDate()).padStart(2, '0')} ${String(t.getUTCHours()).padStart(2, '0')}:${String(t.getUTCMinutes()).padStart(2, '0')}:${String(t.getUTCSeconds()).padStart(2, '0')}`;
   }
 }
