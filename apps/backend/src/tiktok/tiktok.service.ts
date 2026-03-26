@@ -1108,17 +1108,18 @@ export class TiktokService {
       }
 
       if (options.targeting?.included_custom_audiences) {
-        requestBody.included_custom_audiences = options.targeting.included_custom_audiences.map(
+        // TikTok API v1.3: 文字列配列 ["audience_id"] 形式
+        requestBody.audience_ids = options.targeting.included_custom_audiences.map(
           (id: string | { custom_audience_id: string }) =>
-            typeof id === 'string' ? { custom_audience_id: id } : id,
+            typeof id === 'string' ? id : id.custom_audience_id,
         );
       }
 
       if (options.targeting?.excluded_custom_audiences) {
-        // TikTok API v1.3: オブジェクト配列 [{custom_audience_id: "xxx"}] 形式が必要
-        requestBody.excluded_custom_audiences = options.targeting.excluded_custom_audiences.map(
+        // TikTok API v1.3: 文字列配列 ["audience_id"] 形式
+        requestBody.excluded_audience_ids = options.targeting.excluded_custom_audiences.map(
           (id: string | { custom_audience_id: string }) =>
-            typeof id === 'string' ? { custom_audience_id: id } : id,
+            typeof id === 'string' ? id : id.custom_audience_id,
         );
       }
 
