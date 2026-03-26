@@ -4,8 +4,12 @@
 
 /** 1動画分の出稿リクエスト */
 export class CreateSingleInput {
-  /** ギガファイル便URL */
+  /** ギガファイル便URL（まとめURL or 個別ファイルURL） */
   gigafileUrl: string;
+  /** ギガファイル便サーバー（個別ファイルDL用、file-listから取得） */
+  gigafileServer?: string;
+  /** ギガファイル便ファイルキー（個別ファイルDL用、file-listから取得） */
+  gigafileFileKey?: string;
   /** 出稿先アカウントID */
   advertiserId: string;
   /** 導線: AI / SNS / スキルプラス */

@@ -57,17 +57,17 @@ export class StreamlinedCreatorService {
   }
 
   /**
-   * 1動画分の出稿を実行（複数ファイルの場合は自動で一括出稿に切り替え）
+   * ギガファイル便URLのファイルリストを取得
    */
-  async createSingle(input: CreateSingleInput): Promise<CreateSingleResult | CreateBatchResult> {
-    this.logger.log(`ワンストップ出稿開始: ${input.gigafileUrl} → ${input.advertiserId}`);
+  async getFileList(gigafileUrl: string) {
+    return this.gigafileService.getFileList(gigafileUrl);
+  }
 
-    // ギガファイル便のファイルリストを取得（DLはまだしない）
-    const fileList = await this.gigafileService.getFileList(input.gigafileUrl);
-    if (fileList && fileList.files.length > 1) {
-      this.logger.log(`複数ファイル検出（${fileList.files.length}本）→ 1本ずつDL&出稿`);
-      return this.createBatchSequential(fileList, input);
-    }
+  /**
+   * 1動画分の出稿を実行
+   */
+  async createSingle(input: CreateSingleInput): Promise<CreateSingleResult> {
+    this.logger.log(`ワンストップ出稿開始: ${input.gigafileUrl} → ${input.advertiserId}`);
 
     let currentStep = 'GIGAFILE_DOWNLOAD';
 
@@ -90,9 +90,19 @@ export class StreamlinedCreatorService {
         throw new Error(`アカウント ${input.advertiserId} のIdentity IDが未設定です`);
       }
 
-      // 1. ギガファイル便から動画DL（1本のみ）
+      // 1. ギガファイル便から動画DL（server+fileKeyが指定されていれば直接DL、なければURL解析）
       currentStep = 'GIGAFILE_DOWNLOAD';
-      const { buffer, filename } = await this.gigafileService.downloadVideo(input.gigafileUrl);
+      let buffer: Buffer;
+      let filename: string;
+      if (input.gigafileServer && input.gigafileFileKey) {
+        const result = await this.gigafileService.downloadSingleFile(input.gigafileServer, input.gigafileFileKey);
+        buffer = result.buffer;
+        filename = result.filename;
+      } else {
+        const result = await this.gigafileService.downloadVideo(input.gigafileUrl);
+        buffer = result.buffer;
+        filename = result.filename;
+      }
       this.logger.log(`動画DL完了: ${filename} (${(buffer.length / 1024 / 1024).toFixed(2)}MB)`);
 
       // DLバリデーション: 1MB未満は動画ではなくHTMLやエラーレスポンスの可能性

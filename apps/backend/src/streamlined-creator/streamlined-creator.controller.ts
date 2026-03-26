@@ -32,6 +32,16 @@ export class StreamlinedCreatorController {
   }
 
   /**
+   * ギガファイル便のファイルリスト取得（DLはしない）
+   * POST /api/streamlined-creator/file-list
+   */
+  @Post('file-list')
+  async getFileList(@Body() body: { gigafileUrl: string }) {
+    this.logger.log(`ファイルリスト取得: ${body.gigafileUrl}`);
+    return this.service.getFileList(body.gigafileUrl);
+  }
+
+  /**
    * 1動画分の出稿実行
    * POST /api/streamlined-creator/create-single
    */

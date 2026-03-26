@@ -163,6 +163,36 @@ export default function StreamlinedCreatorPage() {
     }
   };
 
+  /** 1本分の出稿APIを呼ぶ */
+  const deploySingleFile = async (params: {
+    gigafileUrl: string;
+    gigafileServer?: string;
+    gigafileFileKey?: string;
+  }) => {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 300000); // 5分
+    const res = await fetch(`${apiUrl}/api/streamlined-creator/create-single`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        gigafileUrl: params.gigafileUrl,
+        gigafileServer: params.gigafileServer,
+        gigafileFileKey: params.gigafileFileKey,
+        advertiserId: selectedAdvertiserId,
+        appeal,
+        lpNumber,
+        creatorName,
+        crName: crName || undefined,
+        dailyBudget,
+        excludedAudienceIds: excludedAudienceIds.length > 0 ? excludedAudienceIds : undefined,
+        adText,
+      }),
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
+    return res.json();
+  };
+
   const handleDeploy = async () => {
     const validUrls = gigafileUrls.filter(u => u.trim());
     if (validUrls.length === 0) return;
@@ -172,43 +202,60 @@ export default function StreamlinedCreatorPage() {
     setDeployResults([]);
     setError(null);
 
-    for (let i = 0; i < validUrls.length; i++) {
-      setCurrentDeployIndex(i);
+    // 各URLについてファイルリストを取得し、1本ずつ出稿（Vercel 300秒制限対策）
+    let fileIndex = 0;
+    for (const url of validUrls) {
       try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 600000); // 10分タイムアウト
-        const res = await fetch(`${apiUrl}/api/streamlined-creator/create-single`, {
+        // ファイルリスト取得
+        const listRes = await fetch(`${apiUrl}/api/streamlined-creator/file-list`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            gigafileUrl: validUrls[i],
-            advertiserId: selectedAdvertiserId,
-            appeal,
-            lpNumber,
-            creatorName,
-            crName: crName || undefined,
-            dailyBudget,
-            excludedAudienceIds: excludedAudienceIds.length > 0 ? excludedAudienceIds : undefined,
-            adText,
-          }),
-          signal: controller.signal,
+          body: JSON.stringify({ gigafileUrl: url }),
         });
-        clearTimeout(timeoutId);
-        const result = await res.json();
-        // 一括出稿の場合（CreateBatchResult形式）
-        if (result.totalFiles && result.results) {
-          for (const r of result.results) {
-            setDeployResults(prev => [...prev, r]);
+        const fileList = await listRes.json();
+
+        if (fileList?.files?.length > 0) {
+          // 複数ファイル: 1本ずつAPIを呼ぶ
+          for (const file of fileList.files) {
+            setCurrentDeployIndex(fileIndex);
+            try {
+              const result = await deploySingleFile({
+                gigafileUrl: url,
+                gigafileServer: fileList.server,
+                gigafileFileKey: file.file,
+              });
+              setDeployResults(prev => [...prev, result]);
+            } catch (err) {
+              setDeployResults(prev => [...prev, {
+                status: 'FAILED' as const,
+                error: err instanceof Error ? err.message : '通信エラー',
+                failedStep: 'NETWORK',
+              }]);
+            }
+            fileIndex++;
           }
         } else {
-          setDeployResults(prev => [...prev, result]);
+          // 単一ファイル or リスト取得失敗: そのまま出稿
+          setCurrentDeployIndex(fileIndex);
+          try {
+            const result = await deploySingleFile({ gigafileUrl: url });
+            setDeployResults(prev => [...prev, result]);
+          } catch (err) {
+            setDeployResults(prev => [...prev, {
+              status: 'FAILED' as const,
+              error: err instanceof Error ? err.message : '通信エラー',
+              failedStep: 'NETWORK',
+            }]);
+          }
+          fileIndex++;
         }
       } catch (err) {
         setDeployResults(prev => [...prev, {
           status: 'FAILED' as const,
-          error: err instanceof Error ? err.message : '通信エラー',
-          failedStep: 'NETWORK',
+          error: err instanceof Error ? err.message : 'ファイルリスト取得エラー',
+          failedStep: 'FILE_LIST',
         }]);
+        fileIndex++;
       }
     }
 
