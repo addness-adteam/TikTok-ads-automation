@@ -62,11 +62,11 @@ export class StreamlinedCreatorService {
   async createSingle(input: CreateSingleInput): Promise<CreateSingleResult | CreateBatchResult> {
     this.logger.log(`ワンストップ出稿開始: ${input.gigafileUrl} → ${input.advertiserId}`);
 
-    // ギガファイル便に複数ファイルがある場合は一括出稿に切り替え
-    const allVideos = await this.gigafileService.downloadAllVideos(input.gigafileUrl);
-    if (allVideos.length > 1) {
-      this.logger.log(`複数ファイル検出（${allVideos.length}本）→ 一括出稿に切り替え`);
-      return this.createBatchFromVideos(allVideos, input);
+    // ギガファイル便のファイルリストを取得（DLはまだしない）
+    const fileList = await this.gigafileService.getFileList(input.gigafileUrl);
+    if (fileList && fileList.files.length > 1) {
+      this.logger.log(`複数ファイル検出（${fileList.files.length}本）→ 1本ずつDL&出稿`);
+      return this.createBatchSequential(fileList, input);
     }
 
     let currentStep = 'GIGAFILE_DOWNLOAD';
@@ -90,9 +90,9 @@ export class StreamlinedCreatorService {
         throw new Error(`アカウント ${input.advertiserId} のIdentity IDが未設定です`);
       }
 
-      // 1. ギガファイル便から動画DL（既にDL済み）
+      // 1. ギガファイル便から動画DL（1本のみ）
       currentStep = 'GIGAFILE_DOWNLOAD';
-      const { buffer, filename } = allVideos[0];
+      const { buffer, filename } = await this.gigafileService.downloadVideo(input.gigafileUrl);
       this.logger.log(`動画DL完了: ${filename} (${(buffer.length / 1024 / 1024).toFixed(2)}MB)`);
 
       // DLバリデーション: 1MB未満は動画ではなくHTMLやエラーレスポンスの可能性
@@ -247,8 +247,137 @@ export class StreamlinedCreatorService {
    */
   async createBatch(input: CreateBatchInput): Promise<CreateBatchResult> {
     this.logger.log(`一括出稿開始: ${input.gigafileUrl} → ${input.advertiserId}`);
-    const videos = await this.gigafileService.downloadAllVideos(input.gigafileUrl);
-    return this.createBatchFromVideos(videos, input);
+    const fileList = await this.gigafileService.getFileList(input.gigafileUrl);
+    if (!fileList) {
+      return { totalFiles: 0, success: 0, failed: 1, results: [{ status: 'FAILED', error: 'ファイル情報を取得できません' }] };
+    }
+    return this.createBatchSequential(fileList, input);
+  }
+
+  /**
+   * 1本ずつDL→出稿→メモリ解放（OOM防止）
+   */
+  private async createBatchSequential(
+    fileList: { server: string; files: { file: string; size: number }[] },
+    input: CreateSingleInput | CreateBatchInput,
+  ): Promise<CreateBatchResult> {
+    const { server, files } = fileList;
+    this.logger.log(`${files.length}本を1本ずつDL&出稿 (server: ${server})`);
+
+    const results: CreateSingleResult[] = [];
+    let success = 0;
+    let failed = 0;
+
+    for (let i = 0; i < files.length; i++) {
+      const fileEntry = files[i];
+      this.logger.log(`[${i + 1}/${files.length}] DL中: ${fileEntry.file}`);
+
+      let currentStep = 'GIGAFILE_DOWNLOAD';
+      try {
+        // 1本だけDL
+        const { buffer, filename } = await this.gigafileService.downloadSingleFile(server, fileEntry.file);
+        this.logger.log(`[${i + 1}/${files.length}] DL完了: ${filename} (${(buffer.length / 1024 / 1024).toFixed(1)}MB)`);
+
+        // DLバリデーション
+        if (buffer.length < 1024 * 1024) {
+          const preview = buffer.toString('utf-8', 0, Math.min(500, buffer.length));
+          if (preview.includes('<html') || preview.includes('<!DOCTYPE')) {
+            throw new Error(`動画${i + 1}: HTMLがDLされました（${buffer.length}bytes）`);
+          }
+        }
+
+        const token = await this.getAccessToken(input.advertiserId);
+        const advertiser = await this.prisma.advertiser.findUnique({
+          where: { tiktokAdvertiserId: input.advertiserId },
+          include: { appeal: true },
+        });
+        if (!advertiser || !advertiser.pixelId || !advertiser.identityId) {
+          throw new Error(`アカウント設定不備: ${input.advertiserId}`);
+        }
+
+        // 動画アップロード
+        currentStep = 'VIDEO_UPLOAD';
+        const videoId = await this.tiktokService.uploadVideoToAccount(
+          input.advertiserId, token, buffer, filename,
+        );
+
+        // ※ bufferはここで参照を切る（GCに任せる）
+
+        // 動画処理待ち
+        currentStep = 'VIDEO_PROCESSING';
+        const videoInfo = await this.tiktokService.waitForVideoReady(input.advertiserId, token, videoId);
+        if (!videoInfo) throw new Error(`動画 ${videoId} の処理がタイムアウト`);
+
+        // サムネイル
+        currentStep = 'THUMBNAIL_UPLOAD';
+        const thumbnailImageId = await this.tiktokService.uploadVideoThumbnail(input.advertiserId, token, videoId);
+
+        // UTAGE登録経路
+        currentStep = 'UTAGE_CREATE';
+        const utageResult = await this.utageService.createRegistrationPathAndGetUrl(input.appeal, input.lpNumber);
+
+        // 広告名（CR名: ユーザー入力 or ファイル名から自動抽出）
+        const effectiveCrName = input.crName || this.extractCrNameFromFilename(filename);
+        const adName = this.generateAdName(input.creatorName, effectiveCrName, input.lpNumber, utageResult.crNumber);
+        const dailyBudget = input.dailyBudget || DEFAULT_BUDGET[input.appeal] || 3000;
+        const adText = input.adText || AD_TEXT[input.appeal] || AD_TEXT['AI'];
+
+        // キャンペーン作成
+        currentStep = 'CAMPAIGN_CREATE';
+        const campaignResp = await this.tiktokService.createCampaign(
+          input.advertiserId, token, adName, 'LEAD_GENERATION', 'BUDGET_MODE_INFINITE', undefined, advertiser.id,
+        );
+        const campaignId = String(campaignResp.data?.campaign_id);
+
+        // 広告グループ作成
+        currentStep = 'ADGROUP_CREATE';
+        const targeting: any = {
+          location_ids: ['1861060'], age_groups: TARGET_AGE_GROUPS, gender: 'GENDER_UNLIMITED', languages: ['ja'],
+        };
+        if (input.excludedAudienceIds?.length) {
+          targeting.excluded_custom_audiences = input.excludedAudienceIds;
+        }
+        const adgroupResp = await this.tiktokService.createAdGroup(
+          input.advertiserId, campaignId, this.generateAdGroupName(),
+          {
+            placementType: 'PLACEMENT_TYPE_NORMAL', placements: ['PLACEMENT_TIKTOK'],
+            budgetMode: 'BUDGET_MODE_DYNAMIC_DAILY_BUDGET', budget: dailyBudget,
+            bidType: 'BID_TYPE_NO_BID', optimizationGoal: 'CONVERT',
+            pixelId: advertiser.pixelId, optimizationEvent: 'ON_WEB_REGISTER',
+            targeting, scheduleStartTime: this.getScheduleStartTime(),
+          }, token,
+        );
+        const adgroupId = String(adgroupResp.data?.adgroup_id);
+
+        // 広告作成
+        currentStep = 'AD_CREATE';
+        const landingPageUrl = this.buildLandingPageUrl(utageResult.destinationUrl);
+        const adResp = await this.tiktokService.createAd(
+          input.advertiserId, adgroupId, adName,
+          {
+            identity: advertiser.identityId, identityType: 'BC_AUTH_TT',
+            identityAuthorizedBcId: advertiser.identityAuthorizedBcId || undefined,
+            videoId, imageIds: [thumbnailImageId], adText, callToAction: 'LEARN_MORE', landingPageUrl,
+          }, token,
+        );
+        const adId = String(adResp.data?.ad_ids?.[0] || adResp.data?.ad_id);
+
+        this.logger.log(`[${i + 1}/${files.length}] 出稿完了: ${adName} (ad_id: ${adId})`);
+        results.push({
+          status: 'SUCCESS', adName, adId, campaignId, adgroupId,
+          crNumber: utageResult.crNumber, utagePath: utageResult.registrationPath, destinationUrl: utageResult.destinationUrl,
+        });
+        success++;
+      } catch (error) {
+        const errorMsg = error instanceof Error ? error.message : String(error);
+        this.logger.error(`[${i + 1}/${files.length}] 出稿失敗 (${currentStep}): ${errorMsg}`);
+        results.push({ status: 'FAILED', error: errorMsg, failedStep: currentStep });
+        failed++;
+      }
+    }
+
+    this.logger.log(`一括出稿完了: ${success}成功 / ${failed}失敗 (全${files.length}本)`);
+    return { totalFiles: files.length, success, failed, results };
   }
 
   /**

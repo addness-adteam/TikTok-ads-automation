@@ -82,6 +82,26 @@ export class GigafileService {
   }
 
   /**
+   * ギガファイル便URLのファイル一覧を取得（DLはしない、メタ情報のみ）
+   */
+  async getFileList(gigafileUrl: string): Promise<{ server: string; files: { file: string; size: number }[] } | null> {
+    const html = await this.fetchPage(gigafileUrl);
+    const info = this.parsePageInfo(html);
+    if (!info) return null;
+    if (info.isMultiFile) {
+      return { server: info.server, files: info.files };
+    }
+    return { server: info.server, files: [{ file: info.fileKey, size: 0 }] };
+  }
+
+  /**
+   * 個別ファイルキーから1本だけDL
+   */
+  async downloadSingleFile(server: string, fileKey: string): Promise<{ buffer: Buffer; filename: string }> {
+    return this.downloadFileWithSession(server, fileKey);
+  }
+
+  /**
    * セッションcookieを取得してからDL（ギガファイル便の正規フロー）
    * 1. 個別ファイルページにGET → gfsid cookieを取得
    * 2. download.php?file=xxx にcookie付きGET → バイナリ取得
