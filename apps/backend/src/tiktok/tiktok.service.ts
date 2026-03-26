@@ -2594,11 +2594,17 @@ export class TiktokService {
     accessToken: string,
     videoId: string,
   ): Promise<string> {
-    // 動画情報からcover_urlを取得
-    const videos = await this.getVideoInfo(advertiserId, accessToken, [videoId]);
-    const coverUrl = videos[0]?.video_cover_url;
+    // 動画情報からcover_urlを取得（リトライあり: TikTok側の処理完了を待つ）
+    let coverUrl: string | undefined;
+    for (let attempt = 0; attempt < 6; attempt++) {
+      const videos = await this.getVideoInfo(advertiserId, accessToken, [videoId]);
+      coverUrl = videos[0]?.video_cover_url || videos[0]?.poster_url;
+      if (coverUrl) break;
+      this.logger.log(`カバー画像URL待ち (${attempt + 1}/6): ${videoId}`);
+      await new Promise(r => setTimeout(r, 5000 * (attempt + 1))); // 5s, 10s, 15s...
+    }
     if (!coverUrl) {
-      throw new Error(`動画 ${videoId} のカバー画像URLが取得できません`);
+      throw new Error(`動画 ${videoId} のカバー画像URLが取得できません（6回リトライ後）`);
     }
 
     // カバー画像をダウンロード
