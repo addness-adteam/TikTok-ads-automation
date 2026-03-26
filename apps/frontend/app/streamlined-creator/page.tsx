@@ -279,7 +279,7 @@ export default function StreamlinedCreatorPage() {
                 <select
                   value={selectedAdvertiserId}
                   onChange={e => setSelectedAdvertiserId(e.target.value)}
-                  className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white"
+                  className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white [&>option]:text-black [&>option]:bg-white"
                 >
                   <option value="">選択してください</option>
                   {advertisers.map(a => (
