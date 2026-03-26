@@ -379,18 +379,6 @@ export default function StreamlinedCreatorPage() {
                 />
               </div>
 
-              {/* CR名 */}
-              <div>
-                <label className="block text-sm text-gray-400 mb-1">CR名（空欄なら動画ファイル名を使用）</label>
-                <input
-                  type="text"
-                  value={crName}
-                  onChange={e => setCrName(e.target.value)}
-                  placeholder="空欄 → 動画ファイル名から自動取得"
-                  className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white"
-                />
-              </div>
-
               {/* 日予算 */}
               <div>
                 <label className="block text-sm text-gray-400 mb-1">日予算 (円)</label>
@@ -543,7 +531,7 @@ export default function StreamlinedCreatorPage() {
                   </div>
                   <div className="col-span-2">
                     <span className="text-gray-400">広告名形式:</span>
-                    <span className="text-white ml-2">YYMMDD/{creatorName}/{crName || '(動画ファイル名)'}/LP{lpNumber}-CR*****</span>
+                    <span className="text-white ml-2">YYMMDD/{creatorName}/(動画ファイル名)/LP{lpNumber}-CR*****</span>
                   </div>
                   <div className="col-span-2">
                     <span className="text-gray-400">広告文:</span>
