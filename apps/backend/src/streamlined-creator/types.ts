@@ -60,6 +60,36 @@ export interface PreviewResult {
   }[];
 }
 
+/** 一括出稿リクエスト（ギガファイル便の複数ファイルを一括出稿） */
+export class CreateBatchInput {
+  /** ギガファイル便URL（複数ファイルが含まれるまとめURL） */
+  gigafileUrl: string;
+  /** 出稿先アカウントID */
+  advertiserId: string;
+  /** 導線: AI / SNS / スキルプラス */
+  appeal: string;
+  /** LP番号 (1, 2, 3...) */
+  lpNumber: number;
+  /** CR制作者名 */
+  creatorName: string;
+  /** CR名 */
+  crName: string;
+  /** 日予算 (省略時はデフォルト) */
+  dailyBudget?: number;
+  /** 除外オーディエンスID配列 */
+  excludedAudienceIds?: string[];
+  /** 広告文（省略時はデフォルト） */
+  adText?: string;
+}
+
+/** 一括出稿結果 */
+export interface CreateBatchResult {
+  totalFiles: number;
+  success: number;
+  failed: number;
+  results: CreateSingleResult[];
+}
+
 /** カスタムオーディエンス */
 export interface CustomAudience {
   custom_audience_id: string;

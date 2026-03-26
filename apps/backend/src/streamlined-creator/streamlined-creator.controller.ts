@@ -3,7 +3,7 @@
  */
 import { Controller, Get, Post, Body, Query, Logger } from '@nestjs/common';
 import { StreamlinedCreatorService } from './streamlined-creator.service';
-import { CreateSingleInput, PreviewInput } from './types';
+import { CreateSingleInput, CreateBatchInput, PreviewInput } from './types';
 
 @Controller('api/streamlined-creator')
 export class StreamlinedCreatorController {
@@ -39,5 +39,15 @@ export class StreamlinedCreatorController {
   async createSingle(@Body() input: CreateSingleInput) {
     this.logger.log(`ワンストップ出稿: ${input.gigafileUrl} → ${input.advertiserId}`);
     return this.service.createSingle(input);
+  }
+
+  /**
+   * ギガファイル便の複数動画を一括出稿（各動画ごとに1-1-1）
+   * POST /api/streamlined-creator/create-batch
+   */
+  @Post('create-batch')
+  async createBatch(@Body() input: CreateBatchInput) {
+    this.logger.log(`一括出稿: ${input.gigafileUrl} → ${input.advertiserId}`);
+    return this.service.createBatch(input);
   }
 }
