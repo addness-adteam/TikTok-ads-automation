@@ -1091,7 +1091,6 @@ export class TiktokService {
         video_download_disabled: true, // Disable video downloads
         click_attribution_window: 'SEVEN_DAYS', // 7-day click attribution
         view_attribution_window: 'ONE_DAY', // 1-day view attribution
-        brand_safety_type: 'STANDARD_INVENTORY', // Standard brand safety
       };
 
       if (options.bidPrice) {
