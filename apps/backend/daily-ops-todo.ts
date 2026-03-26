@@ -576,7 +576,7 @@ function analyzeRedeployCandidates(reportData: any[], ads: any[], indResMap?: Ma
           category: '① 再出稿',
           priority: effectiveIndRes > 0 ? 'HIGH' : 'MEDIUM',
           action: `${crDisplayLabel}を${pauseRow.account}に再出稿`,
-          detail: `過去実績: 7日CV=${bestDay.sevenDayCV}, CPA=¥${bestDay.sevenDayCPA.toFixed(0)}, 個別予約=${effectiveIndRes}件${bestDay.sevenDayIndResCPO > 0 ? ` (CPO ¥${bestDay.sevenDayIndResCPO.toFixed(0)})` : ''}`,
+          detail: `過去実績: 7日CV=${bestDay.sevenDayCV}, CPA=¥${bestDay.sevenDayCPA.toFixed(0)}, 個別予約=${effectiveIndRes}件${bestDay.sevenDayIndResCPO > 0 ? ` (個別予約CPO ¥${bestDay.sevenDayIndResCPO.toFixed(0)})` : ''}`,
           adName: pauseRow.adName,
           adId,
           account: pauseRow.account,
@@ -1100,14 +1100,26 @@ async function analyzeRecentIndividualReservationCPO(
     const adParts = displayAdName.split('/');
     const crDisplayName = adParts.length >= 3 ? `${adParts[1]}/${adParts[2]}` : displayAdName;
 
-    // このCRがどのアカウントに展開済みかチェック
+    // このCRがどのアカウントに展開済みかチェック（クリエイティブ名ベース）
+    // 広告名: YYMMDD/制作者名/CR名/LP-CR番号 → 制作者名/CR名が同じ＋出稿日が同日以降なら展開済み
     const deployedAccounts = new Set<string>();
-    for (const ad of ads) {
-      const adLpCr = extractLPCRFromAdName(ad.name || '');
-      const advId = ad.adGroup?.campaign?.advertiser?.tiktokAdvertiserId || '';
-      const adAppeal = ACCOUNT_APPEAL[advId];
-      if (adLpCr === lpCr && adAppeal === appeal) {
-        deployedAccounts.add(ACCOUNT_NAMES[advId] || advId);
+    const sourceCrName = adParts.length >= 3 ? `${adParts[1]}/${adParts[2]}` : null;
+    const sourceDate = adParts.length >= 1 ? adParts[0] : '';
+    if (sourceCrName) {
+      for (const ad of ads) {
+        if (!ad.name) continue;
+        const otherParts = ad.name.split('/');
+        if (otherParts.length < 3) continue;
+        const otherCrName = `${otherParts[1]}/${otherParts[2]}`;
+        if (otherCrName !== sourceCrName) continue;
+        const advId = ad.adGroup?.campaign?.advertiser?.tiktokAdvertiserId || '';
+        const adAppeal = ACCOUNT_APPEAL[advId];
+        if (adAppeal !== appeal) continue;
+        // 出稿日が元広告と同日以降なら横展開とみなす
+        const otherDate = otherParts[0];
+        if (otherDate >= sourceDate) {
+          deployedAccounts.add(ACCOUNT_NAMES[advId] || advId);
+        }
       }
     }
     const allAppealAccounts = Object.entries(ACCOUNT_APPEAL)
@@ -1123,7 +1135,7 @@ async function analyzeRecentIndividualReservationCPO(
       todos.push({
         category: '⑦ 個別予約CPO',
         priority: 'HIGH',
-        action: `${lpCr}「${crDisplayName}」(${appeal}): 個別予約${resData.count}件, CPO ¥${indResCPO.toFixed(0)} → KPI以内！再出稿/予算増を検討`,
+        action: `${lpCr}「${crDisplayName}」(${appeal}): 個別予約${resData.count}件, 個別予約CPO ¥${indResCPO.toFixed(0)} → KPI以内！再出稿/予算増を検討`,
         detail: `${accountStr} | 7日消化=¥${totalSpend.toFixed(0)}, 7日CV=${totalCV} | KPI上限: ¥${kpi.allowableIndResCPO?.toLocaleString() || '-'}${deployInfo ? ` | ${deployInfo}` : ''}`,
         adName: displayAdName,
         account: accountStr,
@@ -1134,7 +1146,7 @@ async function analyzeRecentIndividualReservationCPO(
       todos.push({
         category: '⑦ 個別予約CPO',
         priority: 'MEDIUM',
-        action: `${lpCr}「${crDisplayName}」(${appeal}): 個別予約${resData.count}件, CPO ¥${indResCPO.toFixed(0)} → KPI超過（様子見 or 停止検討）`,
+        action: `${lpCr}「${crDisplayName}」(${appeal}): 個別予約${resData.count}件, 個別予約CPO ¥${indResCPO.toFixed(0)} → KPI超過（様子見 or 停止検討）`,
         detail: `${accountStr} | 7日消化=¥${totalSpend.toFixed(0)}, 7日CV=${totalCV} | KPI上限: ¥${kpi.allowableIndResCPO?.toLocaleString() || '-'}${deployInfo ? ` | ${deployInfo}` : ''}`,
         adName: displayAdName,
         account: accountStr,
@@ -1500,6 +1512,37 @@ function analyzeAutoEvaluation(reportData: any[], ads: any[], utageMetrics: Acco
     const crNum = crMatch ? crMatch[1] : '?';
     const adParts = row.adName.split('/');
     const crDisplayName = adParts.length >= 3 ? `${adParts[1]}/${adParts[2]}` : row.adName;
+    const thisDate = adParts.length >= 1 ? adParts[0] : '';
+    const thisCrName = adParts.length >= 3 ? `${adParts[1]}/${adParts[2]}` : null;
+
+    // 出稿意図を判定: 同じクリエイティブ名の過去広告を検索
+    let deployIntent = '新規テスト';
+    if (thisCrName) {
+      const thisAdvId = ads.find(a => a.name === row.adName)?.adGroup?.campaign?.advertiser?.tiktokAdvertiserId || '';
+      let foundSameAccount = false;
+      let sourceAccount = '';
+      for (const otherAd of ads) {
+        if (!otherAd.name) continue;
+        const otherParts = otherAd.name.split('/');
+        if (otherParts.length < 3) continue;
+        const otherCrName = `${otherParts[1]}/${otherParts[2]}`;
+        if (otherCrName !== thisCrName) continue;
+        const otherDate = otherParts[0];
+        if (otherDate >= thisDate) continue; // 同日以降は除外（自分自身 or 後発）
+        const otherAdvId = otherAd.adGroup?.campaign?.advertiser?.tiktokAdvertiserId || '';
+        if (otherAdvId === thisAdvId) {
+          foundSameAccount = true;
+        } else {
+          sourceAccount = ACCOUNT_NAMES[otherAdvId] || otherAdvId;
+        }
+      }
+      if (foundSameAccount) {
+        deployIntent = '再出稿（同アカウントで過去に配信実績あり）';
+      } else if (sourceAccount) {
+        deployIntent = `横展開（${sourceAccount}から展開）`;
+      }
+    }
+    const intentLabel = `検証: ${deployIntent}`;
 
     // MONITORINGは配信中なので簡潔に
     if (result.verdict === 'MONITORING') {
@@ -1509,7 +1552,7 @@ function analyzeAutoEvaluation(reportData: any[], ads: any[], utageMetrics: Acco
           category: '⑩ 効果測定',
           priority: 'LOW',
           action: `${icon} CR${crNum}「${crDisplayName}」(${row.account}): 配信中 7日CV=${row.sevenDayCV}, CPA=¥${row.sevenDayCPA.toFixed(0)}`,
-          detail: `${result.interpretation}`,
+          detail: `${intentLabel} | ${result.interpretation}`,
           adName: row.adName,
           account: row.account,
           metrics: { verdict: result.verdict },
@@ -1529,7 +1572,7 @@ function analyzeAutoEvaluation(reportData: any[], ads: any[], utageMetrics: Acco
       category: '⑩ 効果測定',
       priority,
       action: `${icon} CR${crNum}「${crDisplayName}」(${row.account}): ${result.interpretation}`,
-      detail: `次アクション: 【${actionLabel}】${result.nextAction.reason}`,
+      detail: `${intentLabel} | 次アクション: 【${actionLabel}】${result.nextAction.reason}`,
       adName: row.adName,
       adId: ad.adId,
       account: row.account,
