@@ -175,6 +175,8 @@ export default function StreamlinedCreatorPage() {
     for (let i = 0; i < validUrls.length; i++) {
       setCurrentDeployIndex(i);
       try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 600000); // 10分タイムアウト
         const res = await fetch(`${apiUrl}/api/streamlined-creator/create-single`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -184,14 +186,23 @@ export default function StreamlinedCreatorPage() {
             appeal,
             lpNumber,
             creatorName,
-            crName,
+            crName: crName || undefined,
             dailyBudget,
             excludedAudienceIds: excludedAudienceIds.length > 0 ? excludedAudienceIds : undefined,
             adText,
           }),
+          signal: controller.signal,
         });
+        clearTimeout(timeoutId);
         const result = await res.json();
-        setDeployResults(prev => [...prev, result]);
+        // 一括出稿の場合（CreateBatchResult形式）
+        if (result.totalFiles && result.results) {
+          for (const r of result.results) {
+            setDeployResults(prev => [...prev, r]);
+          }
+        } else {
+          setDeployResults(prev => [...prev, result]);
+        }
       } catch (err) {
         setDeployResults(prev => [...prev, {
           status: 'FAILED' as const,
