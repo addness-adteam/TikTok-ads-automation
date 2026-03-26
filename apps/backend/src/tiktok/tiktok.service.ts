@@ -1084,7 +1084,7 @@ export class TiktokService {
         bid_type: options.bidType || 'BID_TYPE_NO_BID',
         billing_event: 'OCPM', // Optimized Cost per Mille for automatic bidding
         optimization_goal: options.optimizationGoal || 'CONVERT', // API v1.3: CONVERT for LEAD_GENERATION campaigns
-        schedule_type: 'SCHEDULE_FROM_NOW', // API v1.3: SCHEDULE_FROM_NOW for continuous campaigns
+        schedule_type: options.scheduleStartTime ? 'SCHEDULE_START_END' : 'SCHEDULE_FROM_NOW',
         schedule_start_time: options.scheduleStartTime || this.getScheduleStartTime(),
         pacing: 'PACING_MODE_SMOOTH', // Smooth pacing for better delivery
         skip_learning_phase: true, // Skip learning phase
@@ -1108,11 +1108,18 @@ export class TiktokService {
       }
 
       if (options.targeting?.included_custom_audiences) {
-        requestBody.included_custom_audiences = options.targeting.included_custom_audiences;
+        requestBody.included_custom_audiences = options.targeting.included_custom_audiences.map(
+          (id: string | { custom_audience_id: string }) =>
+            typeof id === 'string' ? { custom_audience_id: id } : id,
+        );
       }
 
       if (options.targeting?.excluded_custom_audiences) {
-        requestBody.excluded_custom_audiences = options.targeting.excluded_custom_audiences;
+        // TikTok API v1.3: オブジェクト配列 [{custom_audience_id: "xxx"}] 形式が必要
+        requestBody.excluded_custom_audiences = options.targeting.excluded_custom_audiences.map(
+          (id: string | { custom_audience_id: string }) =>
+            typeof id === 'string' ? { custom_audience_id: id } : id,
+        );
       }
 
       if (options.targeting?.spending_power) {

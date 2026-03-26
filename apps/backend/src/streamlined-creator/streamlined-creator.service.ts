@@ -191,6 +191,7 @@ export class StreamlinedCreatorService {
           pixelId: advertiser.pixelId,
           optimizationEvent: 'ON_WEB_REGISTER',
           targeting,
+          scheduleStartTime: this.getScheduleStartTime(),
         },
         token,
       );
@@ -350,6 +351,7 @@ export class StreamlinedCreatorService {
             pixelId: advertiser.pixelId,
             optimizationEvent: 'ON_WEB_REGISTER',
             targeting,
+            scheduleStartTime: this.getScheduleStartTime(),
           },
           token,
         );
@@ -410,12 +412,34 @@ export class StreamlinedCreatorService {
    * JST 15時以降 → 翌日（翌日0時から配信開始のため）
    * JST 15時前 → 当日（即配信開始のため）
    */
+  /** JST 15時以降かどうか */
+  private isAfter15Jst(): boolean {
+    const jst = new Date(Date.now() + 9 * 60 * 60 * 1000);
+    return jst.getUTCHours() >= 15;
+  }
+
   private getDeliveryDateStr(): string {
     const jst = new Date(Date.now() + 9 * 60 * 60 * 1000);
     if (jst.getUTCHours() >= 15) {
       jst.setUTCDate(jst.getUTCDate() + 1);
     }
     return `${String(jst.getUTCFullYear()).slice(2)}${String(jst.getUTCMonth() + 1).padStart(2, '0')}${String(jst.getUTCDate()).padStart(2, '0')}`;
+  }
+
+  /**
+   * 配信開始時刻を返す（UTC文字列）
+   * 15時以降 → 翌日0時JST = 当日15:00 UTC
+   * 15時前 → null（即時配信）
+   */
+  private getScheduleStartTime(): string | undefined {
+    if (!this.isAfter15Jst()) return undefined;
+    const jst = new Date(Date.now() + 9 * 60 * 60 * 1000);
+    // 翌日0時JST = 今日15:00 UTC
+    const utc = new Date(Date.now());
+    const y = utc.getUTCFullYear();
+    const m = String(utc.getUTCMonth() + 1).padStart(2, '0');
+    const d = String(utc.getUTCDate()).padStart(2, '0');
+    return `${y}-${m}-${d} 15:00:00`;
   }
 
   /**
