@@ -57,10 +57,17 @@ export class StreamlinedCreatorService {
   }
 
   /**
-   * 1動画分の出稿を実行
+   * 1動画分の出稿を実行（複数ファイルの場合は自動で一括出稿に切り替え）
    */
-  async createSingle(input: CreateSingleInput): Promise<CreateSingleResult> {
+  async createSingle(input: CreateSingleInput): Promise<CreateSingleResult | CreateBatchResult> {
     this.logger.log(`ワンストップ出稿開始: ${input.gigafileUrl} → ${input.advertiserId}`);
+
+    // ギガファイル便に複数ファイルがある場合は一括出稿に切り替え
+    const allVideos = await this.gigafileService.downloadAllVideos(input.gigafileUrl);
+    if (allVideos.length > 1) {
+      this.logger.log(`複数ファイル検出（${allVideos.length}本）→ 一括出稿に切り替え`);
+      return this.createBatchFromVideos(allVideos, input);
+    }
 
     let currentStep = 'GIGAFILE_DOWNLOAD';
 
@@ -83,9 +90,9 @@ export class StreamlinedCreatorService {
         throw new Error(`アカウント ${input.advertiserId} のIdentity IDが未設定です`);
       }
 
-      // 1. ギガファイル便から動画DL
+      // 1. ギガファイル便から動画DL（既にDL済み）
       currentStep = 'GIGAFILE_DOWNLOAD';
-      const { buffer, filename } = await this.gigafileService.downloadVideo(input.gigafileUrl);
+      const { buffer, filename } = allVideos[0];
       this.logger.log(`動画DL完了: ${filename} (${(buffer.length / 1024 / 1024).toFixed(2)}MB)`);
 
       // DLバリデーション: 1MB未満は動画ではなくHTMLやエラーレスポンスの可能性
@@ -238,16 +245,23 @@ export class StreamlinedCreatorService {
    */
   async createBatch(input: CreateBatchInput): Promise<CreateBatchResult> {
     this.logger.log(`一括出稿開始: ${input.gigafileUrl} → ${input.advertiserId}`);
-
-    // 1. ギガファイル便から全動画をDL
     const videos = await this.gigafileService.downloadAllVideos(input.gigafileUrl);
-    this.logger.log(`${videos.length}本の動画をDL完了`);
+    return this.createBatchFromVideos(videos, input);
+  }
+
+  /**
+   * DL済み動画配列から一括出稿（create-single/create-batch共通ロジック）
+   */
+  private async createBatchFromVideos(
+    videos: { buffer: Buffer; filename: string }[],
+    input: CreateSingleInput | CreateBatchInput,
+  ): Promise<CreateBatchResult> {
+    this.logger.log(`${videos.length}本の動画を一括出稿`);
 
     const results: CreateSingleResult[] = [];
     let success = 0;
     let failed = 0;
 
-    // 2. 各動画を1-1-1で出稿
     for (let i = 0; i < videos.length; i++) {
       const { buffer, filename } = videos[i];
       this.logger.log(`[${i + 1}/${videos.length}] 出稿中: ${filename} (${(buffer.length / 1024 / 1024).toFixed(1)}MB)`);
