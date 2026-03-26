@@ -1084,7 +1084,7 @@ export class TiktokService {
         bid_type: options.bidType || 'BID_TYPE_NO_BID',
         billing_event: 'OCPM', // Optimized Cost per Mille for automatic bidding
         optimization_goal: options.optimizationGoal || 'CONVERT', // API v1.3: CONVERT for LEAD_GENERATION campaigns
-        schedule_type: options.scheduleStartTime ? 'SCHEDULE_START_END' : 'SCHEDULE_FROM_NOW',
+        schedule_type: 'SCHEDULE_FROM_NOW',
         schedule_start_time: options.scheduleStartTime || this.getScheduleStartTime(),
         pacing: 'PACING_MODE_SMOOTH', // Smooth pacing for better delivery
         skip_learning_phase: true, // Skip learning phase
