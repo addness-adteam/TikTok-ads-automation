@@ -279,11 +279,12 @@ export default function StreamlinedCreatorPage() {
                 <select
                   value={selectedAdvertiserId}
                   onChange={e => setSelectedAdvertiserId(e.target.value)}
-                  className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white [&>option]:text-black [&>option]:bg-white"
+                  className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white"
+                  style={{ colorScheme: 'dark' }}
                 >
-                  <option value="">選択してください</option>
+                  <option value="" style={{ color: '#000', backgroundColor: '#fff' }}>選択してください</option>
                   {advertisers.map(a => (
-                    <option key={a.id} value={a.advertiserId}>
+                    <option key={a.id} value={a.advertiserId} style={{ color: '#000', backgroundColor: '#fff' }}>
                       {a.name} ({a.advertiserId})
                     </option>
                   ))}
