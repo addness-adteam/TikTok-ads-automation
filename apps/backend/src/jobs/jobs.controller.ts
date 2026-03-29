@@ -459,6 +459,8 @@ export class JobsController {
                 objectiveType: campaign.objective_type,
                 budgetMode: campaign.budget_mode,
                 budget: campaign.budget || null,
+                budgetOptimizeOn: campaign.budget_optimize_on === true || campaign.budget_optimize_on === 'ON',
+                initialBudget: campaign.budget || null,
                 status: campaign.operation_status,
               },
               update: {
@@ -466,6 +468,7 @@ export class JobsController {
                 objectiveType: campaign.objective_type,
                 budgetMode: campaign.budget_mode,
                 budget: campaign.budget || null,
+                budgetOptimizeOn: campaign.budget_optimize_on === true || campaign.budget_optimize_on === 'ON',
                 status: campaign.operation_status,
               },
             });

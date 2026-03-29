@@ -1032,29 +1032,34 @@ export class BudgetOptimizationV2Service {
       }
     }
 
-    // CBO広告用: campaign予算をバッチ取得（Smart+のみ — 通常広告はCBOなし）
+    // キャンペーン情報をバッチ取得（CBO検出 + キャンペーン予算取得）
+    // ※ budget_optimize_onはキャンペーンレベルのプロパティ。Smart+ ad APIには含まれないため
+    //   キャンペーンAPIから取得してCBOを正しく検出する
     const campaignBudgetMap = new Map<string, number>();
-    const cboAds = smartPlusRawAds.filter((ad: any) => ad.budget_optimize_on === true || ad.budget_optimize_on === 'ON');
-    const cboCampaignIds = [...new Set(cboAds.map((ad: any) => ad.campaign_id).filter(Boolean))] as string[];
-    if (cboCampaignIds.length > 0) {
-      for (const campaignId of cboCampaignIds) {
-        try {
-          const campaign = await this.tiktokService.getCampaign(advertiserId, accessToken, campaignId);
-          if (campaign && campaign.budget) {
-            campaignBudgetMap.set(campaignId, parseFloat(campaign.budget));
+    const campaignCBOMap = new Map<string, boolean>();
+    if (campaignIds.length > 0) {
+      try {
+        const campaignResponse = await this.tiktokService.getCampaigns(advertiserId, accessToken, campaignIds as string[]);
+        const campaigns = campaignResponse.data?.list || [];
+        for (const camp of campaigns) {
+          const campId = camp.campaign_id;
+          const isCBO = camp.budget_optimize_on === true || camp.budget_optimize_on === 'ON';
+          campaignCBOMap.set(campId, isCBO);
+          if (isCBO && camp.budget) {
+            campaignBudgetMap.set(campId, parseFloat(camp.budget));
           }
-        } catch (error) {
-          this.logger.error(`[V2] Failed to fetch campaign budget for ${campaignId}: ${error.message}`);
         }
+        this.logger.log(`[V2] Fetched ${campaigns.length} campaigns, CBO: ${[...campaignCBOMap.values()].filter(v => v).length}, with budget: ${campaignBudgetMap.size}`);
+      } catch (error) {
+        this.logger.error(`[V2] Failed to fetch campaigns: ${error.message}`);
       }
-      this.logger.log(`[V2] Fetched campaign budgets: ${campaignBudgetMap.size} campaigns with budget`);
     }
 
     // === Smart+広告をV2SmartPlusAdに変換 ===
     const smartPlusAds: V2SmartPlusAd[] = smartPlusRawAds.map((ad: any) => {
       const adName = ad.ad_name || '';
       const validation = validateAdNameFormat(adName);
-      const isCBO = ad.budget_optimize_on === true || ad.budget_optimize_on === 'ON';
+      const isCBO = campaignCBOMap.get(ad.campaign_id) || false;
 
       let dailyBudget = 0;
       if (isCBO) {
@@ -1760,6 +1765,22 @@ export class BudgetOptimizationV2Service {
       this.logger.log(`[V2-RESET] Found initialBudget for ${adgroupInitialBudgets.size}/${adgroupTiktokIds.length} adgroups`);
     }
 
+    // CBO広告用: campaignIdからDBのinitialBudget（入稿時予算）を取得
+    const campaignTiktokIds = [...new Set(activeAds.filter(ad => ad.isCBO).map(ad => ad.campaignId).filter(Boolean))];
+    const campaignInitialBudgets = new Map<string, number>();
+    if (campaignTiktokIds.length > 0) {
+      const campaigns = await this.prisma.campaign.findMany({
+        where: { tiktokId: { in: campaignTiktokIds } },
+        select: { tiktokId: true, initialBudget: true },
+      });
+      for (const camp of campaigns) {
+        if (camp.initialBudget != null) {
+          campaignInitialBudgets.set(camp.tiktokId, camp.initialBudget);
+        }
+      }
+      this.logger.log(`[V2-RESET] Found initialBudget for ${campaignInitialBudgets.size}/${campaignTiktokIds.length} CBO campaigns`);
+    }
+
     const adResults: BudgetResetAdResult[] = [];
     // 同一entity (campaign/adgroup) の重複リセットを防止
     const processedEntities = new Set<string>();
@@ -1776,7 +1797,9 @@ export class BudgetOptimizationV2Service {
       processedEntities.add(entityKey);
 
       // リセット先予算を決定: initialBudget（入稿時予算）があればそれを使い、なければデフォルト予算
-      const resetBudget = adgroupInitialBudgets.get(ad.adgroupId) ?? defaultBudget;
+      const resetBudget = ad.isCBO
+        ? (campaignInitialBudgets.get(ad.campaignId) ?? defaultBudget)
+        : (adgroupInitialBudgets.get(ad.adgroupId) ?? defaultBudget);
 
       // 既にリセット先予算と同じ場合はスキップ
       if (ad.dailyBudget === resetBudget) {
