@@ -24,6 +24,7 @@ import {
   DAILY_REPORT_SHEET_NAME,
   INDIVIDUAL_RESERVATION_SPREADSHEET_ID,
   INDIVIDUAL_RESERVATION_CONFIG,
+  WINNING_CR_BUDGET_TIER,
   detectChannelType,
   usesFrontCPO,
   type ChannelType,
@@ -771,6 +772,19 @@ export class BudgetOptimizationV2Service {
       }
       newBudget = budgetCap;
       reason += ` → AdBudgetCap ¥${budgetCap} で制限`;
+    }
+
+    // グローバル日予算上限チェック（30万円）
+    if (newBudget > WINNING_CR_BUDGET_TIER.TIER3_MAX) {
+      if (currentBudget >= WINNING_CR_BUDGET_TIER.TIER3_MAX) {
+        return {
+          ...base,
+          action: 'CONTINUE',
+          reason: `グローバル日予算上限 ¥${WINNING_CR_BUDGET_TIER.TIER3_MAX} に到達済み`,
+        };
+      }
+      newBudget = WINNING_CR_BUDGET_TIER.TIER3_MAX;
+      reason += ` → グローバル上限 ¥${WINNING_CR_BUDGET_TIER.TIER3_MAX} で制限`;
     }
 
     // TikTok API制限チェック

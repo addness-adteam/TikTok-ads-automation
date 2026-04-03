@@ -151,8 +151,7 @@ export class CreatorStopRateService {
       where: {
         entityType: 'AD',
         entityId: { in: tiktokIds },
-        action: 'PAUSE',
-        source: { in: ['OPTIMIZATION', 'BUDGET_OPTIMIZATION_V2'] },
+        action: { in: ['PAUSE', 'INTRADAY_PAUSE'] },
       },
       select: {
         entityId: true,
@@ -214,7 +213,7 @@ export class CreatorStopRateService {
       }
 
       const isPaused =
-        pausedAdMap.has(ad.tiktokId) || ad.status === 'DISABLE';
+        pausedAdMap.has(ad.tiktokId) || ad.status.includes('DISABLE');
       const pauseDate = pausedAdMap.has(ad.tiktokId)
         ? pausedAdMap.get(ad.tiktokId)!
         : null;

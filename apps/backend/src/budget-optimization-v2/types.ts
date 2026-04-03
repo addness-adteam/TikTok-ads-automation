@@ -27,7 +27,7 @@ export const BUDGET_TIER_MIN_OPTS = {
 export const WINNING_CR_BUDGET_TIER = {
   TIER1_MAX: 80_000,    // 40,000〜80,000円
   TIER2_MAX: 150_000,   // 80,000〜150,000円
-  // 150,000円超: 上限なし
+  TIER3_MAX: 300_000,   // 150,000〜300,000円（グローバル上限）
 } as const;
 
 export const WINNING_CR_BUDGET_TIER_MIN_OPTS = {
