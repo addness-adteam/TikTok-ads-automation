@@ -213,8 +213,11 @@ export class CreatorStopRateService {
         crMap.set(crName, []);
       }
 
-      const isPaused = pausedAdMap.has(ad.tiktokId);
-      const pauseDate = isPaused ? pausedAdMap.get(ad.tiktokId)! : null;
+      const isPaused =
+        pausedAdMap.has(ad.tiktokId) || ad.status === 'DISABLE';
+      const pauseDate = pausedAdMap.has(ad.tiktokId)
+        ? pausedAdMap.get(ad.tiktokId)!
+        : null;
 
       crMap.get(crName)!.push({
         adName: ad.name,
