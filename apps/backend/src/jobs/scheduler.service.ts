@@ -186,6 +186,7 @@ export class SchedulerService implements OnModuleInit {
           // Smart+ 広告の手動設定名を取得するためのマップを作成
           // ad/get APIが返すsmart_plus_ad_idをキーに、正しい広告名を取得
           const smartPlusAdNameMap = new Map<string, string>();
+          const smartPlusAdStatusMap = new Map<string, string>();
           try {
             const smartPlusAdsForNames = await this.tiktokService.getAllSmartPlusAds(
               token.advertiserId,
@@ -195,8 +196,11 @@ export class SchedulerService implements OnModuleInit {
               if (spAd.smart_plus_ad_id && spAd.ad_name) {
                 smartPlusAdNameMap.set(String(spAd.smart_plus_ad_id), spAd.ad_name);
               }
+              if (spAd.smart_plus_ad_id && spAd.operation_status) {
+                smartPlusAdStatusMap.set(String(spAd.smart_plus_ad_id), spAd.operation_status);
+              }
             }
-            this.logger.log(`Built Smart+ ad name map with ${smartPlusAdNameMap.size} entries`);
+            this.logger.log(`Built Smart+ ad name map with ${smartPlusAdNameMap.size} entries, status map with ${smartPlusAdStatusMap.size} entries`);
           } catch (error) {
             this.logger.warn(`Failed to fetch Smart+ ads for name mapping: ${error.message}`);
           }
@@ -267,10 +271,22 @@ export class SchedulerService implements OnModuleInit {
             const adNameToUse = isSmartPlusAd
               ? (smartPlusAdNameMap.get(String(ad.smart_plus_ad_id)) || ad.ad_name)
               : ad.ad_name;
+            // Smart+広告は smart_plus/ad/get APIのステータスを使用（親広告のステータスではなく素材個別のステータス）
+            const statusToUse = isSmartPlusAd
+              ? (smartPlusAdStatusMap.get(String(ad.smart_plus_ad_id)) || ad.operation_status)
+              : ad.operation_status;
 
             if (isSmartPlusAd) {
-              this.logger.debug(`Smart+ ad detected: ad_id=${ad.ad_id}, smart_plus_ad_id=${ad.smart_plus_ad_id}, name=${adNameToUse}`);
+              this.logger.debug(`Smart+ ad detected: ad_id=${ad.ad_id}, smart_plus_ad_id=${ad.smart_plus_ad_id}, name=${adNameToUse}, status=${statusToUse}`);
             }
+
+            // 手動停止検知: upsert前に既存レコードのstatusを確認
+            const existingAd = await this.prisma.ad.findUnique({
+              where: { tiktokId: tiktokIdToUse },
+              select: { status: true },
+            });
+            const wasEnabled = existingAd && !existingAd.status.includes('DISABLE');
+            const isNowDisabled = statusToUse.includes('DISABLE');
 
             await this.prisma.ad.upsert({
               where: { tiktokId: tiktokIdToUse },
@@ -283,7 +299,7 @@ export class SchedulerService implements OnModuleInit {
                 callToAction: ad.call_to_action,
                 landingPageUrl: ad.landing_page_url,
                 displayName: ad.identity_id,
-                status: ad.operation_status,
+                status: statusToUse,
                 reviewStatus: ad.app_download_status || 'APPROVED',
               },
               update: {
@@ -292,10 +308,27 @@ export class SchedulerService implements OnModuleInit {
                 callToAction: ad.call_to_action,
                 landingPageUrl: ad.landing_page_url,
                 displayName: ad.identity_id,
-                status: ad.operation_status,
+                status: statusToUse,
                 reviewStatus: ad.app_download_status || 'APPROVED',
               },
             });
+
+            // ENABLE → DISABLE に変わった場合、ChangeLogに手動停止を記録
+            if (wasEnabled && isNowDisabled) {
+              await this.prisma.changeLog.create({
+                data: {
+                  entityType: 'AD',
+                  entityId: tiktokIdToUse,
+                  action: 'PAUSE',
+                  source: 'MANUAL',
+                  reason: `手動停止検知 (${existingAd.status} → ${statusToUse})`,
+                  beforeData: { status: existingAd.status },
+                  afterData: { status: statusToUse },
+                },
+              });
+              this.logger.log(`手動停止検知: ${adNameToUse} (${tiktokIdToUse}): ${existingAd.status} → ${statusToUse}`);
+            }
+
             adsSynced++;
           }
 
