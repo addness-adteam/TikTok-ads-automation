@@ -6,6 +6,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { TiktokService } from '../tiktok/tiktok.service';
 import { UtageService } from '../utage/utage.service';
+import { DEEP_FUNNEL_CONFIG } from '../utage/utage.types';
 import { GigafileService } from './gigafile.service';
 import { AD_TEXT, TARGET_AGE_GROUPS, DEFAULT_BUDGET, ADVERTISER_APPEAL_MAP } from './constants';
 import {
@@ -200,6 +201,7 @@ export class StreamlinedCreatorService {
           optimizationGoal: 'CONVERT',
           pixelId: advertiser.pixelId,
           optimizationEvent: 'ON_WEB_REGISTER',
+          deepExternalAction: DEEP_FUNNEL_CONFIG[input.appeal]?.deepExternalAction,
           targeting,
           scheduleStartTime: this.getScheduleStartTime(),
         },
@@ -354,6 +356,7 @@ export class StreamlinedCreatorService {
             budgetMode: 'BUDGET_MODE_DYNAMIC_DAILY_BUDGET', budget: dailyBudget,
             bidType: 'BID_TYPE_NO_BID', optimizationGoal: 'CONVERT',
             pixelId: advertiser.pixelId, optimizationEvent: 'ON_WEB_REGISTER',
+            deepExternalAction: DEEP_FUNNEL_CONFIG[input.appeal]?.deepExternalAction,
             targeting, scheduleStartTime: this.getScheduleStartTime(),
           }, token,
         );
@@ -489,6 +492,7 @@ export class StreamlinedCreatorService {
             optimizationGoal: 'CONVERT',
             pixelId: advertiser.pixelId,
             optimizationEvent: 'ON_WEB_REGISTER',
+            deepExternalAction: DEEP_FUNNEL_CONFIG[input.appeal]?.deepExternalAction,
             targeting,
             scheduleStartTime: this.getScheduleStartTime(),
           },

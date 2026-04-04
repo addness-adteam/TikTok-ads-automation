@@ -6,7 +6,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { TiktokService } from '../tiktok/tiktok.service';
 import { UtageService } from '../utage/utage.service';
-import { DEFAULT_DAILY_BUDGET } from '../utage/utage.types';
+import { DEFAULT_DAILY_BUDGET, DEEP_FUNNEL_CONFIG } from '../utage/utage.types';
 import {
   CrossDeployInput,
   CrossDeployResult,
@@ -254,6 +254,7 @@ export class CrossDeployService {
       await this.updateLog(log.id, { status: 'CAMPAIGN_CREATED', campaignId });
 
       // v. 広告グループ作成
+      const deepFunnel = DEEP_FUNNEL_CONFIG[appeal];
       const adgroupId = await this.tiktokService.createSmartPlusAdGroup(
         targetAdvertiserId,
         targetToken,
@@ -262,6 +263,7 @@ export class CrossDeployService {
           adgroupName: this.generateAdGroupName(),
           budget: dailyBudget,
           pixelId: targetAdvertiser.pixelId!,
+          deepExternalAction: deepFunnel?.deepExternalAction,
         },
       );
       await this.updateLog(log.id, { status: 'ADGROUP_CREATED', adgroupId });

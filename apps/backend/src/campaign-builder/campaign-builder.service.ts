@@ -143,6 +143,7 @@ export class CampaignBuilderService {
     includedAudiences: string[] = [],
     excludedAudiences: string[] = [],
     accessToken: string,
+    deepExternalAction?: string,
   ) {
     this.logger.log(`Creating adgroup with pattern: ${pattern}`);
 
@@ -185,6 +186,7 @@ export class CampaignBuilderService {
         optimizationGoal: 'CONVERT', // API v1.3: CONVERT for LEAD_GENERATION campaigns
         pixelId,
         optimizationEvent,
+        deepExternalAction,
         targeting,
         scheduleStartTime: startTime,
         scheduleEndTime: undefined, // 終了時間なし

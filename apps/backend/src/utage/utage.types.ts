@@ -37,6 +37,7 @@ export const TIKTOK_FUNNEL_MAP: Record<string, Record<number, FunnelConfig>> = {
     1: { funnelId: 'dZNDzwCgHNBC', groupId: '32FwkcHtFSuj', stepId: 'wZhilaQY1Huv' },
     2: { funnelId: 'dZNDzwCgHNBC', groupId: 'dLrB2E7U7tq8', stepId: 'AhTvtpaeXyj6' },
     3: { funnelId: 'dZNDzwCgHNBC', groupId: 'L9JO3krgnNYD', stepId: '5UKZIXOKSyV4' },
+    4: { funnelId: 'dZNDzwCgHNBC', groupId: 'JBy6Obcrng4Z', stepId: 'IxX853OXYhz2' },
   },
   'スキルプラス': {
     2: { funnelId: '3lS3x3dXa6kc', groupId: 'sOiiROJBAVIu', stepId: 'doc7hffUAVTv' },
@@ -52,4 +53,10 @@ export const DEFAULT_DAILY_BUDGET: Record<string, number> = {
   'AI': 3000,
   'SNS': 3000,
   'スキルプラス': 5000,
+};
+
+// ディープファネル最適化設定（導線別）
+// AI導線: 登録最適化(ON_WEB_REGISTER) + 購入到達を加味(COMPLETE_PAYMENT)の二段階最適化
+export const DEEP_FUNNEL_CONFIG: Record<string, { deepExternalAction: string } | undefined> = {
+  'AI': { deepExternalAction: 'COMPLETE_PAYMENT' },
 };

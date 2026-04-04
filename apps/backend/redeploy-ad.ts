@@ -48,6 +48,7 @@ const TIKTOK_FUNNEL_MAP: Record<string, Record<number, { funnelId: string; group
     1: { funnelId: 'dZNDzwCgHNBC', groupId: '32FwkcHtFSuj', stepId: 'wZhilaQY1Huv' },
     2: { funnelId: 'dZNDzwCgHNBC', groupId: 'dLrB2E7U7tq8', stepId: 'AhTvtpaeXyj6' },
     3: { funnelId: 'dZNDzwCgHNBC', groupId: 'L9JO3krgnNYD', stepId: '5UKZIXOKSyV4' },
+    4: { funnelId: 'dZNDzwCgHNBC', groupId: 'JBy6Obcrng4Z', stepId: 'IxX853OXYhz2' },
   },
   'スキルプラス': {
     2: { funnelId: '3lS3x3dXa6kc', groupId: 'sOiiROJBAVIu', stepId: 'doc7hffUAVTv' },
@@ -475,7 +476,7 @@ async function createSmartPlusCampaign(advertiserId: string, adName: string): Pr
   return campaignId;
 }
 
-async function createSmartPlusAdGroup(advertiserId: string, campaignId: string, pixelId: string, dailyBudget: number, ageGroups: string[] = ['AGE_25_34', 'AGE_35_44', 'AGE_45_54']): Promise<string> {
+async function createSmartPlusAdGroup(advertiserId: string, campaignId: string, pixelId: string, dailyBudget: number, ageGroups: string[] = ['AGE_25_34', 'AGE_35_44', 'AGE_45_54'], appeal?: string): Promise<string> {
   const ageLabel = ageGroups.map(g => g.replace('AGE_', '').replace('_', '-')).join(', ');
   const excludedAudiences = EXCLUDED_AUDIENCE_MAP[advertiserId] || [];
   console.log(`7. Smart+広告グループ作成中... (日予算: ¥${dailyBudget}, 年齢: ${ageLabel}, 除外オーディエンス: ${excludedAudiences.length}件)`);
@@ -498,6 +499,7 @@ async function createSmartPlusAdGroup(advertiserId: string, campaignId: string, 
     bid_type: 'BID_TYPE_NO_BID',
     optimization_goal: 'CONVERT',
     optimization_event: 'ON_WEB_REGISTER',
+    ...(appeal === 'AI' ? { deep_external_action: 'COMPLETE_PAYMENT' } : {}),
     pixel_id: pixelId,
     promotion_type: 'LEAD_GENERATION',
     promotion_target_type: 'EXTERNAL_WEBSITE',
@@ -681,7 +683,7 @@ async function main() {
 
     // 6-8. Smart+キャンペーン → 広告グループ → 広告
     const campaignId = await createSmartPlusCampaign(advertiserId, adName);
-    const adgroupId = await createSmartPlusAdGroup(advertiserId, campaignId, advertiser.pixelId, dailyBudget, ageGroups);
+    const adgroupId = await createSmartPlusAdGroup(advertiserId, campaignId, advertiser.pixelId, dailyBudget, ageGroups, appeal);
     const adText = sourceAd.adText || DEFAULT_AD_TEXT[appeal] || '';
     const adId = await createSmartPlusAd(
       advertiserId, adgroupId, adName,

@@ -37,6 +37,7 @@ const TIKTOK_FUNNEL_MAP: Record<string, Record<number, { funnelId: string; group
     1: { funnelId: 'dZNDzwCgHNBC', groupId: '32FwkcHtFSuj', stepId: 'wZhilaQY1Huv' },
     2: { funnelId: 'dZNDzwCgHNBC', groupId: 'dLrB2E7U7tq8', stepId: 'AhTvtpaeXyj6' },
     3: { funnelId: 'dZNDzwCgHNBC', groupId: 'L9JO3krgnNYD', stepId: '5UKZIXOKSyV4' },
+    4: { funnelId: 'dZNDzwCgHNBC', groupId: 'JBy6Obcrng4Z', stepId: 'IxX853OXYhz2' },
   },
   'スキルプラス': {
     2: { funnelId: '3lS3x3dXa6kc', groupId: 'sOiiROJBAVIu', stepId: 'doc7hffUAVTv' },
@@ -127,16 +128,39 @@ async function tiktokGet(endpoint: string, params: Record<string, string>): Prom
   return data;
 }
 
-// ===== 元広告情報取得（Smart+対応） =====
+// ===== 元広告情報取得（Smart+ / 通常広告両対応） =====
 async function getSourceAdDetail(advertiserId: string, adId: string) {
   console.log('1. 元広告の情報を取得中...');
 
+  // まずSmart+ APIで取得を試みる
   const spData = await tiktokGet('/v1.3/smart_plus/ad/get/', {
     advertiser_id: advertiserId,
     filtering: JSON.stringify({ smart_plus_ad_ids: [adId] }),
   });
-  const ad = spData.data?.list?.[0];
-  if (!ad) throw new Error(`Smart+広告が見つかりません: ${adId}`);
+  let ad = spData.data?.list?.[0];
+
+  // Smart+で見つからない場合、通常広告APIにフォールバック
+  if (!ad) {
+    console.log('   Smart+広告として見つからないため、通常広告APIで取得中...');
+    const regularData = await tiktokGet('/v1.3/ad/get/', {
+      advertiser_id: advertiserId,
+      filtering: JSON.stringify({ ad_ids: [adId] }),
+      fields: JSON.stringify(['ad_id', 'ad_name', 'ad_format', 'ad_text', 'video_id', 'image_ids', 'landing_page_url']),
+    });
+    const regularAd = regularData.data?.list?.[0];
+    if (!regularAd) throw new Error(`広告が見つかりません（Smart+/通常両方）: ${adId}`);
+
+    // 通常広告のレスポンスをSmart+互換フォーマットに変換
+    const videoIds: string[] = regularAd.video_id ? [regularAd.video_id] : [];
+    const imageIds: string[] = (regularAd.image_ids || []).filter(Boolean);
+    const adTexts: string[] = regularAd.ad_text ? [regularAd.ad_text] : [];
+    const landingPageUrls: string[] = regularAd.landing_page_url ? [regularAd.landing_page_url] : [];
+
+    console.log(`   [通常広告] 広告名: ${regularAd.ad_name}`);
+    console.log(`   動画: ${videoIds.length}本, 画像: ${imageIds.length}枚`);
+
+    return { adName: regularAd.ad_name || '', videoIds, imageIds, adTexts, landingPageUrls };
+  }
 
   const adName = ad.smart_plus_ad_name || ad.ad_name || '';
   const creativeList = ad.creative_list || [];
@@ -519,17 +543,32 @@ async function createRegistrationPath(appeal: string, lpNumber: number, crNumber
 }
 
 // ===== Smart+広告作成 =====
-async function createSmartPlusCampaign(advertiserId: string, campaignName: string): Promise<string> {
+async function createSmartPlusCampaign(advertiserId: string, campaignName: string, dailyBudget?: number): Promise<string> {
   console.log('7. Smart+キャンペーン作成中...');
   const requestId = String(Date.now()) + String(Math.floor(Math.random() * 100000));
-  const data = await tiktokApi('/v1.3/smart_plus/campaign/create/', {
+
+  // budget_optimize_on: falseの権限がないアカウントはCBO有効（キャンペーン予算）で作成
+  const CBO_REQUIRED_IDS = ['7580666710525493255', '7543540381615800337']; // AI_4, SNS_3
+  const useCBO = CBO_REQUIRED_IDS.includes(advertiserId);
+
+  const params: any = {
     advertiser_id: advertiserId,
     campaign_name: campaignName,
     objective_type: 'LEAD_GENERATION',
-    budget_mode: 'BUDGET_MODE_INFINITE',
-    budget_optimize_on: false,
     request_id: requestId,
-  });
+  };
+
+  if (useCBO) {
+    params.budget_optimize_on = true;
+    params.budget_mode = 'BUDGET_MODE_DAY';
+    params.budget = dailyBudget || 3000;
+    console.log(`   CBO有効: キャンペーン日予算 ¥${params.budget}`);
+  } else {
+    params.budget_optimize_on = false;
+    params.budget_mode = 'BUDGET_MODE_INFINITE';
+  }
+
+  const data = await tiktokApi('/v1.3/smart_plus/campaign/create/', params);
   const campaignId = String(data.data.campaign_id);
   console.log(`   キャンペーンID: ${campaignId}`);
   return campaignId;
@@ -556,16 +595,21 @@ async function createSmartPlusAdGroup(
 
   console.log(`   除外オーディエンス: ${excludedAudiences.length > 0 ? excludedAudiences.join(', ') : 'なし'}`);
 
+  // CBO有効アカウント→ 広告グループは予算なし
+  const CBO_REQUIRED_IDS = ['7580666710525493255', '7543540381615800337']; // AI_4, SNS_3
+  const useCBO = CBO_REQUIRED_IDS.includes(advertiserId);
+
   const data = await tiktokApi('/v1.3/smart_plus/adgroup/create/', {
     advertiser_id: advertiserId,
     campaign_id: campaignId,
     adgroup_name: `${getJstDateStr()} 25-54`,
-    budget_mode: 'BUDGET_MODE_DYNAMIC_DAILY_BUDGET',
-    budget: budget,
+    budget_mode: useCBO ? 'BUDGET_MODE_INFINITE' : 'BUDGET_MODE_DYNAMIC_DAILY_BUDGET',
+    ...(useCBO ? {} : { budget: budget }),
     billing_event: 'OCPM',
     bid_type: 'BID_TYPE_NO_BID',
     optimization_goal: 'CONVERT',
     optimization_event: 'ON_WEB_REGISTER',
+    ...(appeal === 'AI' ? { deep_external_action: 'COMPLETE_PAYMENT' } : {}),
     pixel_id: pixelId,
     promotion_type: 'LEAD_GENERATION',
     promotion_target_type: 'EXTERNAL_WEBSITE',
@@ -713,7 +757,7 @@ async function main() {
     console.log(`   LP URL: ${landingPageUrl}\n`);
 
     // 7-9. Smart+キャンペーン → 広告グループ → 広告
-    const campaignId = await createSmartPlusCampaign(targetAdvertiserId, adName);
+    const campaignId = await createSmartPlusCampaign(targetAdvertiserId, adName, dailyBudget);
     const adgroupId = await createSmartPlusAdGroup(targetAdvertiserId, campaignId, targetAdvertiser.pixelId, dailyBudget, appeal);
     const adTexts = source.adTexts.length > 0 ? source.adTexts : [DEFAULT_AD_TEXT[appeal] || ''];
     const adId = await createSmartPlusAd(

@@ -1057,6 +1057,7 @@ export class TiktokService {
       optimizationGoal?: string;
       pixelId?: string;
       optimizationEvent?: string;
+      deepExternalAction?: string;
       targeting?: any;
       scheduleStartTime?: string;
       scheduleEndTime?: string;
@@ -1105,6 +1106,10 @@ export class TiktokService {
         // API v1.3: Use optimization_event string constant instead of conversion_id
         // For ON_WEB_REGISTER event, use the string constant directly
         requestBody.optimization_event = 'ON_WEB_REGISTER';
+      }
+
+      if (options.deepExternalAction) {
+        requestBody.deep_external_action = options.deepExternalAction;
       }
 
       if (options.targeting?.included_custom_audiences) {
@@ -2876,6 +2881,7 @@ export class TiktokService {
       budget: number;
       pixelId: string;
       scheduleStartTime?: string;
+      deepExternalAction?: string;
     },
   ): Promise<string> {
     try {
@@ -2891,6 +2897,7 @@ export class TiktokService {
         bid_type: 'BID_TYPE_NO_BID',
         optimization_goal: 'CONVERT',
         optimization_event: 'ON_WEB_REGISTER',
+        ...(params.deepExternalAction ? { deep_external_action: params.deepExternalAction } : {}),
         pixel_id: params.pixelId,
         schedule_type: 'SCHEDULE_FROM_NOW',
         schedule_start_time: params.scheduleStartTime || this.getScheduleStartTime(),
