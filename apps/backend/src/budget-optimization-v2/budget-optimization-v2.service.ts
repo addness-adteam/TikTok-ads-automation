@@ -1292,11 +1292,21 @@ export class BudgetOptimizationV2Service {
           advertiserId, accessToken, ad.campaignId, newBudget,
         );
       } else {
-        // Smart+ 非CBO: AdGroup単位で予算更新
-        await this.tiktokService.updateSmartPlusAdGroupBudgets(
-          advertiserId, accessToken,
-          [{ adgroup_id: ad.adgroupId, budget: newBudget }],
-        );
+        // Smart+ 非CBO: AdGroup単位で予算更新（失敗時は通常APIにフォールバック）
+        try {
+          await this.tiktokService.updateSmartPlusAdGroupBudgets(
+            advertiserId, accessToken,
+            [{ adgroup_id: ad.adgroupId, budget: newBudget }],
+          );
+        } catch (smartPlusError) {
+          this.logger.warn(
+            `[V2] Smart+ API failed for ${ad.adName} (${ad.adgroupId}): ${smartPlusError.message}. Falling back to regular API...`,
+          );
+          await this.tiktokService.updateAdGroup(
+            advertiserId, accessToken, ad.adgroupId, { budget: newBudget },
+          );
+          this.logger.log(`[V2] Fallback to regular API succeeded for ${ad.adName}`);
+        }
       }
 
       // ChangeLog記録
@@ -1383,10 +1393,21 @@ export class BudgetOptimizationV2Service {
           advertiserId, accessToken, ad.campaignId, newBudget,
         );
       } else {
-        await this.tiktokService.updateSmartPlusAdGroupBudgets(
-          advertiserId, accessToken,
-          [{ adgroup_id: ad.adgroupId, budget: newBudget }],
-        );
+        // Smart+ 非CBO: 失敗時は通常APIにフォールバック
+        try {
+          await this.tiktokService.updateSmartPlusAdGroupBudgets(
+            advertiserId, accessToken,
+            [{ adgroup_id: ad.adgroupId, budget: newBudget }],
+          );
+        } catch (smartPlusError) {
+          this.logger.warn(
+            `[V2] Smart+ API failed for budget decrease ${ad.adName} (${ad.adgroupId}): ${smartPlusError.message}. Falling back to regular API...`,
+          );
+          await this.tiktokService.updateAdGroup(
+            advertiserId, accessToken, ad.adgroupId, { budget: newBudget },
+          );
+          this.logger.log(`[V2] Fallback to regular API succeeded for ${ad.adName}`);
+        }
       }
 
       // ChangeLog記録
@@ -1844,10 +1865,23 @@ export class BudgetOptimizationV2Service {
               advertiserId, accessToken, ad.campaignId, resetBudget,
             );
           } else {
-            await this.tiktokService.updateSmartPlusAdGroupBudgets(
-              advertiserId, accessToken,
-              [{ adgroup_id: ad.adgroupId, budget: resetBudget }],
-            );
+            // Smart+ ABO: Smart+ APIを試し、失敗したら通常APIにフォールバック
+            try {
+              await this.tiktokService.updateSmartPlusAdGroupBudgets(
+                advertiserId, accessToken,
+                [{ adgroup_id: ad.adgroupId, budget: resetBudget }],
+              );
+            } catch (smartPlusError) {
+              this.logger.warn(
+                `[V2-RESET] Smart+ API failed for ${ad.adName} (${ad.adgroupId}): ${smartPlusError.message}. Falling back to regular API...`,
+              );
+              await this.tiktokService.updateAdGroup(
+                advertiserId, accessToken, ad.adgroupId, { budget: resetBudget },
+              );
+              this.logger.log(
+                `[V2-RESET] Fallback to regular API succeeded for ${ad.adName}`,
+              );
+            }
           }
 
           // ChangeLog記録
@@ -1879,6 +1913,25 @@ export class BudgetOptimizationV2Service {
           `[V2-RESET] ${dryRun ? '[DRY-RUN] ' : ''}RESET ${ad.adName}: ¥${ad.dailyBudget} → ¥${resetBudget}${resetBudget !== defaultBudget ? ' (入稿時予算)' : ''}`,
         );
       } catch (error) {
+        // エラー時もChangeLogに記録（サイレント失敗を防止）
+        try {
+          await withDatabaseRetry(() =>
+            this.prisma.changeLog.create({
+              data: {
+                entityType,
+                entityId,
+                action: 'RESET_BUDGET_ERROR',
+                source: 'BUDGET_RESET_MIDNIGHT',
+                beforeData: { budget: ad.dailyBudget },
+                afterData: { budget: resetBudget, error: error.message },
+                reason: `日予算リセット失敗: ¥${ad.dailyBudget} → ¥${resetBudget} (${error.message})`,
+              },
+            }),
+          );
+        } catch (logError) {
+          this.logger.error(`[V2-RESET] Failed to log error to ChangeLog: ${logError.message}`);
+        }
+
         adResults.push({
           adId: ad.adId,
           adName: ad.adName,
