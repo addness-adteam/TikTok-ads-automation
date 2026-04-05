@@ -58,3 +58,6 @@ prisma/migrations/dev.db*
 
 # Docker
 docker-compose.override.yml
+
+# Windows special files
+nul
