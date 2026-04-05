@@ -2882,10 +2882,21 @@ export class TiktokService {
       pixelId: string;
       scheduleStartTime?: string;
       deepExternalAction?: string;
+      deepFunnelOptimizationEvent?: string;
     },
   ): Promise<string> {
     try {
       this.logger.log(`Smart+広告グループ作成: ${params.adgroupName}`);
+
+      // ディープファネル最適化パラメータ
+      const deepFunnelParams = params.deepFunnelOptimizationEvent
+        ? {
+            deep_funnel_optimization_status: 'ON',
+            deep_funnel_optimization_event: params.deepFunnelOptimizationEvent,
+            deep_funnel_event_source: 'PIXEL',
+            deep_funnel_event_source_id: params.pixelId,
+          }
+        : {};
 
       const requestBody: any = {
         advertiser_id: advertiserId,
@@ -2897,7 +2908,7 @@ export class TiktokService {
         bid_type: 'BID_TYPE_NO_BID',
         optimization_goal: 'CONVERT',
         optimization_event: 'ON_WEB_REGISTER',
-        ...(params.deepExternalAction ? { deep_funnel_toggle: 'ON', deep_external_action: params.deepExternalAction } : {}),
+        ...deepFunnelParams,
         pixel_id: params.pixelId,
         schedule_type: 'SCHEDULE_FROM_NOW',
         schedule_start_time: params.scheduleStartTime || this.getScheduleStartTime(),

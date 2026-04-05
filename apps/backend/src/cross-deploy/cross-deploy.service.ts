@@ -263,7 +263,7 @@ export class CrossDeployService {
           adgroupName: this.generateAdGroupName(),
           budget: dailyBudget,
           pixelId: targetAdvertiser.pixelId!,
-          deepExternalAction: deepFunnel?.deepExternalAction,
+          deepFunnelOptimizationEvent: deepFunnel?.deepFunnelOptimizationEvent,
         },
       );
       await this.updateLog(log.id, { status: 'ADGROUP_CREATED', adgroupId });
