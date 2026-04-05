@@ -2897,7 +2897,7 @@ export class TiktokService {
         bid_type: 'BID_TYPE_NO_BID',
         optimization_goal: 'CONVERT',
         optimization_event: 'ON_WEB_REGISTER',
-        ...(params.deepExternalAction ? { deep_external_action: params.deepExternalAction } : {}),
+        ...(params.deepExternalAction ? { deep_funnel_toggle: 'ON', deep_external_action: params.deepExternalAction } : {}),
         pixel_id: params.pixelId,
         schedule_type: 'SCHEDULE_FROM_NOW',
         schedule_start_time: params.scheduleStartTime || this.getScheduleStartTime(),

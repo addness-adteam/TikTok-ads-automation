@@ -609,7 +609,7 @@ async function createSmartPlusAdGroup(
     bid_type: 'BID_TYPE_NO_BID',
     optimization_goal: 'CONVERT',
     optimization_event: 'ON_WEB_REGISTER',
-    ...(appeal === 'AI' ? { deep_external_action: 'COMPLETE_PAYMENT' } : {}),
+    ...(appeal === 'AI' ? { deep_funnel_toggle: 'ON', deep_external_action: 'COMPLETE_PAYMENT' } : {}),
     pixel_id: pixelId,
     promotion_type: 'LEAD_GENERATION',
     promotion_target_type: 'EXTERNAL_WEBSITE',
