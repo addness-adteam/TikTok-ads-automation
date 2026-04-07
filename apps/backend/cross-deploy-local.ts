@@ -609,7 +609,7 @@ async function createSmartPlusAdGroup(
     bid_type: 'BID_TYPE_NO_BID',
     optimization_goal: 'CONVERT',
     optimization_event: 'ON_WEB_REGISTER',
-    ...(appeal === 'AI' ? { deep_funnel_optimization_status: 'ON', deep_funnel_optimization_event: 'SHOPPING', deep_funnel_event_source: 'PIXEL', deep_funnel_event_source_id: pixelId } : {}),
+    ...(appeal === 'AI' ? { deep_external_action: 'COMPLETE_PAYMENT' } : {}),
     pixel_id: pixelId,
     promotion_type: 'LEAD_GENERATION',
     promotion_target_type: 'EXTERNAL_WEBSITE',
@@ -618,6 +618,7 @@ async function createSmartPlusAdGroup(
     comment_disabled: true,
     schedule_type: 'SCHEDULE_FROM_NOW',
     schedule_start_time: getScheduleStartTime(),
+    targeting_optimization_mode: 'MANUAL',
     targeting_spec: targetingSpec,
     request_id: String(Date.now()) + String(Math.floor(Math.random() * 100000)),
   });

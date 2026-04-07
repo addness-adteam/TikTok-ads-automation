@@ -508,6 +508,7 @@ async function createSmartPlusAdGroup(advertiserId: string, campaignId: string, 
     comment_disabled: true,
     schedule_type: 'SCHEDULE_FROM_NOW',
     schedule_start_time: getJstScheduleTime(),
+    targeting_optimization_mode: 'MANUAL',
     targeting_spec: targetingSpec,
     request_id: String(Date.now()) + String(Math.floor(Math.random() * 100000)),
   });

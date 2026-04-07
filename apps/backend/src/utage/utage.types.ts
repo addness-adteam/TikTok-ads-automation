@@ -56,8 +56,7 @@ export const DEFAULT_DAILY_BUDGET: Record<string, number> = {
 };
 
 // ディープファネル最適化設定（導線別）
-// AI導線: 登録最適化(ON_WEB_REGISTER) + 購入(SHOPPING)の二段階最適化
-// Upgraded Smart+ API: deep_funnel_optimization_event / deep_funnel_event_source: PIXEL
-export const DEEP_FUNNEL_CONFIG: Record<string, { deepFunnelOptimizationEvent: string } | undefined> = {
-  'AI': { deepFunnelOptimizationEvent: 'SHOPPING' },
+// AI導線: deep_external_action: COMPLETE_PAYMENT（購入最適化）
+export const DEEP_FUNNEL_CONFIG: Record<string, { deepExternalAction?: string; deepFunnelOptimizationEvent?: string } | undefined> = {
+  'AI': { deepExternalAction: 'COMPLETE_PAYMENT' },
 };
