@@ -1784,38 +1784,6 @@ export class BudgetOptimizationV2Service {
     const activeAds = await this.getActiveSmartPlusAds(advertiserId, accessToken, appeal);
     this.logger.log(`[V2-RESET] Found ${activeAds.length} active Smart+ ads`);
 
-    // 各広告のadgroupIdからDBのinitialBudget（入稿時予算）を取得
-    const adgroupTiktokIds = [...new Set(activeAds.map(ad => ad.adgroupId).filter(Boolean))];
-    const adgroupInitialBudgets = new Map<string, number>();
-    if (adgroupTiktokIds.length > 0) {
-      const adgroups = await this.prisma.adGroup.findMany({
-        where: { tiktokId: { in: adgroupTiktokIds } },
-        select: { tiktokId: true, initialBudget: true },
-      });
-      for (const ag of adgroups) {
-        if (ag.initialBudget != null) {
-          adgroupInitialBudgets.set(ag.tiktokId, ag.initialBudget);
-        }
-      }
-      this.logger.log(`[V2-RESET] Found initialBudget for ${adgroupInitialBudgets.size}/${adgroupTiktokIds.length} adgroups`);
-    }
-
-    // CBO広告用: campaignIdからDBのinitialBudget（入稿時予算）を取得
-    const campaignTiktokIds = [...new Set(activeAds.filter(ad => ad.isCBO).map(ad => ad.campaignId).filter(Boolean))];
-    const campaignInitialBudgets = new Map<string, number>();
-    if (campaignTiktokIds.length > 0) {
-      const campaigns = await this.prisma.campaign.findMany({
-        where: { tiktokId: { in: campaignTiktokIds } },
-        select: { tiktokId: true, initialBudget: true },
-      });
-      for (const camp of campaigns) {
-        if (camp.initialBudget != null) {
-          campaignInitialBudgets.set(camp.tiktokId, camp.initialBudget);
-        }
-      }
-      this.logger.log(`[V2-RESET] Found initialBudget for ${campaignInitialBudgets.size}/${campaignTiktokIds.length} CBO campaigns`);
-    }
-
     const adResults: BudgetResetAdResult[] = [];
     // 同一entity (campaign/adgroup) の重複リセットを防止
     const processedEntities = new Set<string>();
@@ -1831,10 +1799,9 @@ export class BudgetOptimizationV2Service {
       }
       processedEntities.add(entityKey);
 
-      // リセット先予算を決定: initialBudget（入稿時予算）があればそれを使い、なければデフォルト予算
-      const resetBudget = ad.isCBO
-        ? (campaignInitialBudgets.get(ad.campaignId) ?? defaultBudget)
-        : (adgroupInitialBudgets.get(ad.adgroupId) ?? defaultBudget);
+      // リセット先予算: 常にチャネルのデフォルト予算を使用
+      // ※ initialBudget はEntity Syncで増額後の値が入ることがあるため信頼しない
+      const resetBudget = defaultBudget;
 
       // 既にリセット先予算と同じ場合はスキップ
       if (ad.dailyBudget === resetBudget) {
@@ -1894,7 +1861,7 @@ export class BudgetOptimizationV2Service {
                 source: 'BUDGET_RESET_MIDNIGHT',
                 beforeData: { budget: ad.dailyBudget },
                 afterData: { budget: resetBudget },
-                reason: `日予算リセット: ¥${ad.dailyBudget} → ¥${resetBudget} (${resetBudget !== defaultBudget ? '入稿時予算' : channelType + 'デフォルト'})`,
+                reason: `日予算リセット: ¥${ad.dailyBudget} → ¥${resetBudget} (${channelType}デフォルト)`,
               },
             }),
           );
