@@ -71,7 +71,7 @@ const DEFAULT_AD_TEXT: Record<string, string> = {
 // 「TikTok用除外オーディエンス」+ AI系は「TikTokAIオプトイン（全期間）」も追加
 // ※ cross-deploy.service.ts の exclusionMap と同期すること
 const EXCLUDED_AUDIENCE_MAP: Record<string, string[]> = {
-  '7468288053866561553': ['194977234', '194405484'],  // AI_1: AIオプトイン + 除外
+  '7468288053866561553': ['194977234', '194405484', '195006413'],  // AI_1: AIオプトイン + 除外 + 債務整理類似
   '7523128243466551303': ['194977234', '194405486'],  // AI_2: AIオプトイン + 除外
   '7543540647266074641': ['194977234', '194405488'],  // AI_3: AIオプトイン + 除外
   '7580666710525493255': ['194977234', '194416060'],  // AI_4: AIオプトイン + 除外
@@ -514,6 +514,16 @@ async function createSmartPlusAdGroup(advertiserId: string, campaignId: string, 
   });
   const adgroupId = String(data.data.adgroup_id);
   console.log(`   広告グループID: ${adgroupId}`);
+
+  // 通常API側の予算を同期（BUDGET_MODE_DYNAMIC_DAILY_BUDGETのTikTok自動拡張対策）
+  try {
+    await tiktokApi('/v1.3/adgroup/update/', {
+      advertiser_id: advertiserId, adgroup_id: adgroupId, budget: dailyBudget,
+    });
+    console.log(`   通常API予算同期: ¥${dailyBudget}`);
+  } catch (e: any) {
+    console.log(`   通常API予算同期失敗（許容）: ${e.message}`);
+  }
 
   // ターゲティング検証（5秒待ってからAPIで確認）
   console.log('   ターゲティング検証中（5秒待機）...');

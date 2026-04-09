@@ -2940,6 +2940,17 @@ export class TiktokService {
       }
 
       this.logger.log(`Smart+広告グループ作成完了: ${adgroupId}`);
+
+      // Smart+のBUDGET_MODE_DYNAMIC_DAILY_BUDGETはTikTokが通常API側の予算を
+      // 自動拡張する仕様。作成直後に通常APIで同じ予算を書き込んで初期値を固定する。
+      try {
+        await this.updateAdGroup(advertiserId, accessToken, String(adgroupId), { budget: params.budget });
+        this.logger.log(`Smart+広告グループ通常API予算同期完了: ¥${params.budget}`);
+      } catch (syncError) {
+        // Upgraded Smart+では通常APIが拒否される場合がある（許容）
+        this.logger.warn(`Smart+広告グループ通常API予算同期失敗（許容）: ${syncError.message}`);
+      }
+
       return String(adgroupId);
     } catch (error) {
       this.logger.error('Smart+広告グループ作成失敗', error.response?.data || error.message);

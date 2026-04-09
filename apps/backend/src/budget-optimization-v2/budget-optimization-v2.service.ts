@@ -1292,7 +1292,8 @@ export class BudgetOptimizationV2Service {
           advertiserId, accessToken, ad.campaignId, newBudget,
         );
       } else {
-        // Smart+ 非CBO: AdGroup単位で予算更新（失敗時は通常APIにフォールバック）
+        // Smart+ 非CBO: Smart+ APIと通常API両方に予算を書き込む
+        // Smart+ APIだけだと通常adgroup側の予算が高いまま残り、TikTokが高い方を参照するリスクがある
         try {
           await this.tiktokService.updateSmartPlusAdGroupBudgets(
             advertiserId, accessToken,
@@ -1300,12 +1301,18 @@ export class BudgetOptimizationV2Service {
           );
         } catch (smartPlusError) {
           this.logger.warn(
-            `[V2] Smart+ API failed for ${ad.adName} (${ad.adgroupId}): ${smartPlusError.message}. Falling back to regular API...`,
+            `[V2] Smart+ API failed for ${ad.adName} (${ad.adgroupId}): ${smartPlusError.message}`,
           );
+        }
+        // 通常APIにも必ず書き込む（Smart+ API成功/失敗に関わらず）
+        try {
           await this.tiktokService.updateAdGroup(
             advertiserId, accessToken, ad.adgroupId, { budget: newBudget },
           );
-          this.logger.log(`[V2] Fallback to regular API succeeded for ${ad.adName}`);
+        } catch (regularError) {
+          this.logger.warn(
+            `[V2] Regular API also failed for ${ad.adName} (${ad.adgroupId}): ${regularError.message}`,
+          );
         }
       }
 
@@ -1832,7 +1839,7 @@ export class BudgetOptimizationV2Service {
               advertiserId, accessToken, ad.campaignId, resetBudget,
             );
           } else {
-            // Smart+ ABO: Smart+ APIを試し、失敗したら通常APIにフォールバック
+            // Smart+ ABO: Smart+ APIと通常API両方に予算を書き込む
             try {
               await this.tiktokService.updateSmartPlusAdGroupBudgets(
                 advertiserId, accessToken,
@@ -1840,13 +1847,17 @@ export class BudgetOptimizationV2Service {
               );
             } catch (smartPlusError) {
               this.logger.warn(
-                `[V2-RESET] Smart+ API failed for ${ad.adName} (${ad.adgroupId}): ${smartPlusError.message}. Falling back to regular API...`,
+                `[V2-RESET] Smart+ API failed for ${ad.adName} (${ad.adgroupId}): ${smartPlusError.message}`,
               );
+            }
+            // 通常APIにも必ず書き込む
+            try {
               await this.tiktokService.updateAdGroup(
                 advertiserId, accessToken, ad.adgroupId, { budget: resetBudget },
               );
-              this.logger.log(
-                `[V2-RESET] Fallback to regular API succeeded for ${ad.adName}`,
+            } catch (regularError) {
+              this.logger.warn(
+                `[V2-RESET] Regular API also failed for ${ad.adName} (${ad.adgroupId}): ${regularError.message}`,
               );
             }
           }
