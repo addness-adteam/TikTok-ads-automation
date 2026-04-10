@@ -1,0 +1,59 @@
+name: Budget Monitoring
+
+on:
+  schedule:
+    - cron: '45 * * * *'  # 毎時45分に実行
+  workflow_dispatch:
+
+env:
+  API_BASE_URL: https://tik-tok-ads-automation-backend.vercel.app
+
+jobs:
+  monitor:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check Budget Anomalies
+        run: |
+          echo "Starting budget monitoring check..."
+          jst_time=$(TZ='Asia/Tokyo' date '+%Y-%m-%d %H:%M JST')
+          echo "JST Time: $jst_time"
+
+          response=$(curl -s -w "\n%{http_code}" \
+            --max-time 300 \
+            --connect-timeout 30 \
+            --retry 3 \
+            --retry-delay 15 \
+            --retry-max-time 120 \
+            --retry-all-errors \
+            -X POST "${{ env.API_BASE_URL }}/api/budget-monitoring/check" \
+            -H "Content-Type: application/json" \
+            -d '{}')
+
+          http_code=$(echo "$response" | tail -n1)
+          body=$(echo "$response" | sed '$d')
+
+          echo "HTTP Status: $http_code"
+          echo "Response: $body"
+
+          if [ "$http_code" -lt 200 ] || [ "$http_code" -ge 300 ]; then
+            echo "::error::Budget monitoring check failed with HTTP $http_code"
+            exit 1
+          fi
+
+          # 異常件数チェック
+          anomaly_count=$(echo "$body" | jq -r '.data.totalAnomalies // 0')
+          total_adgroups=$(echo "$body" | jq -r '.data.totalAdgroups // 0')
+          total_advertisers=$(echo "$body" | jq -r '.data.totalAdvertisers // 0')
+
+          echo ""
+          echo "=== Budget Monitoring Result ==="
+          echo "Advertisers checked: $total_advertisers"
+          echo "Adgroups checked: $total_adgroups"
+          echo "Anomalies detected: $anomaly_count"
+
+          if [ "$anomaly_count" -gt 0 ]; then
+            echo "::warning::$anomaly_count budget anomalies detected!"
+            echo ""
+            echo "=== Anomaly Details ==="
+            echo "$body" | jq -r '.data.anomalies[] | "[\(.advertiserName)] \(.adName) | adgroup=\(.adgroupId) | current=\(.currentBudget) | last=\(.lastKnownBudget) | \(.reason)"'
+          fi

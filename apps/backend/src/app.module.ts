@@ -25,6 +25,7 @@ import { UtageModule } from './utage/utage.module';
 import { CrossDeployModule } from './cross-deploy/cross-deploy.module';
 import { StreamlinedCreatorModule } from './streamlined-creator/streamlined-creator.module';
 import { ProfitSimulationModule } from './profit-simulation/profit-simulation.module';
+import { BudgetMonitoringModule } from './budget-monitoring/budget-monitoring.module';
 
 @Module({
   imports: [
@@ -55,6 +56,7 @@ import { ProfitSimulationModule } from './profit-simulation/profit-simulation.mo
     CrossDeployModule,
     StreamlinedCreatorModule,
     ProfitSimulationModule,
+    BudgetMonitoringModule,
   ],
   controllers: [AppController],
   providers: [AppService],
