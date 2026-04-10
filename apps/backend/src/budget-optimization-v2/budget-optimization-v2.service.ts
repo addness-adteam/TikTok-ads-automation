@@ -388,12 +388,20 @@ export class BudgetOptimizationV2Service {
         const decision = await this.evaluateBudgetIncrease(
           ad, todayCPA, todayCV, todaySpend, appeal.targetCPA, advertiserId,
         );
-        results.push(decision);
 
-        // 増額実行
+        // 増額実行（Snapshot保存を先に行い、成功した場合のみ予算変更）
         if (decision.action === 'INCREASE' && decision.newBudget && !dryRun) {
-          await this.executeBudgetUpdate(ad, decision.newBudget, advertiserId, accessToken);
+          const snapshotSaved = await this.saveSnapshotForAd(advertiserId, ad, decision, new Date());
+          if (snapshotSaved) {
+            await this.executeBudgetUpdate(ad, decision.newBudget, advertiserId, accessToken);
+          } else {
+            this.logger.error(`[V2] Snapshot保存失敗のため予算増額をスキップ: ${ad.adId} (${ad.adName})`);
+            decision.action = 'SKIP';
+            decision.reason = `Snapshot保存失敗のため増額スキップ（元判定: ${decision.reason}）`;
+          }
         }
+
+        results.push(decision);
       } catch (error) {
         this.logger.error(`[V2] Stage1 error for ad ${ad.adId}:`, error.message);
         results.push(this.skipDecision(ad, `エラー: ${error.message}`));
@@ -686,12 +694,20 @@ export class BudgetOptimizationV2Service {
         const decision = await this.evaluateBudgetIncrease(
           ad, todayCPA, todayCV, todaySpend, appeal.targetCPA, advertiserId,
         );
-        results.push(decision);
 
-        // 増額実行
+        // 増額実行（Snapshot保存を先に行い、成功した場合のみ予算変更）
         if (decision.action === 'INCREASE' && decision.newBudget && !dryRun) {
-          await this.executeBudgetUpdate(ad, decision.newBudget, advertiserId, accessToken);
+          const snapshotSaved = await this.saveSnapshotForAd(advertiserId, ad, decision, new Date());
+          if (snapshotSaved) {
+            await this.executeBudgetUpdate(ad, decision.newBudget, advertiserId, accessToken);
+          } else {
+            this.logger.error(`[V2] Snapshot保存失敗のため予算増額をスキップ: ${ad.adId} (${ad.adName})`);
+            decision.action = 'SKIP';
+            decision.reason = `Snapshot保存失敗のため増額スキップ（元判定: ${decision.reason}）`;
+          }
         }
+
+        results.push(decision);
       } catch (error) {
         this.logger.error(`[V2] SubsequentRound error for ad ${ad.adId}:`, error.message);
         results.push(this.skipDecision(ad, `エラー: ${error.message}`));
@@ -1443,6 +1459,44 @@ export class BudgetOptimizationV2Service {
   // Snapshot管理
   // ============================================================================
 
+  /**
+   * INCREASE判定の広告1件のSnapshotを予算変更前に保存する。
+   * 保存に失敗した場合はfalseを返し、呼び出し元で予算変更をスキップする。
+   * これにより「Snapshot未保存→同じCVで再増額」の無限ループを防ぐ。
+   */
+  private async saveSnapshotForAd(
+    advertiserId: string,
+    ad: V2SmartPlusAd,
+    decision: BudgetIncreaseDecision,
+    executionTime: Date,
+  ): Promise<boolean> {
+    try {
+      await withDatabaseRetry(() =>
+        this.prisma.hourlyOptimizationSnapshot.create({
+          data: {
+            advertiserId,
+            adId: ad.adId,
+            adName: ad.adName,
+            executionTime,
+            todayCVCount: decision.todayCV || 0,
+            todaySpend: decision.todaySpend || 0,
+            todayCPA: decision.todayCPA || null,
+            dailyBudget: ad.dailyBudget,
+            action: decision.action,
+            reason: decision.reason || null,
+            newBudget: decision.newBudget || null,
+          },
+        }),
+      );
+      return true;
+    } catch (error) {
+      this.logger.error(
+        `[V2] Failed to save pre-increase snapshot for ad ${ad.adId}: ${error.message}`,
+      );
+      return false;
+    }
+  }
+
   private async saveSnapshots(
     advertiserId: string,
     ads: V2SmartPlusAd[],
@@ -1451,26 +1505,35 @@ export class BudgetOptimizationV2Service {
   ): Promise<void> {
     const resultMap = new Map(stage1Results.map(r => [r.adId, r]));
 
-    const snapshots = ads.map(ad => {
-      const result = resultMap.get(ad.adId);
-      return {
-        advertiserId,
-        adId: ad.adId,
-        adName: ad.adName,
-        executionTime,
-        todayCVCount: result?.todayCV || 0,
-        todaySpend: result?.todaySpend || 0,
-        todayCPA: result?.todayCPA || null,
-        dailyBudget: ad.dailyBudget,
-        action: result?.action || 'SKIP',
-        reason: result?.reason || null,
-        newBudget: result?.newBudget || null,
-      };
-    });
-
-    await withDatabaseRetry(() =>
-      this.prisma.hourlyOptimizationSnapshot.createMany({ data: snapshots }),
+    // INCREASE判定の広告はsaveSnapshotForAdで既に保存済みなので除外
+    const increasedAdIds = new Set(
+      stage1Results.filter(r => r.action === 'INCREASE').map(r => r.adId),
     );
+
+    const snapshots = ads
+      .filter(ad => !increasedAdIds.has(ad.adId))
+      .map(ad => {
+        const result = resultMap.get(ad.adId);
+        return {
+          advertiserId,
+          adId: ad.adId,
+          adName: ad.adName,
+          executionTime,
+          todayCVCount: result?.todayCV || 0,
+          todaySpend: result?.todaySpend || 0,
+          todayCPA: result?.todayCPA || null,
+          dailyBudget: ad.dailyBudget,
+          action: result?.action || 'SKIP',
+          reason: result?.reason || null,
+          newBudget: result?.newBudget || null,
+        };
+      });
+
+    if (snapshots.length > 0) {
+      await withDatabaseRetry(() =>
+        this.prisma.hourlyOptimizationSnapshot.createMany({ data: snapshots }),
+      );
+    }
   }
 
   private async getLastSnapshots(
