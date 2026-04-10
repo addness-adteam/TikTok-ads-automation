@@ -427,26 +427,49 @@ export class TiktokService {
     try {
       this.logger.log(`Fetching campaigns for advertiser: ${advertiserId}`);
 
-      const requestBody: any = {
-        advertiser_id: advertiserId,
-        page_size: 100, // TikTok API v1.3の最大値
-      };
+      const allList: any[] = [];
+      const pageSize = 100;
+      let currentPage = 1;
+      let hasMorePages = true;
+      let lastPageInfo: any = null;
 
-      if (campaignIds && campaignIds.length > 0) {
-        requestBody.filtering = {
-          campaign_ids: campaignIds,
+      while (hasMorePages) {
+        const params: any = {
+          advertiser_id: advertiserId,
+          page_size: pageSize,
+          page: currentPage,
         };
+        if (campaignIds && campaignIds.length > 0) {
+          params.filtering = { campaign_ids: campaignIds };
+        }
+
+        const response = await this.httpGetWithRetry('/v1.3/campaign/get/', {
+          headers: { 'Access-Token': accessToken },
+          params,
+        }, `getCampaigns(page=${currentPage})`);
+
+        const list = response.data.data?.list || [];
+        lastPageInfo = response.data.data?.page_info || null;
+        allList.push(...list);
+
+        const totalNumber = lastPageInfo?.total_number || 0;
+        const totalPages = totalNumber > 0 ? Math.ceil(totalNumber / pageSize) : 1;
+
+        if (list.length < pageSize || currentPage >= totalPages) {
+          hasMorePages = false;
+        } else {
+          currentPage++;
+        }
       }
 
-      const response = await this.httpGetWithRetry('/v1.3/campaign/get/', {
-        headers: {
-          'Access-Token': accessToken,
+      this.logger.log(`Retrieved ${allList.length} campaigns across ${currentPage} pages (advertiser: ${advertiserId})`);
+      return {
+        code: 0,
+        data: {
+          list: allList,
+          page_info: lastPageInfo,
         },
-        params: requestBody,
-      }, 'getCampaigns');
-
-      this.logger.log(`Retrieved ${response.data.data?.list?.length || 0} campaigns`);
-      return response.data;
+      };
     } catch (error) {
       this.handleTikTokError(error, 'getCampaigns');
     }
@@ -511,28 +534,49 @@ export class TiktokService {
     try {
       this.logger.log(`Fetching ad groups for advertiser: ${advertiserId}`);
 
-      const params: any = {
-        advertiser_id: advertiserId,
-        page_size: 100, // TikTok API v1.3の最大値
-      };
+      const allList: any[] = [];
+      const pageSize = 100;
+      let currentPage = 1;
+      let hasMorePages = true;
+      let lastPageInfo: any = null;
 
-      if (campaignIds && campaignIds.length > 0) {
-        params.filtering = JSON.stringify({
-          campaign_ids: campaignIds,
-        });
+      while (hasMorePages) {
+        const params: any = {
+          advertiser_id: advertiserId,
+          page_size: pageSize,
+          page: currentPage,
+        };
+        if (campaignIds && campaignIds.length > 0) {
+          params.filtering = JSON.stringify({ campaign_ids: campaignIds });
+        }
+
+        const response = await this.httpGetWithRetry('/v1.3/adgroup/get/', {
+          headers: { 'Access-Token': accessToken },
+          params,
+        }, `getAdGroups(page=${currentPage})`);
+
+        const list = response.data.data?.list || [];
+        lastPageInfo = response.data.data?.page_info || null;
+        allList.push(...list);
+
+        const totalNumber = lastPageInfo?.total_number || 0;
+        const totalPages = totalNumber > 0 ? Math.ceil(totalNumber / pageSize) : 1;
+
+        if (list.length < pageSize || currentPage >= totalPages) {
+          hasMorePages = false;
+        } else {
+          currentPage++;
+        }
       }
 
-      this.logger.log(`Request params: ${JSON.stringify(params)}`);
-
-      const response = await this.httpGetWithRetry('/v1.3/adgroup/get/', {
-        headers: {
-          'Access-Token': accessToken,
+      this.logger.log(`Retrieved ${allList.length} ad groups across ${currentPage} pages (advertiser: ${advertiserId})`);
+      return {
+        code: 0,
+        data: {
+          list: allList,
+          page_info: lastPageInfo,
         },
-        params,
-      }, 'getAdGroups');
-
-      this.logger.log(`Retrieved ${response.data.data?.list?.length || 0} ad groups`);
-      return response.data;
+      };
     } catch (error) {
       this.handleTikTokError(error, 'getAdGroups');
     }
@@ -682,33 +726,59 @@ export class TiktokService {
     try {
       this.logger.log(`Fetching ads for advertiser: ${advertiserId}`);
 
-      const params: any = {
-        advertiser_id: advertiserId,
-        page_size: 100, // TikTok API v1.3の最大値
-      };
+      const allList: any[] = [];
+      const pageSize = 100;
+      let currentPage = 1;
+      let hasMorePages = true;
+      let lastPageInfo: any = null;
 
-      const filtering: any = {};
-      if (adgroupIds && adgroupIds.length > 0) {
-        filtering.adgroup_ids = adgroupIds;
-      }
-      if (operationStatus) {
-        filtering.operation_status = operationStatus;
-      }
-      if (Object.keys(filtering).length > 0) {
-        params.filtering = JSON.stringify(filtering);
+      while (hasMorePages) {
+        const params: any = {
+          advertiser_id: advertiserId,
+          page_size: pageSize,
+          page: currentPage,
+        };
+
+        const filtering: any = {};
+        if (adgroupIds && adgroupIds.length > 0) {
+          filtering.adgroup_ids = adgroupIds;
+        }
+        if (operationStatus) {
+          filtering.operation_status = operationStatus;
+        }
+        if (Object.keys(filtering).length > 0) {
+          params.filtering = JSON.stringify(filtering);
+        }
+
+        const response = await this.httpGetWithRetry('/v1.3/ad/get/', {
+          headers: {
+            'Access-Token': accessToken,
+          },
+          params,
+        }, `getAds(page=${currentPage})`);
+
+        const list = response.data.data?.list || [];
+        lastPageInfo = response.data.data?.page_info || null;
+        allList.push(...list);
+
+        const totalNumber = lastPageInfo?.total_number || 0;
+        const totalPages = totalNumber > 0 ? Math.ceil(totalNumber / pageSize) : 1;
+
+        if (list.length < pageSize || currentPage >= totalPages) {
+          hasMorePages = false;
+        } else {
+          currentPage++;
+        }
       }
 
-      this.logger.log(`Request params: ${JSON.stringify(params)}`);
-
-      const response = await this.httpGetWithRetry('/v1.3/ad/get/', {
-        headers: {
-          'Access-Token': accessToken,
+      this.logger.log(`Retrieved ${allList.length} ads across ${currentPage} pages (advertiser: ${advertiserId})`);
+      return {
+        code: 0,
+        data: {
+          list: allList,
+          page_info: lastPageInfo,
         },
-        params,
-      }, 'getAds');
-
-      this.logger.log(`Retrieved ${response.data.data?.list?.length || 0} ads`);
-      return response.data;
+      };
     } catch (error) {
       this.handleTikTokError(error, 'getAds');
     }
@@ -1795,41 +1865,72 @@ export class TiktokService {
   }
 
   /**
-   * Upgraded Smart+ 広告一覧を取得
+   * Upgraded Smart+ 広告一覧を取得（ページネーション対応）
    * GET /v1.3/smart_plus/ad/get/
    * リトライ対応: タイムアウト、レート制限、サーバーエラー時に自動リトライ
+   *
+   * 旧実装は1ページ目(100件)しか取得しておらず、100件超のアカウントで
+   * 101件目以降がV2予算リセット対象から漏れるバグがあった。全ページ取得に修正済み。
    */
   async getSmartPlusAds(advertiserId: string, accessToken: string, smartPlusAdIds?: string[], operationStatus?: string) {
     try {
       this.logger.log(`Fetching Smart+ ads for advertiser: ${advertiserId}`);
 
-      const params: any = {
-        advertiser_id: advertiserId,
-        page_size: 100, // 最大値
-      };
+      const allList: any[] = [];
+      const pageSize = 100;
+      let currentPage = 1;
+      let hasMorePages = true;
+      let lastPageInfo: any = null;
 
-      const filtering: any = {};
-      if (smartPlusAdIds && smartPlusAdIds.length > 0) {
-        filtering.smart_plus_ad_ids = smartPlusAdIds;
-      }
-      if (operationStatus) {
-        filtering.operation_status = operationStatus;
-      }
-      if (Object.keys(filtering).length > 0) {
-        params.filtering = JSON.stringify(filtering);
+      while (hasMorePages) {
+        const params: any = {
+          advertiser_id: advertiserId,
+          page_size: pageSize,
+          page: currentPage,
+        };
+
+        const filtering: any = {};
+        if (smartPlusAdIds && smartPlusAdIds.length > 0) {
+          filtering.smart_plus_ad_ids = smartPlusAdIds;
+        }
+        if (operationStatus) {
+          filtering.operation_status = operationStatus;
+        }
+        if (Object.keys(filtering).length > 0) {
+          params.filtering = JSON.stringify(filtering);
+        }
+
+        const response = await this.httpGetWithRetry('/v1.3/smart_plus/ad/get/', {
+          headers: {
+            'Access-Token': accessToken,
+          },
+          params,
+        }, `getSmartPlusAds(page=${currentPage})`);
+
+        const list = response.data.data?.list || [];
+        lastPageInfo = response.data.data?.page_info || null;
+        allList.push(...list);
+
+        const totalNumber = lastPageInfo?.total_number || 0;
+        const totalPages = totalNumber > 0 ? Math.ceil(totalNumber / pageSize) : 1;
+
+        if (list.length < pageSize || currentPage >= totalPages) {
+          hasMorePages = false;
+        } else {
+          currentPage++;
+        }
       }
 
-      this.logger.log(`Request params: ${JSON.stringify(params)}`);
+      this.logger.log(`Retrieved ${allList.length} Smart+ ads across ${currentPage} pages (advertiser: ${advertiserId})`);
 
-      const response = await this.httpGetWithRetry('/v1.3/smart_plus/ad/get/', {
-        headers: {
-          'Access-Token': accessToken,
+      // 呼び出し元は response.data.data.list の形を期待しているので互換形で返す
+      return {
+        code: 0,
+        data: {
+          list: allList,
+          page_info: lastPageInfo,
         },
-        params,
-      }, 'getSmartPlusAds');
-
-      this.logger.log(`Retrieved ${response.data.data?.list?.length || 0} Smart+ ads`);
-      return response.data;
+      };
     } catch (error) {
       this.handleTikTokError(error, 'getSmartPlusAds');
     }
