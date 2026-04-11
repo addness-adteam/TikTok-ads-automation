@@ -1,28 +1,4 @@
 {
-  "exclude": [
-    "analyze-perf-v2.ts",
-    "analyze-performance-summary.ts",
-    "check-631-budget.ts",
-    "check-631-history.ts",
-    "check-ai3-cr00980.ts",
-    "check-all-performance-from-sheets.ts",
-    "check-creative-data-for-横展開.ts",
-    "check-pause-reason.ts",
-    "check-pause-reason2.ts",
-    "check-pause-reason3.ts",
-    "check-pause-reason4.ts",
-    "check-sns2-active-ads.ts",
-    "check-sns2-opt-today.ts",
-    "deploy-sp-cr00468-resume.ts",
-    "find-cr00033.ts",
-    "find-cr580b.ts",
-    "redeploy-cr00468.ts",
-    "redeploy-cr00577.ts",
-    "redeploy-cr01150.ts",
-    "tmp-*.ts",
-    "todo3-investigate-sp2.ts",
-    "todo45-investigate-sns.ts"
-  ],
   "compilerOptions": {
     "module": "nodenext",
     "moduleResolution": "nodenext",

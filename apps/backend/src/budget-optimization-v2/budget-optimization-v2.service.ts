@@ -1134,9 +1134,14 @@ export class BudgetOptimizationV2Service {
     try {
       const regularResponse = await this.tiktokService.getAds(advertiserId, accessToken, undefined, 'ENABLE');
       const allRegularAds = regularResponse.data?.list || [];
-      // Smart+広告と重複するad_idを除外（通常ad/getでもSmart+広告が返る場合がある）
+      // Smart+広告と重複する広告を除外
+      // 1. Smart+広告IDと同じad_idを除外
       const smartPlusAdIds = new Set(smartPlusRawAds.map((ad: any) => ad.smart_plus_ad_id));
-      regularRawAds = allRegularAds.filter((ad: any) => !smartPlusAdIds.has(ad.ad_id));
+      // 2. Smart+キャンペーンに属する通常広告も除外（同一キャンペーン内の通常広告が二重評価されるのを防ぐ）
+      const smartPlusCampaignIds = new Set(smartPlusRawAds.map((ad: any) => ad.campaign_id));
+      regularRawAds = allRegularAds.filter((ad: any) =>
+        !smartPlusAdIds.has(ad.ad_id) && !smartPlusCampaignIds.has(ad.campaign_id)
+      );
       this.logger.log(`[V2] Fetched ${allRegularAds.length} regular ads, ${regularRawAds.length} after dedup`);
     } catch (error) {
       this.logger.error(`[V2] Failed to fetch regular ads: ${error.message}`);
