@@ -19,7 +19,7 @@ jobs:
   reset-budgets:
     runs-on: ubuntu-latest
     steps:
-      - name: Reset all daily budgets
+      - name: Reset daily budgets per advertiser
         id: reset
         run: |
           jst_time=$(TZ='Asia/Tokyo' date '+%Y-%m-%d %H:%M JST')
@@ -31,86 +31,99 @@ jobs:
             echo "🧪 DRY RUN MODE"
           fi
 
-          max_retries=3
-          retry_count=0
-          success=false
+          # アカウントごとに個別にリセット（タイムアウト防止）
+          ADVERTISER_IDS=(
+            "7468288053866561553"   # AI_1
+            "7523128243466551303"   # AI_2
+            "7543540647266074641"   # AI_3
+            "7580666710525493255"   # AI_4
+            "7474920444831875080"   # SP1
+            "7592868952431362066"   # SP2
+            "7616545514662051858"   # SP3
+            "7247073333517238273"   # SNS1
+            "7543540100849156112"   # SNS2
+            "7543540381615800337"   # SNS3
+          )
 
-          while [ $retry_count -lt $max_retries ]; do
+          all_success=true
+          total_reset=0
+          total_skip=0
+          total_error=0
+
+          for adv_id in "${ADVERTISER_IDS[@]}"; do
+            echo ""
+            echo "━━━ Resetting $adv_id ━━━"
+
             set +e
             response=$(curl -s -w "\n%{http_code}" \
-              --max-time 300 \
-              --connect-timeout 30 \
-              --retry 3 \
-              --retry-delay 15 \
-              --retry-max-time 180 \
+              --max-time 30 \
+              --connect-timeout 10 \
+              --retry 2 \
+              --retry-delay 5 \
               --retry-all-errors \
               -X POST \
-              "${{ env.API_BASE_URL }}/api/budget-optimization-v2/reset-budget-all" \
+              "${{ env.API_BASE_URL }}/api/budget-optimization-v2/reset-budget/$adv_id" \
               -H "Content-Type: application/json" \
               -d "{\"dryRun\": $dry_run_param}")
             curl_exit_code=$?
             set -e
 
             if [ $curl_exit_code -ne 0 ]; then
-              retry_count=$((retry_count + 1))
-              echo "⚠️ curl failed (exit code $curl_exit_code). Retry $retry_count/$max_retries..."
-              if [ $retry_count -lt $max_retries ]; then
-                sleep $((30 * retry_count))
-                continue
-              else
-                echo "❌ Failed after $max_retries retries"
-                break
-              fi
+              echo "  ⚠️ curl failed for $adv_id (exit code $curl_exit_code)"
+              all_success=false
+              total_error=$((total_error + 1))
+              continue
             fi
 
             http_code=$(echo "$response" | tail -n1)
             body=$(echo "$response" | sed '$d')
 
-            echo "HTTP Status: $http_code"
-
             if [ "$http_code" -eq 200 ] || [ "$http_code" -eq 201 ]; then
               api_success=$(echo "$body" | jq -r '.success // false')
-              if [ "$api_success" != "true" ]; then
-                api_error=$(echo "$body" | jq -r '.error // "Unknown error"')
-                echo "❌ API returned error: $api_error"
-                break
-              fi
+              if [ "$api_success" = "true" ]; then
+                reset_count=$(echo "$body" | jq -r '.data.summary.reset // 0')
+                skip_count=$(echo "$body" | jq -r '.data.summary.skippedAlreadyDefault // 0')
+                error_count=$(echo "$body" | jq -r '.data.summary.errors // 0')
+                total_reset=$((total_reset + reset_count))
+                total_skip=$((total_skip + skip_count))
+                total_error=$((total_error + error_count))
+                echo "  ✅ reset=$reset_count skip=$skip_count errors=$error_count"
 
-              echo "✅ Budget reset completed successfully"
-              echo ""
-
-              # 結果サマリー
-              echo "=== 🔄 予算リセット結果 ==="
-              echo "$body" | jq -r '.data.results[]? |
-                "────────────────────────────────────────\n" +
-                "📋 Advertiser: \(.advertiserId)\n" +
-                "  導線: \(.channelType) | デフォルト予算: ¥\(.defaultBudget)\n" +
-                "  リセット: \(.summary.reset) | スキップ: \(.summary.skippedAlreadyDefault) | エラー: \(.summary.errors)\n" +
-                (.adResults[]? |
+                # 個別結果
+                echo "$body" | jq -r '.data.adResults[]? |
                   "  [\(.action)] \(.adName): ¥\(.oldBudget) → ¥\(.newBudget)" +
-                  (if .error then " (ERROR: \(.error))" else "" end)
-                )'
-              echo "────────────────────────────────────────"
-
-              success=true
-              break
-            elif [ "$http_code" -eq 429 ]; then
-              retry_count=$((retry_count + 1))
-              wait_time=$((60 * retry_count))
-              echo "⚠️ Rate limited. Waiting ${wait_time}s (retry $retry_count/$max_retries)"
-              sleep $wait_time
+                  (if .error then " (ERROR: \(.error))" else "" end)' 2>/dev/null || true
+              else
+                api_error=$(echo "$body" | jq -r '.error // "Unknown"')
+                echo "  ❌ API error: $api_error"
+                all_success=false
+                total_error=$((total_error + 1))
+              fi
             else
-              echo "❌ Error: $http_code"
-              echo "$body"
-              break
+              echo "  ❌ HTTP $http_code"
+              all_success=false
+              total_error=$((total_error + 1))
             fi
+
+            # アカウント間に1秒待機（API負荷軽減）
+            sleep 1
           done
 
-          if [ "$success" = true ]; then
+          echo ""
+          echo "=== 📊 全体結果 ==="
+          echo "  リセット: $total_reset | スキップ: $total_skip | エラー: $total_error"
+
+          if [ "$all_success" = true ]; then
             echo "result=success" >> $GITHUB_OUTPUT
           else
-            echo "result=failed" >> $GITHUB_OUTPUT
-            exit 1
+            echo "result=partial_failure" >> $GITHUB_OUTPUT
+            # 一部失敗でもjobは成功扱い（全滅でなければ）
+            if [ $total_reset -gt 0 ] || [ $total_skip -gt 0 ]; then
+              echo "⚠️ Some advertisers failed but others succeeded"
+            else
+              echo "❌ All advertisers failed"
+              exit 1
+            fi
           fi
 
       - name: Generate Summary
