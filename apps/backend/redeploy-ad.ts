@@ -219,13 +219,13 @@ async function getSourceAdInfo(advertiserId: string, adId: string) {
   const adName = spAd.smart_plus_ad_name || spAd.ad_name || '';
   const creativeList = spAd.creative_list || [];
 
-  // video_idを抽出（creative_listから最初の1本）
-  let videoId = '';
+  // 全creative_listからvideo_idを抽出
+  const videoIds: string[] = [];
   for (const creative of creativeList) {
     const vid = creative?.creative_info?.video_info?.video_id;
-    if (vid && vid !== 'N/A') { videoId = vid; break; }
+    if (vid && vid !== 'N/A' && !videoIds.includes(vid)) videoIds.push(vid);
   }
-  if (!videoId) throw new Error('Smart+広告からvideo_idを取得できません');
+  if (videoIds.length === 0) throw new Error('Smart+広告からvideo_idを取得できません');
 
   // 広告文を抽出
   const adTexts: string[] = [];
@@ -243,10 +243,10 @@ async function getSourceAdInfo(advertiserId: string, adId: string) {
   }
 
   console.log(`   [Smart+広告] ${adName}`);
-  console.log(`   動画ID: ${videoId}`);
+  console.log(`   動画数: ${videoIds.length}本 (${videoIds[0]}${videoIds.length > 1 ? ` 他${videoIds.length - 1}本` : ''})`);
   console.log(`   広告文: ${adText}`);
 
-  return { adName, adText, videoId, landingPageUrl: landingPageUrls[0] || '' };
+  return { adName, adText, videoId: videoIds[0], videoIds, landingPageUrl: landingPageUrls[0] || '' };
 }
 
 // ===== 広告名パース =====
@@ -566,18 +566,33 @@ async function createSmartPlusAd(
   advertiserId: string, adgroupId: string, adName: string,
   videoId: string, coverWebUri: string | null, adText: string,
   landingPageUrl: string, identityId: string, identityBcId: string,
+  allVideoIds?: string[], allCoverWebUris?: Map<string, string>,
 ): Promise<string> {
-  console.log('8. Smart+広告作成中...');
+  const videoIds = allVideoIds && allVideoIds.length > 1 ? allVideoIds : [videoId];
+  console.log(`8. Smart+広告作成中... (${videoIds.length}本のクリエイティブ)`);
 
-  const creativeInfo: any = {
-    ad_format: 'SINGLE_VIDEO',
-    video_info: { video_id: videoId },
-    identity_id: identityId,
-    identity_type: 'BC_AUTH_TT',
-    identity_authorized_bc_id: identityBcId,
-  };
-  if (coverWebUri) {
-    creativeInfo.image_info = [{ web_uri: coverWebUri }];
+  // 複数動画をcreative_listに入れる（スマプラ=1広告に複数動画）
+  // カバー画像がない動画はスキップ（TikTok APIが全動画にimage_infoを要求するため）
+  const creativeList: any[] = [];
+  let skippedCount = 0;
+  for (const vid of videoIds) {
+    const webUri = allCoverWebUris?.get(vid) || (vid === videoId ? coverWebUri : null);
+    if (!webUri) {
+      skippedCount++;
+      continue; // カバー画像なしの動画はスキップ
+    }
+    const info: any = {
+      ad_format: 'SINGLE_VIDEO',
+      video_info: { video_id: vid },
+      identity_id: identityId,
+      identity_type: 'BC_AUTH_TT',
+      identity_authorized_bc_id: identityBcId,
+      image_info: [{ web_uri: webUri }],
+    };
+    creativeList.push({ creative_info: info });
+  }
+  if (skippedCount > 0) {
+    console.log(`   ⚠ カバー画像なしの動画${skippedCount}本をスキップ → ${creativeList.length}本で作成`);
   }
 
   const ctaId = await getCtaId(advertiserId);
@@ -586,7 +601,7 @@ async function createSmartPlusAd(
     advertiser_id: advertiserId,
     adgroup_id: adgroupId,
     ad_name: adName,
-    creative_list: [{ creative_info: creativeInfo }],
+    creative_list: creativeList,
     ad_text_list: [{ ad_text: adText }],
     landing_page_url_list: [{ landing_page_url: landingPageUrl }],
     ad_configuration: {
@@ -685,11 +700,33 @@ async function main() {
     console.log(`\n広告名: ${adName}`);
     console.log(`LP URL: ${landingPageUrl}\n`);
 
-    // 5. カバー画像取得＆アップロード
+    // 5. カバー画像取得＆アップロード（複数動画対応）
+    const allVideoIds = (sourceAd as any).videoIds || [sourceAd.videoId];
+    console.log(`動画数: ${allVideoIds.length}本`);
+
+    const allCoverWebUris = new Map<string, string>();
+    // 最初の動画のカバーは必ず取得
     const coverUrl = await getVideoCoverUrl(advertiserId, sourceAd.videoId);
     let coverWebUri: string | null = null;
     if (coverUrl) {
       coverWebUri = await uploadCoverImage(advertiserId, coverUrl);
+      if (coverWebUri) allCoverWebUris.set(sourceAd.videoId, coverWebUri);
+    }
+    // 残りの動画のカバーも取得（5本ずつ、API負荷を考慮）
+    if (allVideoIds.length > 1) {
+      console.log(`残り${allVideoIds.length - 1}本のカバー画像取得中...`);
+      for (const vid of allVideoIds.slice(1)) {
+        try {
+          const url = await getVideoCoverUrl(advertiserId, vid);
+          if (url) {
+            const webUri = await uploadCoverImage(advertiserId, url);
+            if (webUri) allCoverWebUris.set(vid, webUri);
+          }
+        } catch (e: any) {
+          console.log(`   カバー取得スキップ(${vid}): ${e.message}`);
+        }
+      }
+      console.log(`   カバー画像: ${allCoverWebUris.size}/${allVideoIds.length}本 取得完了`);
     }
 
     // 6-8. Smart+キャンペーン → 広告グループ → 広告
@@ -700,6 +737,7 @@ async function main() {
       advertiserId, adgroupId, adName,
       sourceAd.videoId, coverWebUri, adText,
       landingPageUrl, advertiser.identityId, advertiser.identityAuthorizedBcId,
+      allVideoIds, allCoverWebUris,
     );
 
     console.log('\n===== 再出稿完了 =====');

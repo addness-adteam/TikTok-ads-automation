@@ -125,11 +125,19 @@ export class BudgetOptimizationV2Service {
       );
     }
 
-    // Snapshot記録
-    await this.saveSnapshots(advertiserId, activeAds, stage1Results, now);
+    // Snapshot記録（失敗しても処理全体は止めない）
+    try {
+      await this.saveSnapshots(advertiserId, activeAds, stage1Results, now);
+    } catch (snapshotError) {
+      this.logger.error(`[V2] saveSnapshots failed for ${advertiserId}: ${snapshotError.message}`);
+    }
 
     // 古いSnapshot削除
-    await this.cleanupOldSnapshots();
+    try {
+      await this.cleanupOldSnapshots();
+    } catch (cleanupError) {
+      this.logger.warn(`[V2] cleanupOldSnapshots failed: ${cleanupError.message}`);
+    }
 
     const result: HourlyExecutionResult = {
       advertiserId,
@@ -1332,20 +1340,24 @@ export class BudgetOptimizationV2Service {
         }
       }
 
-      // ChangeLog記録
-      await withDatabaseRetry(() =>
-        this.prisma.changeLog.create({
-          data: {
-            entityType: ad.isCBO ? 'CAMPAIGN' : 'ADGROUP',
-            entityId: ad.isCBO ? ad.campaignId : ad.adgroupId,
-            action: 'UPDATE_BUDGET',
-            source: 'BUDGET_OPTIMIZATION_V2',
-            beforeData: { budget: oldBudget },
-            afterData: { budget: newBudget },
-            reason: `V2予算増額: ¥${oldBudget} → ¥${newBudget} (${ad.isSmartPlus ? 'Smart+' : '通常'})`,
-          },
-        }),
-      );
+      // ChangeLog記録（失敗しても予算変更自体は成功扱い）
+      try {
+        await withDatabaseRetry(() =>
+          this.prisma.changeLog.create({
+            data: {
+              entityType: ad.isCBO ? 'CAMPAIGN' : 'ADGROUP',
+              entityId: ad.isCBO ? ad.campaignId : ad.adgroupId,
+              action: 'UPDATE_BUDGET',
+              source: 'BUDGET_OPTIMIZATION_V2',
+              beforeData: { budget: oldBudget },
+              afterData: { budget: newBudget },
+              reason: `V2予算増額: ¥${oldBudget} → ¥${newBudget} (${ad.isSmartPlus ? 'Smart+' : '通常'})`,
+            },
+          }),
+        );
+      } catch (changeLogError) {
+        this.logger.warn(`[V2] ChangeLog save failed (non-fatal): ${changeLogError.message}`);
+      }
     } catch (error) {
       this.logger.error(`[V2] Budget update failed for ad ${ad.adId}:`, error.message);
       throw error;
@@ -1367,8 +1379,13 @@ export class BudgetOptimizationV2Service {
       await this.tiktokService.updateAdStatus(
         advertiserId, accessToken, [ad.adId], 'DISABLE',
       );
+    } catch (error) {
+      this.logger.error(`[V2] Pause API failed for ad ${ad.adId}:`, error.message);
+      throw error;
+    }
 
-      // ChangeLog記録
+    // ChangeLog記録（失敗しても停止自体は成功扱い）
+    try {
       await withDatabaseRetry(() =>
         this.prisma.changeLog.create({
           data: {
@@ -1380,9 +1397,8 @@ export class BudgetOptimizationV2Service {
           },
         }),
       );
-    } catch (error) {
-      this.logger.error(`[V2] Pause failed for ad ${ad.adId}:`, error.message);
-      throw error;
+    } catch (changeLogError) {
+      this.logger.warn(`[V2] Pause ChangeLog save failed (non-fatal): ${changeLogError.message}`);
     }
   }
 
@@ -1433,20 +1449,24 @@ export class BudgetOptimizationV2Service {
         }
       }
 
-      // ChangeLog記録
-      await withDatabaseRetry(() =>
-        this.prisma.changeLog.create({
-          data: {
-            entityType: ad.isCBO ? 'CAMPAIGN' : 'ADGROUP',
-            entityId: ad.isCBO ? ad.campaignId : ad.adgroupId,
-            action: 'DECREASE_BUDGET',
-            source: 'BUDGET_OPTIMIZATION_V2',
-            beforeData: { budget: oldBudget },
-            afterData: { budget: newBudget },
-            reason: `V2予算減額(個別予約CPO超過): ${reason}`,
-          },
-        }),
-      );
+      // ChangeLog記録（失敗しても予算変更自体は成功扱い）
+      try {
+        await withDatabaseRetry(() =>
+          this.prisma.changeLog.create({
+            data: {
+              entityType: ad.isCBO ? 'CAMPAIGN' : 'ADGROUP',
+              entityId: ad.isCBO ? ad.campaignId : ad.adgroupId,
+              action: 'DECREASE_BUDGET',
+              source: 'BUDGET_OPTIMIZATION_V2',
+              beforeData: { budget: oldBudget },
+              afterData: { budget: newBudget },
+              reason: `V2予算減額(個別予約CPO超過): ${reason}`,
+            },
+          }),
+        );
+      } catch (changeLogError) {
+        this.logger.warn(`[V2] Budget decrease ChangeLog save failed (non-fatal): ${changeLogError.message}`);
+      }
 
       return newBudget;
     } catch (error) {
@@ -1925,20 +1945,24 @@ export class BudgetOptimizationV2Service {
             }
           }
 
-          // ChangeLog記録
-          await withDatabaseRetry(() =>
-            this.prisma.changeLog.create({
-              data: {
-                entityType,
-                entityId,
-                action: 'RESET_BUDGET',
-                source: 'BUDGET_RESET_MIDNIGHT',
-                beforeData: { budget: ad.dailyBudget },
-                afterData: { budget: resetBudget },
-                reason: `日予算リセット: ¥${ad.dailyBudget} → ¥${resetBudget} (${channelType}デフォルト)`,
-              },
-            }),
-          );
+          // ChangeLog記録（失敗してもリセット自体は成功扱い）
+          try {
+            await withDatabaseRetry(() =>
+              this.prisma.changeLog.create({
+                data: {
+                  entityType,
+                  entityId,
+                  action: 'RESET_BUDGET',
+                  source: 'BUDGET_RESET_MIDNIGHT',
+                  beforeData: { budget: ad.dailyBudget },
+                  afterData: { budget: resetBudget },
+                  reason: `日予算リセット: ¥${ad.dailyBudget} → ¥${resetBudget} (${channelType}デフォルト)`,
+                },
+              }),
+            );
+          } catch (changeLogError) {
+            this.logger.warn(`[V2-RESET] ChangeLog save failed (non-fatal): ${changeLogError.message}`);
+          }
         }
 
         adResults.push({
