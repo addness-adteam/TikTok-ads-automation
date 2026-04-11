@@ -2381,25 +2381,50 @@ export class TiktokService {
   ) {
     this.logger.log(`Fetching Smart+ adgroups for advertiser: ${advertiserId}, count: ${adgroupIds.length}`);
 
-    const response = await this.httpGetWithRetry(
-      '/v1.3/smart_plus/adgroup/get/',
-      {
-        params: {
-          advertiser_id: advertiserId,
-          adgroup_ids: JSON.stringify(adgroupIds),
-        },
-        headers: { 'Access-Token': accessToken },
-      },
-      'getSmartPlusAdGroups',
-    );
+    // Smart+ adgroup/getはadgroup_idsフィルタが効かず全件返すことがあるため
+    // ページネーションで全件取得し、必要なadgroup_idだけをフィルタする
+    const allList: any[] = [];
+    const targetIds = new Set(adgroupIds);
+    let currentPage = 1;
+    const pageSize = 100;
 
-    if (response.data.code !== 0) {
-      throw new Error(`Smart+ adgroup取得失敗: ${response.data.message} (code: ${response.data.code})`);
+    while (true) {
+      const response = await this.httpGetWithRetry(
+        '/v1.3/smart_plus/adgroup/get/',
+        {
+          params: {
+            advertiser_id: advertiserId,
+            page_size: pageSize,
+            page: currentPage,
+          },
+          headers: { 'Access-Token': accessToken },
+        },
+        `getSmartPlusAdGroups(page=${currentPage})`,
+      );
+
+      if (response.data.code !== 0) {
+        throw new Error(`Smart+ adgroup取得失敗: ${response.data.message} (code: ${response.data.code})`);
+      }
+
+      const list = response.data.data?.list || [];
+      allList.push(...list);
+
+      // 全対象が見つかったら早期終了
+      const foundCount = allList.filter(ag => targetIds.has(String(ag.adgroup_id))).length;
+      if (foundCount >= targetIds.size) break;
+
+      // 次ページがなければ終了
+      const totalNumber = response.data.data?.page_info?.total_number || 0;
+      if (allList.length >= totalNumber || list.length < pageSize) break;
+
+      currentPage++;
     }
 
-    const adgroups = response.data.data?.list || [];
-    this.logger.log(`Retrieved ${adgroups.length} Smart+ adgroups`);
-    return response.data;
+    // 対象adgroup_idだけにフィルタ
+    const filtered = allList.filter(ag => targetIds.has(String(ag.adgroup_id)));
+    this.logger.log(`Retrieved ${allList.length} Smart+ adgroups total, ${filtered.length} matched target IDs`);
+
+    return { data: { list: filtered } };
   }
 
   // ============================================================================
