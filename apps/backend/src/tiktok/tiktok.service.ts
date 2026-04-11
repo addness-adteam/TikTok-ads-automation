@@ -2367,6 +2367,42 @@ export class TiktokService {
   }
 
   // ============================================================================
+  // Upgraded Smart+ AdGroup取得 API
+  // ============================================================================
+
+  /**
+   * Smart+ 広告グループ情報を取得
+   * GET /v1.3/smart_plus/adgroup/get/
+   */
+  async getSmartPlusAdGroups(
+    advertiserId: string,
+    accessToken: string,
+    adgroupIds: string[],
+  ) {
+    this.logger.log(`Fetching Smart+ adgroups for advertiser: ${advertiserId}, count: ${adgroupIds.length}`);
+
+    const response = await this.httpGetWithRetry(
+      '/v1.3/smart_plus/adgroup/get/',
+      {
+        params: {
+          advertiser_id: advertiserId,
+          adgroup_ids: JSON.stringify(adgroupIds),
+        },
+        headers: { 'Access-Token': accessToken },
+      },
+      'getSmartPlusAdGroups',
+    );
+
+    if (response.data.code !== 0) {
+      throw new Error(`Smart+ adgroup取得失敗: ${response.data.message} (code: ${response.data.code})`);
+    }
+
+    const adgroups = response.data.data?.list || [];
+    this.logger.log(`Retrieved ${adgroups.length} Smart+ adgroups`);
+    return response.data;
+  }
+
+  // ============================================================================
   // Upgraded Smart+ 予算更新 API
   // ============================================================================
 

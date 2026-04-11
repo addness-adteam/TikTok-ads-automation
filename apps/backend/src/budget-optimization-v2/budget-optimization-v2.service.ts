@@ -1152,9 +1152,10 @@ export class BudgetOptimizationV2Service {
     const adgroupIds = [...new Set(allAds.map((ad: any) => ad.adgroup_id).filter(Boolean))];
     const campaignIds = [...new Set(allAds.map((ad: any) => ad.campaign_id).filter(Boolean))];
 
-    // AdGroup予算をバッチ取得
+    // AdGroup予算をバッチ取得（通常API + Smart+ APIの両方で取得）
     const adgroupBudgetMap = new Map<string, number>();
     if (adgroupIds.length > 0) {
+      // 1. 通常adgroup/get APIで取得
       try {
         const adgroupResponse = await this.tiktokService.getAdGroups(advertiserId, accessToken, campaignIds as string[]);
         const adgroups = adgroupResponse.data?.list || [];
@@ -1163,10 +1164,29 @@ export class BudgetOptimizationV2Service {
             adgroupBudgetMap.set(ag.adgroup_id, parseFloat(ag.budget));
           }
         }
-        this.logger.log(`[V2] Fetched adgroup budgets: ${adgroupBudgetMap.size} adgroups with budget`);
+        this.logger.log(`[V2] Fetched adgroup budgets (regular API): ${adgroupBudgetMap.size} adgroups`);
       } catch (error) {
         this.logger.error(`[V2] Failed to fetch adgroup budgets: ${error.message}`);
       }
+
+      // 2. 通常APIで取得できなかったadgroupをSmart+ APIで補完
+      const missingAdgroupIds = adgroupIds.filter(id => !adgroupBudgetMap.has(id));
+      if (missingAdgroupIds.length > 0) {
+        try {
+          const spAdgroupResponse = await this.tiktokService.getSmartPlusAdGroups(advertiserId, accessToken, missingAdgroupIds);
+          const spAdgroups = spAdgroupResponse.data?.list || [];
+          for (const ag of spAdgroups) {
+            if (ag.adgroup_id && ag.budget) {
+              adgroupBudgetMap.set(ag.adgroup_id, parseFloat(ag.budget));
+            }
+          }
+          this.logger.log(`[V2] Fetched adgroup budgets (Smart+ API): ${spAdgroups.length} adgroups supplemented`);
+        } catch (error) {
+          this.logger.warn(`[V2] Smart+ adgroup budget fetch failed: ${error.message}`);
+        }
+      }
+
+      this.logger.log(`[V2] Total adgroup budgets: ${adgroupBudgetMap.size}/${adgroupIds.length}`);
     }
 
     // キャンペーン情報をバッチ取得（CBO検出 + キャンペーン予算取得）
