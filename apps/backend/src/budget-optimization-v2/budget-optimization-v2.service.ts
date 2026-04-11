@@ -96,7 +96,13 @@ export class BudgetOptimizationV2Service {
     const appeal = advertiser.appeal;
 
     // Smart+配信中広告を取得
-    const activeAds = await this.getActiveSmartPlusAds(advertiserId, accessToken, appeal);
+    let activeAds: V2SmartPlusAd[];
+    try {
+      activeAds = await this.getActiveSmartPlusAds(advertiserId, accessToken, appeal);
+    } catch (error) {
+      this.logger.error(`[V2] getActiveSmartPlusAds failed: ${error.message}`);
+      return this.emptyResult(advertiserId, now);
+    }
     this.logger.log(`[V2] Found ${activeAds.length} active Smart+ ads`);
 
     if (activeAds.length === 0) {
@@ -104,7 +110,13 @@ export class BudgetOptimizationV2Service {
     }
 
     // 第1回か第2回以降か判定
-    const isFirstRound = await this.isFirstRoundToday(advertiserId, jstDateStr);
+    let isFirstRound: boolean;
+    try {
+      isFirstRound = await this.isFirstRoundToday(advertiserId, jstDateStr);
+    } catch (error) {
+      this.logger.error(`[V2] isFirstRoundToday failed: ${error.message} → firstRound=trueとして続行`);
+      isFirstRound = true;
+    }
     this.logger.log(`[V2] isFirstRound: ${isFirstRound}`);
 
     let stage1Results: BudgetIncreaseDecision[] = [];
@@ -347,10 +359,22 @@ export class BudgetOptimizationV2Service {
     this.logger.log('[V2] === Stage 1: Today CPA budget increase ===');
 
     // 当日メトリクスをTikTok APIから取得
-    const todayMetrics = await this.getTodayMetrics(advertiserId, accessToken, todayStr);
+    let todayMetrics: Map<string, any>;
+    try {
+      todayMetrics = await this.getTodayMetrics(advertiserId, accessToken, todayStr);
+    } catch (error) {
+      this.logger.error(`[V2] getTodayMetrics failed: ${error.message} → Stage1全広告スキップ`);
+      return ads.map(ad => this.skipDecision(ad, `メトリクス取得エラー: ${error.message}`));
+    }
 
     // 除外CRリストを取得
-    const excludedCRs = await this.getExcludedCreativeNames(advertiserId);
+    let excludedCRs: Set<string>;
+    try {
+      excludedCRs = await this.getExcludedCreativeNames(advertiserId);
+    } catch (error) {
+      this.logger.warn(`[V2] getExcludedCreativeNames failed: ${error.message} → 除外なしで続行`);
+      excludedCRs = new Set();
+    }
 
     const results: BudgetIncreaseDecision[] = [];
 
@@ -440,10 +464,22 @@ export class BudgetOptimizationV2Service {
     const { startDate, endDate, startStr, endStr } = this.calculateLast7DaysPeriod(todayStr);
 
     // 過去7日間メトリクスをTikTok APIから取得
-    const last7DaysMetrics = await this.getLast7DaysMetrics(advertiserId, accessToken, startStr, endStr);
+    let last7DaysMetrics: Map<string, any>;
+    try {
+      last7DaysMetrics = await this.getLast7DaysMetrics(advertiserId, accessToken, startStr, endStr);
+    } catch (error) {
+      this.logger.error(`[V2] getLast7DaysMetrics failed: ${error.message} → Stage2全広告スキップ`);
+      return [];
+    }
 
     // 除外CRリストを取得
-    const excludedCRs = await this.getExcludedCreativeNames(advertiserId);
+    let excludedCRs: Set<string>;
+    try {
+      excludedCRs = await this.getExcludedCreativeNames(advertiserId);
+    } catch (error) {
+      this.logger.warn(`[V2] getExcludedCreativeNames failed: ${error.message} → 除外なしで続行`);
+      excludedCRs = new Set();
+    }
 
     const results: PauseDecision[] = [];
 
@@ -641,13 +677,31 @@ export class BudgetOptimizationV2Service {
     this.logger.log('[V2] === Subsequent round: Delta CV budget increase ===');
 
     // 当日メトリクスを取得
-    const todayMetrics = await this.getTodayMetrics(advertiserId, accessToken, todayStr);
+    let todayMetrics: Map<string, any>;
+    try {
+      todayMetrics = await this.getTodayMetrics(advertiserId, accessToken, todayStr);
+    } catch (error) {
+      this.logger.error(`[V2] getTodayMetrics failed: ${error.message} → SubsequentRound全広告スキップ`);
+      return ads.map(ad => this.skipDecision(ad, `メトリクス取得エラー: ${error.message}`));
+    }
 
     // 前回のSnapshotを取得（当日分で最新のもの）
-    const lastSnapshots = await this.getLastSnapshots(advertiserId, todayStr);
+    let lastSnapshots: Map<string, { todayCVCount: number }>;
+    try {
+      lastSnapshots = await this.getLastSnapshots(advertiserId, todayStr);
+    } catch (error) {
+      this.logger.error(`[V2] getLastSnapshots failed: ${error.message} → SubsequentRound全広告スキップ`);
+      return ads.map(ad => this.skipDecision(ad, `Snapshot取得エラー: ${error.message}`));
+    }
 
     // 除外CRリストを取得
-    const excludedCRs = await this.getExcludedCreativeNames(advertiserId);
+    let excludedCRs: Set<string>;
+    try {
+      excludedCRs = await this.getExcludedCreativeNames(advertiserId);
+    } catch (error) {
+      this.logger.warn(`[V2] getExcludedCreativeNames failed: ${error.message} → 除外なしで続行`);
+      excludedCRs = new Set();
+    }
 
     const results: BudgetIncreaseDecision[] = [];
 
