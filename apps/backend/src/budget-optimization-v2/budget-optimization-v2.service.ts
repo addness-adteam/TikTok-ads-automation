@@ -55,22 +55,35 @@ export class BudgetOptimizationV2Service {
   ) {}
 
   /**
-   * V2エラー通知（Slack Webhook）
+   * V2エラー通知（LINE Messaging API → AI秘書）
    * API取得失敗やDB障害で予算調整が正常に動作しなかった場合に通知
    */
   private async notifyError(context: string, errorMessage: string): Promise<void> {
-    const webhookUrl = process.env.SLACK_WEBHOOK_URL;
-    if (!webhookUrl) return;
+    const token = process.env.LINE_CHANNEL_ACCESS_TOKEN;
+    const userId = process.env.LINE_USER_ID;
+    if (!token || !userId) {
+      this.logger.warn('[V2] LINE通知: LINE_CHANNEL_ACCESS_TOKEN or LINE_USER_ID未設定');
+      return;
+    }
 
-    const text = `🚨 [V2予算調整エラー] ${context}\n${errorMessage}`;
+    const text = `🚨 V2予算調整エラー\n\n【${context}】\n${errorMessage}`;
     try {
-      await fetch(webhookUrl, {
+      const response = await fetch('https://api.line.me/v2/bot/message/push', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text }),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          to: userId,
+          messages: [{ type: 'text', text }],
+        }),
       });
+      if (!response.ok) {
+        this.logger.warn(`[V2] LINE通知失敗: HTTP ${response.status}`);
+      }
     } catch {
-      this.logger.warn('[V2] Slack通知送信失敗');
+      this.logger.warn('[V2] LINE通知送信失敗');
     }
   }
 
