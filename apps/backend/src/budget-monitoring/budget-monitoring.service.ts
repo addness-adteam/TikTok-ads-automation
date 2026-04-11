@@ -13,7 +13,7 @@ interface BudgetAnomaly {
   reason: string;
 }
 
-interface MonitorResult {
+export interface MonitorResult {
   checkedAt: string;
   totalAdvertisers: number;
   totalAdgroups: number;
