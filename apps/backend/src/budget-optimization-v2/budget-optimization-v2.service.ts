@@ -54,6 +54,26 @@ export class BudgetOptimizationV2Service {
     private readonly configService: ConfigService,
   ) {}
 
+  /**
+   * V2エラー通知（Slack Webhook）
+   * API取得失敗やDB障害で予算調整が正常に動作しなかった場合に通知
+   */
+  private async notifyError(context: string, errorMessage: string): Promise<void> {
+    const webhookUrl = process.env.SLACK_WEBHOOK_URL;
+    if (!webhookUrl) return;
+
+    const text = `🚨 [V2予算調整エラー] ${context}\n${errorMessage}`;
+    try {
+      await fetch(webhookUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text }),
+      });
+    } catch {
+      this.logger.warn('[V2] Slack通知送信失敗');
+    }
+  }
+
   // ============================================================================
   // メインエントリ
   // ============================================================================
@@ -101,6 +121,7 @@ export class BudgetOptimizationV2Service {
       activeAds = await this.getActiveSmartPlusAds(advertiserId, accessToken, appeal);
     } catch (error) {
       this.logger.error(`[V2] getActiveSmartPlusAds failed: ${error.message}`);
+      await this.notifyError('広告取得失敗', `アカウント: ${advertiser.name}\nTikTok APIから配信中広告を取得できず、予算調整をスキップしました\n${error.message}`);
       return this.emptyResult(advertiserId, now);
     }
     this.logger.log(`[V2] Found ${activeAds.length} active Smart+ ads`);
@@ -142,6 +163,7 @@ export class BudgetOptimizationV2Service {
       await this.saveSnapshots(advertiserId, activeAds, stage1Results, now);
     } catch (snapshotError) {
       this.logger.error(`[V2] saveSnapshots failed for ${advertiserId}: ${snapshotError.message}`);
+      await this.notifyError('Snapshotバッチ保存失敗', `アカウント: ${advertiserId}\nSnapshotの一括保存に失敗。次回ラウンドのCV差分検出に影響する可能性\n${snapshotError.message}`);
     }
 
     // 古いSnapshot削除
@@ -364,6 +386,7 @@ export class BudgetOptimizationV2Service {
       todayMetrics = await this.getTodayMetrics(advertiserId, accessToken, todayStr);
     } catch (error) {
       this.logger.error(`[V2] getTodayMetrics failed: ${error.message} → Stage1全広告スキップ`);
+      await this.notifyError('メトリクス取得失敗（Stage1）', `アカウント: ${advertiserId}\n当日広告費の取得に失敗。${ads.length}件の広告の予算増額をスキップ\n${error.message}`);
       return ads.map(ad => this.skipDecision(ad, `メトリクス取得エラー: ${error.message}`));
     }
 
@@ -428,6 +451,7 @@ export class BudgetOptimizationV2Service {
             await this.executeBudgetUpdate(ad, decision.newBudget, advertiserId, accessToken);
           } else {
             this.logger.error(`[V2] Snapshot保存失敗のため予算増額をスキップ: ${ad.adId} (${ad.adName})`);
+            this.notifyError('Snapshot保存失敗', `広告: ${ad.adName}\nSnapshot保存に失敗したため予算増額をスキップ。DB障害の可能性`).catch(() => {});
             decision.action = 'SKIP';
             decision.reason = `Snapshot保存失敗のため増額スキップ（元判定: ${decision.reason}）`;
           }
@@ -682,6 +706,7 @@ export class BudgetOptimizationV2Service {
       todayMetrics = await this.getTodayMetrics(advertiserId, accessToken, todayStr);
     } catch (error) {
       this.logger.error(`[V2] getTodayMetrics failed: ${error.message} → SubsequentRound全広告スキップ`);
+      await this.notifyError('メトリクス取得失敗（Subsequent）', `アカウント: ${advertiserId}\n当日広告費の取得に失敗。${ads.length}件の広告の予算増額をスキップ\n${error.message}`);
       return ads.map(ad => this.skipDecision(ad, `メトリクス取得エラー: ${error.message}`));
     }
 
@@ -691,6 +716,7 @@ export class BudgetOptimizationV2Service {
       lastSnapshots = await this.getLastSnapshots(advertiserId, todayStr);
     } catch (error) {
       this.logger.error(`[V2] getLastSnapshots failed: ${error.message} → SubsequentRound全広告スキップ`);
+      await this.notifyError('Snapshot取得失敗', `アカウント: ${advertiserId}\n前回Snapshotの取得に失敗。予算増額をスキップ\n${error.message}`);
       return ads.map(ad => this.skipDecision(ad, `Snapshot取得エラー: ${error.message}`));
     }
 
@@ -764,6 +790,7 @@ export class BudgetOptimizationV2Service {
             await this.executeBudgetUpdate(ad, decision.newBudget, advertiserId, accessToken);
           } else {
             this.logger.error(`[V2] Snapshot保存失敗のため予算増額をスキップ: ${ad.adId} (${ad.adName})`);
+            this.notifyError('Snapshot保存失敗', `広告: ${ad.adName}\nSnapshot保存に失敗したため予算増額をスキップ。DB障害の可能性`).catch(() => {});
             decision.action = 'SKIP';
             decision.reason = `Snapshot保存失敗のため増額スキップ（元判定: ${decision.reason}）`;
           }
