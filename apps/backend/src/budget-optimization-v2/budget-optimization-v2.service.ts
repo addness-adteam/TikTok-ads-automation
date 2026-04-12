@@ -375,6 +375,7 @@ export class BudgetOptimizationV2Service {
           },
         ],
       },
+      select: { creativeName: true },
     });
     return new Set(exclusions.map(e => e.creativeName));
   }
@@ -1687,6 +1688,7 @@ export class BudgetOptimizationV2Service {
       },
       orderBy: { executionTime: 'desc' },
       distinct: ['adId'],
+      select: { adId: true, todayCVCount: true, executionTime: true },
     });
 
     return new Map(snapshots.map(s => [s.adId, { todayCVCount: s.todayCVCount }]));
