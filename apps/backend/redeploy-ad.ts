@@ -196,15 +196,32 @@ async function getSourceAdInfo(advertiserId: string, adId: string) {
   const adData = await tiktokGet('/v1.3/ad/get/', {
     advertiser_id: advertiserId,
     filtering: JSON.stringify({ ad_ids: [adId] }),
-    fields: JSON.stringify(['ad_id', 'ad_name', 'ad_text', 'landing_page_url', 'video_id', 'call_to_action', 'call_to_action_id', 'creative_type']),
+    fields: JSON.stringify(['ad_id', 'ad_name', 'ad_text', 'landing_page_url', 'video_id', 'call_to_action', 'call_to_action_id', 'creative_type', 'campaign_id']),
   });
   const ad = adData.data?.list?.[0];
 
   if (ad) {
-    console.log(`   [通常広告] ${ad.ad_name}`);
+    // 通常広告名にLP情報がない場合、Smart+親広告名（=キャンペーン名）からLP情報を補完
+    let resolvedAdName = ad.ad_name;
+    if (!resolvedAdName.match(/LP\d+/i) && ad.campaign_id) {
+      try {
+        const campData = await tiktokGet('/v1.3/campaign/get/', {
+          advertiser_id: advertiserId,
+          filtering: JSON.stringify({ campaign_ids: [ad.campaign_id] }),
+        });
+        const campName = campData.data?.list?.[0]?.campaign_name || '';
+        if (campName.match(/LP\d+/i)) {
+          resolvedAdName = campName;
+          console.log(`   [通常広告] ${ad.ad_name} → キャンペーン名から補完: ${campName}`);
+        }
+      } catch {}
+    }
+    if (resolvedAdName === ad.ad_name) {
+      console.log(`   [通常広告] ${ad.ad_name}`);
+    }
     console.log(`   動画ID: ${ad.video_id}`);
     console.log(`   広告文: ${ad.ad_text}`);
-    return { adName: ad.ad_name, adText: ad.ad_text, videoId: ad.video_id, landingPageUrl: ad.landing_page_url };
+    return { adName: resolvedAdName, adText: ad.ad_text, videoId: ad.video_id, landingPageUrl: ad.landing_page_url };
   }
 
   // 通常APIで見つからない場合 → Smart+広告として取得
@@ -219,10 +236,16 @@ async function getSourceAdInfo(advertiserId: string, adId: string) {
   const adName = spAd.smart_plus_ad_name || spAd.ad_name || '';
   const creativeList = spAd.creative_list || [];
 
-  // 全creative_listからvideo_idを抽出
+  // 全creative_listからvideo_idを抽出（EXCLUDE_VIDEO_NAME_PATTERNで除外可能）
+  const excludePattern = process.env.EXCLUDE_VIDEO_NAME_PATTERN;
   const videoIds: string[] = [];
   for (const creative of creativeList) {
     const vid = creative?.creative_info?.video_info?.video_id;
+    const materialName = creative?.creative_info?.material_name || '';
+    if (excludePattern && materialName.includes(excludePattern)) {
+      console.log(`   除外: ${materialName}`);
+      continue;
+    }
     if (vid && vid !== 'N/A' && !videoIds.includes(vid)) videoIds.push(vid);
   }
   if (videoIds.length === 0) throw new Error('Smart+広告からvideo_idを取得できません');
@@ -255,10 +278,12 @@ function parseAdInfo(adName: string, advertiserId: string): { appeal: string; lp
   const lpMatch = adName.match(/LP(\d+)/i);
   const lpNumber = lpMatch ? parseInt(lpMatch[1]) : 1;
 
-  // appeal推定（アカウントID → 広告名の手がかり）
+  // appeal推定（アカウントIDベース → 広告名のパス部分で上書き）
   let appeal = ACCOUNT_APPEAL_MAP[advertiserId] || 'AI';
-  if (adName.includes('SNS') || adName.includes('sns')) appeal = 'SNS';
-  else if (adName.includes('スキル') || adName.includes('セミナー')) appeal = 'スキルプラス';
+  // LP-CR形式のパス部分（YYMMDD/制作者/CR名/LP-CR）からのみ判定。ファイル名部分のSNS等は無視
+  const pathPart = adName.split('.mp4')[0].split('/').slice(0, -1).join('/');
+  if (pathPart.includes('SNS') || pathPart.includes('sns')) appeal = 'SNS';
+  else if (pathPart.includes('スキル') || pathPart.includes('セミナー')) appeal = 'スキルプラス';
 
   // 制作者名・CR名を抽出（YYMMDD/制作者/CR名/LP-CR形式）
   const parts = adName.split('/');
