@@ -211,14 +211,18 @@ export class AdPerformanceService {
         },
         include: {
           ad: {
-            include: {
+            select: {
+              id: true,
+              name: true,
               adGroup: {
-                include: {
+                select: {
                   campaign: {
-                    include: {
+                    select: {
                       advertiser: {
-                        include: {
-                          appeal: true,
+                        select: {
+                          appeal: {
+                            select: { cvSpreadsheetUrl: true },
+                          },
                         },
                       },
                     },
