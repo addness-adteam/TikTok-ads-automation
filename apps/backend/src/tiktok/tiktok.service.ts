@@ -425,44 +425,53 @@ export class TiktokService {
    */
   async getCampaigns(advertiserId: string, accessToken: string, campaignIds?: string[]) {
     try {
-      this.logger.log(`Fetching campaigns for advertiser: ${advertiserId}`);
+      this.logger.log(`Fetching campaigns for advertiser: ${advertiserId}${campaignIds ? ` (filter: ${campaignIds.length} ids)` : ''}`);
+
+      // campaign_idsが多いとAkamaiのURL長制限(~8KB)に引っかかるため、ID配列をチャンク分割
+      const CHUNK_SIZE = 100;
+      const chunks: (string[] | undefined)[] = campaignIds && campaignIds.length > 0
+        ? this.chunkArray(campaignIds, CHUNK_SIZE)
+        : [undefined];
 
       const allList: any[] = [];
-      const pageSize = 100;
-      let currentPage = 1;
-      let hasMorePages = true;
       let lastPageInfo: any = null;
+      let totalPagesAcross = 0;
 
-      while (hasMorePages) {
-        const params: any = {
-          advertiser_id: advertiserId,
-          page_size: pageSize,
-          page: currentPage,
-        };
-        if (campaignIds && campaignIds.length > 0) {
-          params.filtering = { campaign_ids: campaignIds };
+      for (const chunk of chunks) {
+        let currentPage = 1;
+        let hasMorePages = true;
+        while (hasMorePages) {
+          const params: any = {
+            advertiser_id: advertiserId,
+            page_size: 100,
+            page: currentPage,
+          };
+          if (chunk) {
+            params.filtering = JSON.stringify({ campaign_ids: chunk });
+          }
+
+          const response = await this.httpGetWithRetry('/v1.3/campaign/get/', {
+            headers: { 'Access-Token': accessToken },
+            params,
+          }, `getCampaigns(page=${currentPage})`);
+
+          const list = response.data.data?.list || [];
+          lastPageInfo = response.data.data?.page_info || null;
+          allList.push(...list);
+
+          const totalNumber = lastPageInfo?.total_number || 0;
+          const totalPages = totalNumber > 0 ? Math.ceil(totalNumber / 100) : 1;
+
+          if (list.length < 100 || currentPage >= totalPages) {
+            hasMorePages = false;
+          } else {
+            currentPage++;
+          }
         }
-
-        const response = await this.httpGetWithRetry('/v1.3/campaign/get/', {
-          headers: { 'Access-Token': accessToken },
-          params,
-        }, `getCampaigns(page=${currentPage})`);
-
-        const list = response.data.data?.list || [];
-        lastPageInfo = response.data.data?.page_info || null;
-        allList.push(...list);
-
-        const totalNumber = lastPageInfo?.total_number || 0;
-        const totalPages = totalNumber > 0 ? Math.ceil(totalNumber / pageSize) : 1;
-
-        if (list.length < pageSize || currentPage >= totalPages) {
-          hasMorePages = false;
-        } else {
-          currentPage++;
-        }
+        totalPagesAcross += currentPage;
       }
 
-      this.logger.log(`Retrieved ${allList.length} campaigns across ${currentPage} pages (advertiser: ${advertiserId})`);
+      this.logger.log(`Retrieved ${allList.length} campaigns across ${chunks.length} chunks / ${totalPagesAcross} pages (advertiser: ${advertiserId})`);
       return {
         code: 0,
         data: {
@@ -473,6 +482,15 @@ export class TiktokService {
     } catch (error) {
       this.handleTikTokError(error, 'getCampaigns');
     }
+  }
+
+  /** 配列をN件ずつのチャンクに分割 */
+  private chunkArray<T>(arr: T[], size: number): T[][] {
+    const result: T[][] = [];
+    for (let i = 0; i < arr.length; i += size) {
+      result.push(arr.slice(i, i + size));
+    }
+    return result;
   }
 
   /**
@@ -532,44 +550,53 @@ export class TiktokService {
    */
   async getAdGroups(advertiserId: string, accessToken: string, campaignIds?: string[]) {
     try {
-      this.logger.log(`Fetching ad groups for advertiser: ${advertiserId}`);
+      this.logger.log(`Fetching ad groups for advertiser: ${advertiserId}${campaignIds ? ` (filter: ${campaignIds.length} ids)` : ''}`);
+
+      // campaign_idsが多いとAkamaiのURL長制限(~8KB)に引っかかるため、ID配列をチャンク分割
+      const CHUNK_SIZE = 100;
+      const chunks: (string[] | undefined)[] = campaignIds && campaignIds.length > 0
+        ? this.chunkArray(campaignIds, CHUNK_SIZE)
+        : [undefined];
 
       const allList: any[] = [];
-      const pageSize = 100;
-      let currentPage = 1;
-      let hasMorePages = true;
       let lastPageInfo: any = null;
+      let totalPagesAcross = 0;
 
-      while (hasMorePages) {
-        const params: any = {
-          advertiser_id: advertiserId,
-          page_size: pageSize,
-          page: currentPage,
-        };
-        if (campaignIds && campaignIds.length > 0) {
-          params.filtering = JSON.stringify({ campaign_ids: campaignIds });
+      for (const chunk of chunks) {
+        let currentPage = 1;
+        let hasMorePages = true;
+        while (hasMorePages) {
+          const params: any = {
+            advertiser_id: advertiserId,
+            page_size: 100,
+            page: currentPage,
+          };
+          if (chunk) {
+            params.filtering = JSON.stringify({ campaign_ids: chunk });
+          }
+
+          const response = await this.httpGetWithRetry('/v1.3/adgroup/get/', {
+            headers: { 'Access-Token': accessToken },
+            params,
+          }, `getAdGroups(page=${currentPage})`);
+
+          const list = response.data.data?.list || [];
+          lastPageInfo = response.data.data?.page_info || null;
+          allList.push(...list);
+
+          const totalNumber = lastPageInfo?.total_number || 0;
+          const totalPages = totalNumber > 0 ? Math.ceil(totalNumber / 100) : 1;
+
+          if (list.length < 100 || currentPage >= totalPages) {
+            hasMorePages = false;
+          } else {
+            currentPage++;
+          }
         }
-
-        const response = await this.httpGetWithRetry('/v1.3/adgroup/get/', {
-          headers: { 'Access-Token': accessToken },
-          params,
-        }, `getAdGroups(page=${currentPage})`);
-
-        const list = response.data.data?.list || [];
-        lastPageInfo = response.data.data?.page_info || null;
-        allList.push(...list);
-
-        const totalNumber = lastPageInfo?.total_number || 0;
-        const totalPages = totalNumber > 0 ? Math.ceil(totalNumber / pageSize) : 1;
-
-        if (list.length < pageSize || currentPage >= totalPages) {
-          hasMorePages = false;
-        } else {
-          currentPage++;
-        }
+        totalPagesAcross += currentPage;
       }
 
-      this.logger.log(`Retrieved ${allList.length} ad groups across ${currentPage} pages (advertiser: ${advertiserId})`);
+      this.logger.log(`Retrieved ${allList.length} ad groups across ${chunks.length} chunks / ${totalPagesAcross} pages (advertiser: ${advertiserId})`);
       return {
         code: 0,
         data: {
