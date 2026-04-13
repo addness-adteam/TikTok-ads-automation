@@ -710,3 +710,19 @@ model HypothesisTest {
   @@index([adId])
   @@map("hypothesis_tests")
 }
+
+// ============================================================================
+// CR番号予約（並行実行/反映ラグによる番号重複防止）
+// ============================================================================
+model CrNumberReservation {
+  id         Int       @id @default(autoincrement())
+  appeal     String    // 'AI' | 'SNS' | 'スキルプラス'
+  lpNumber   Int
+  crNumber   Int
+  reservedAt DateTime  @default(now())
+  adName     String?   // 出稿完了後に紐付け（任意）
+
+  @@unique([appeal, lpNumber, crNumber])
+  @@index([appeal, lpNumber])
+  @@map("cr_number_reservations")
+}

@@ -12,6 +12,7 @@
 
 import { PrismaClient } from '@prisma/client';
 import * as crypto from 'crypto';
+import { getUtageCrMax, reserveNextCrNumber } from './src/utage/cr-reservation';
 
 // ===== 設定 =====
 const TIKTOK_API_BASE = 'https://business-api.tiktok.com/open_api';
@@ -463,17 +464,10 @@ async function authedGet(url: string): Promise<string> {
 async function getLatestCrNumber(appeal: string, lpNumber: number): Promise<number> {
   const config = TIKTOK_FUNNEL_MAP[appeal]?.[lpNumber];
   if (!config) throw new Error(`未対応の導線/LP: ${appeal} LP${lpNumber}`);
-
-  console.log(`4. 最新CR番号を取得中... (${appeal} LP${lpNumber})`);
-  const html = await authedGet(`${UTAGE_BASE_URL}/funnel/${config.funnelId}/tracking`);
-
-  const pattern = new RegExp(`TikTok広告-${appeal}-LP${lpNumber}-CR(0\\d{4})`, 'g');
-  const matches = [...html.matchAll(pattern)];
-  if (matches.length === 0) { console.log('   既存の登録経路なし、CR00001から開始'); return 0; }
-
-  const crNumbers = matches.map(m => parseInt(m[1])).sort((a, b) => b - a);
-  console.log(`   最新CR番号: CR${String(crNumbers[0]).padStart(5, '0')} (${matches.length}件中)`);
-  return crNumbers[0];
+  console.log(`4. 最新CR番号を取得中... (${appeal} LP${lpNumber}、全ページ走査)`);
+  const maxCr = await getUtageCrMax(authedGet, UTAGE_BASE_URL, config.funnelId, appeal, lpNumber);
+  console.log(`   UTAGE最大CR番号: ${maxCr === 0 ? '(該当なし)' : `CR${String(maxCr).padStart(5, '0')}`}`);
+  return maxCr;
 }
 
 async function createRegistrationPath(appeal: string, lpNumber: number, crNumber: number): Promise<{ registrationPath: string; destinationUrl: string }> {
@@ -729,7 +723,7 @@ async function main() {
     // appeal/LP推定
     const lpMatch = source.adName.match(/LP(\d+)/i);
     const lpNumber = lpMatch ? parseInt(lpMatch[1]) : 1;
-    let appeal = ACCOUNT_APPEAL_MAP[sourceAdvertiserId] || 'AI';
+    let appeal = ACCOUNT_APPEAL_MAP[targetAdvertiserId] || 'AI';
     if (source.adName.includes('SNS') || source.adName.includes('sns')) appeal = 'SNS';
     else if (source.adName.includes('スキル') || source.adName.includes('セミナー')) appeal = 'スキルプラス';
 
@@ -742,8 +736,8 @@ async function main() {
 
     // 3. UTAGE
     await utageLogin();
-    const latestCr = await getLatestCrNumber(appeal, lpNumber);
-    const newCrNumber = latestCr + 1;
+    const utageMax = await getLatestCrNumber(appeal, lpNumber);
+    const newCrNumber = await reserveNextCrNumber(prisma, appeal, lpNumber, utageMax);
     const { registrationPath, destinationUrl } = await createRegistrationPath(appeal, lpNumber, newCrNumber);
 
     // 6. 広告名生成

@@ -4,6 +4,7 @@
  */
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { PrismaService } from '../prisma/prisma.service';
 import {
   TIKTOK_FUNNEL_MAP,
   OPERATOR_LOGIN_URL,
@@ -18,7 +19,10 @@ export class UtageService {
   private sessionCookies = '';
   private csrfToken = '';
 
-  constructor(private configService: ConfigService) {}
+  constructor(
+    private configService: ConfigService,
+    private prisma: PrismaService,
+  ) {}
 
   // ========== セッション管理 ==========
 
@@ -159,22 +163,59 @@ export class UtageService {
       throw new Error(`未対応の導線/LP: ${appeal} LP${lpNumber}`);
     }
 
+    // UTAGE一覧は古い順に並ぶため、最新CRは最終ページにある。全ページ走査してmaxを取る。
     const trackingUrl = `${UTAGE_BASE_URL}/funnel/${config.funnelId}/tracking`;
-    const { html } = await this.authedGet(trackingUrl);
-
-    // TikTok広告用のパターンで検索（5桁ゼロ埋め形式のみマッチ）
-    // 過去の手動登録経路（CR29527等）を除外するため、CR00xxx形式に限定
     const pattern = new RegExp(`TikTok広告-${appeal}-LP${lpNumber}-CR(0\\d{4})`, 'g');
-    const matches = [...html.matchAll(pattern)];
+    const allNumbers: number[] = [];
+    const MAX_PAGES = 30;
 
-    if (matches.length === 0) {
+    for (let page = 1; page <= MAX_PAGES; page++) {
+      const url = page === 1 ? trackingUrl : `${trackingUrl}?page=${page}`;
+      const { html } = await this.authedGet(url);
+      const matches = [...html.matchAll(pattern)];
+      allNumbers.push(...matches.map(m => parseInt(m[1])));
+      if (!html.includes(`page=${page + 1}`)) break;
+    }
+
+    if (allNumbers.length === 0) {
       this.logger.log(`UTAGE: ${appeal} LP${lpNumber} の既存登録経路が見つかりません。CR00001から開始します。`);
       return 0;
     }
 
-    const crNumbers = matches.map(m => parseInt(m[1])).sort((a, b) => b - a);
-    this.logger.log(`UTAGE: ${appeal} LP${lpNumber} 最新CR番号 = ${crNumbers[0]} (${matches.length}件中)`);
-    return crNumbers[0];
+    const maxCr = Math.max(...allNumbers);
+    this.logger.log(`UTAGE: ${appeal} LP${lpNumber} 最新CR番号 = ${maxCr} (${allNumbers.length}件中、全ページ走査)`);
+    return maxCr;
+  }
+
+  /**
+   * CR番号を原子的に予約する（並行実行・反映ラグ耐性あり）
+   * UTAGE max と予約テーブル max の max+1 を候補にし、ユニーク制約違反なら+1してリトライ。
+   */
+  async reserveNextCrNumber(appeal: string, lpNumber: number): Promise<number> {
+    const utageMax = await this.getLatestCrNumber(appeal, lpNumber);
+    const dbAgg = await this.prisma.crNumberReservation.aggregate({
+      where: { appeal, lpNumber },
+      _max: { crNumber: true },
+    });
+    const dbMax = dbAgg._max.crNumber ?? 0;
+    let candidate = Math.max(utageMax, dbMax) + 1;
+
+    for (let i = 0; i < 100; i++) {
+      try {
+        await this.prisma.crNumberReservation.create({
+          data: { appeal, lpNumber, crNumber: candidate },
+        });
+        this.logger.log(`CR番号予約成功: ${appeal} LP${lpNumber} CR${String(candidate).padStart(5, '0')} (utageMax=${utageMax}, dbMax=${dbMax})`);
+        return candidate;
+      } catch (e: any) {
+        if (e?.code === 'P2002') {
+          candidate++;
+          continue;
+        }
+        throw e;
+      }
+    }
+    throw new Error(`CR番号予約リトライ上限超過: ${appeal} LP${lpNumber}`);
   }
 
   /**
@@ -305,8 +346,7 @@ export class UtageService {
     appeal: string,
     lpNumber: number,
   ): Promise<RegistrationPathResult> {
-    const latestCr = await this.getLatestCrNumber(appeal, lpNumber);
-    const newCrNumber = latestCr + 1;
+    const newCrNumber = await this.reserveNextCrNumber(appeal, lpNumber);
     return this.createRegistrationPath(appeal, lpNumber, newCrNumber);
   }
 }
