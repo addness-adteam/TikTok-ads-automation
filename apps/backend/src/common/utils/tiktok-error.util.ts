@@ -91,7 +91,36 @@ export function classifyTikTokError(error: any): TikTokErrorInfo {
     const tiktokMsg = data?.message ? ` | TikTok message: ${data.message}` : '';
     const tiktokCode = data?.code !== undefined ? ` | TikTok code: ${data.code}` : '';
     const tiktokReqId = data?.request_id ? ` | request_id: ${data.request_id}` : '';
-    const tiktokDetail = `${tiktokCode}${tiktokMsg}${tiktokReqId}`;
+
+    // data.message/code が無い場合（プロキシ/ゲートウェイが弾いたケース）の詳細ダンプ
+    let rawDump = '';
+    if (!data?.message && !data?.code) {
+      const contentType = error.response.headers?.['content-type'] || 'unknown';
+      let bodyStr = '';
+      try {
+        bodyStr = typeof data === 'string' ? data.slice(0, 500) : JSON.stringify(data ?? '').slice(0, 500);
+      } catch {
+        bodyStr = '(stringify failed)';
+      }
+      const cfg = error.config || {};
+      const requestUrl = cfg.url || '(unknown)';
+      // paramsオブジェクトのシリアライズサイズ（実URL長の近似）
+      let paramsSize = 0;
+      try {
+        paramsSize = cfg.params ? JSON.stringify(cfg.params).length : 0;
+      } catch {
+        paramsSize = -1;
+      }
+      const paramsKeys = cfg.params ? Object.keys(cfg.params).join(',') : '(none)';
+      const filteringLen = cfg.params?.filtering
+        ? (typeof cfg.params.filtering === 'string'
+            ? cfg.params.filtering.length
+            : JSON.stringify(cfg.params.filtering).length)
+        : 0;
+      rawDump = ` | DEBUG content-type=${contentType} paramsSize=${paramsSize} filteringLen=${filteringLen} paramsKeys=[${paramsKeys}] url=${requestUrl} body="${bodyStr}"`;
+    }
+
+    const tiktokDetail = `${tiktokCode}${tiktokMsg}${tiktokReqId}${rawDump}`;
 
     // TikTok API固有のエラーコードをチェック
     const apiCode = data?.code;
