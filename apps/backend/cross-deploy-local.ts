@@ -696,12 +696,23 @@ async function main() {
   const sourceAdvertiserId = args[0];
   const sourceAdId = args[1];
   const targetAdvertiserId = args[2];
-  const budgetOverride = args[3] ? parseInt(args[3]) : undefined;
+  // 数値の引数: budget, --limit=N もしくは positional 4番目=budget, 5番目=videoLimit
+  let budgetOverride: number | undefined;
+  let videoLimit: number | undefined;
+  for (const a of args.slice(3)) {
+    const m = a.match(/^--limit=(\d+)$/);
+    if (m) videoLimit = parseInt(m[1]);
+    else if (/^\d+$/.test(a)) {
+      if (budgetOverride === undefined) budgetOverride = parseInt(a);
+      else if (videoLimit === undefined) videoLimit = parseInt(a);
+    }
+  }
 
   console.log('===== Smart+横展開（ローカル実行） =====');
   console.log(`元アカウント: ${sourceAdvertiserId}`);
   console.log(`元広告ID: ${sourceAdId}`);
   console.log(`展開先: ${targetAdvertiserId}`);
+  if (videoLimit) console.log(`動画本数制限: 先頭${videoLimit}本のみ`);
   console.log();
 
   const prisma = new PrismaClient();
@@ -719,6 +730,10 @@ async function main() {
 
     // 1. 元広告情報取得
     const source = await getSourceAdDetail(sourceAdvertiserId, sourceAdId);
+    if (videoLimit && source.videoIds.length > videoLimit) {
+      console.log(`   動画本数を ${source.videoIds.length} → ${videoLimit} に制限`);
+      source.videoIds = source.videoIds.slice(0, videoLimit);
+    }
 
     // appeal/LP推定
     const lpMatch = source.adName.match(/LP(\d+)/i);
