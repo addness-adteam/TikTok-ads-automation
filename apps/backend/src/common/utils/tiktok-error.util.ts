@@ -87,6 +87,12 @@ export function classifyTikTokError(error: any): TikTokErrorInfo {
     const status = error.response.status;
     const data = error.response.data;
 
+    // TikTokが返したエラー詳細（あれば全エラーパスで使う）
+    const tiktokMsg = data?.message ? ` | TikTok message: ${data.message}` : '';
+    const tiktokCode = data?.code !== undefined ? ` | TikTok code: ${data.code}` : '';
+    const tiktokReqId = data?.request_id ? ` | request_id: ${data.request_id}` : '';
+    const tiktokDetail = `${tiktokCode}${tiktokMsg}${tiktokReqId}`;
+
     // TikTok API固有のエラーコードをチェック
     const apiCode = data?.code;
     if (apiCode && TIKTOK_ERROR_CODES[apiCode]) {
@@ -94,7 +100,7 @@ export function classifyTikTokError(error: any): TikTokErrorInfo {
       return {
         type: errorType,
         code: apiCode,
-        message: data?.message || `TikTok API Error: ${apiCode}`,
+        message: (data?.message || `TikTok API Error: ${apiCode}`) + tiktokReqId,
         isRetryable: errorType === TikTokErrorType.RATE_LIMIT || errorType === TikTokErrorType.API_ERROR,
         retryAfterMs: errorType === TikTokErrorType.RATE_LIMIT ? getRetryAfterMs(error.response) : undefined,
         originalError: error,
@@ -106,7 +112,7 @@ export function classifyTikTokError(error: any): TikTokErrorInfo {
       return {
         type: TikTokErrorType.RATE_LIMIT,
         code: status,
-        message: 'レート制限に達しました。しばらく待ってから再試行してください。',
+        message: `レート制限に達しました。${tiktokDetail}`,
         isRetryable: true,
         retryAfterMs: getRetryAfterMs(error.response),
         originalError: error,
@@ -117,7 +123,7 @@ export function classifyTikTokError(error: any): TikTokErrorInfo {
       return {
         type: TikTokErrorType.AUTH_ERROR,
         code: status,
-        message: '認証エラー: アクセストークンが無効または期限切れです。',
+        message: `認証エラー: アクセストークンが無効または期限切れです。${tiktokDetail}`,
         isRetryable: false,
         originalError: error,
       };
@@ -127,7 +133,7 @@ export function classifyTikTokError(error: any): TikTokErrorInfo {
       return {
         type: TikTokErrorType.PERMISSION_ERROR,
         code: status,
-        message: '権限エラー: このリソースへのアクセス権がありません。',
+        message: `権限エラー: このリソースへのアクセス権がありません。${tiktokDetail}`,
         isRetryable: false,
         originalError: error,
       };
@@ -137,7 +143,17 @@ export function classifyTikTokError(error: any): TikTokErrorInfo {
       return {
         type: TikTokErrorType.NOT_FOUND,
         code: status,
-        message: 'リソースが見つかりません。',
+        message: `リソースが見つかりません。${tiktokDetail}`,
+        isRetryable: false,
+        originalError: error,
+      };
+    }
+
+    if (status === 400) {
+      return {
+        type: TikTokErrorType.API_ERROR,
+        code: data?.code ?? status,
+        message: `HTTP 400 Bad Request${tiktokDetail}`,
         isRetryable: false,
         originalError: error,
       };
@@ -147,11 +163,20 @@ export function classifyTikTokError(error: any): TikTokErrorInfo {
       return {
         type: TikTokErrorType.API_ERROR,
         code: status,
-        message: `TikTok APIサーバーエラー: ${status}`,
+        message: `TikTok APIサーバーエラー: ${status}${tiktokDetail}`,
         isRetryable: true,
         originalError: error,
       };
     }
+
+    // その他HTTPステータス（未分類）でも詳細を残す
+    return {
+      type: TikTokErrorType.UNKNOWN,
+      code: data?.code ?? status,
+      message: `HTTP ${status}${tiktokDetail}`,
+      isRetryable: false,
+      originalError: error,
+    };
   }
 
   // 不明なエラー
