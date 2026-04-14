@@ -622,11 +622,14 @@ export class SchedulerService implements OnModuleInit {
             `Fetching Smart+ ad metrics for advertiser ${token.advertiserId} (${startDateStr} ~ ${endDateStr})`,
           );
 
+          // Smart+レポートAPIはstat_time_day分解に未対応のため、
+          // 7日窓で取得するとsaveSmartPlusMetrics側で全日合計が statDate=昨日 として1行に潰れる
+          // （ゾンビMetric問題）。必ず「昨日のみ」の1日窓で呼ぶ。
           const smartPlusMetrics = await this.tiktokService.getAllSmartPlusAdMetrics(
             token.advertiserId,
             token.accessToken,
             {
-              startDate: startDateStr,
+              startDate: endDateStr,
               endDate: endDateStr,
             },
           );
