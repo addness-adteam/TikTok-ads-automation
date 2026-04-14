@@ -46,7 +46,7 @@ export const OPERATION_HOURS = {
 export const MIN_IMPRESSIONS_FOR_PAUSE = 5_000;
 
 /** Snapshotデータ保持日数 */
-export const SNAPSHOT_RETENTION_DAYS = 14;
+export const SNAPSHOT_RETENTION_DAYS = 7;
 
 /** TikTok APIの予算制限（円） */
 export const TIKTOK_BUDGET_LIMITS = {
