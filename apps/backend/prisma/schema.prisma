@@ -726,3 +726,25 @@ model CrNumberReservation {
   @@index([appeal, lpNumber])
   @@map("cr_number_reservations")
 }
+
+// ============================================================================
+// セミナー着座CPOアラート履歴（重複通知抑止用）
+// ============================================================================
+model SeminarAttendanceAlert {
+  id               String   @id @default(cuid())
+  adTiktokId       String   @unique
+  adName           String
+  advertiserName   String
+  alertedAt        DateTime @default(now())
+  reason           String   // 'CPO_EXCEEDED' | 'ZERO_ATTENDANCE_WITH_SPEND'
+  deliveryDays     Int
+  totalSpend       Int
+  reservationCount Int
+  attendanceCount  Int
+  actualCpo        Int?     // 着座0件時はnull
+  allowableCpo     Int
+  overageRate      Float?   // 着座0件時はnull
+
+  @@index([alertedAt])
+  @@map("seminar_attendance_alerts")
+}
