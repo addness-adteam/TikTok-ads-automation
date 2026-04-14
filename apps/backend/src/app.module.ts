@@ -26,6 +26,7 @@ import { CrossDeployModule } from './cross-deploy/cross-deploy.module';
 import { StreamlinedCreatorModule } from './streamlined-creator/streamlined-creator.module';
 import { ProfitSimulationModule } from './profit-simulation/profit-simulation.module';
 import { BudgetMonitoringModule } from './budget-monitoring/budget-monitoring.module';
+import { SeminarAttendanceAlertModule } from './seminar-attendance-alert/seminar-attendance-alert.module';
 
 @Module({
   imports: [
@@ -57,6 +58,7 @@ import { BudgetMonitoringModule } from './budget-monitoring/budget-monitoring.mo
     StreamlinedCreatorModule,
     ProfitSimulationModule,
     BudgetMonitoringModule,
+    SeminarAttendanceAlertModule,
   ],
   controllers: [AppController],
   providers: [AppService],

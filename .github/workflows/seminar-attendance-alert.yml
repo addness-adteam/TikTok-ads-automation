@@ -1,0 +1,43 @@
+name: Seminar Attendance CPO Alert
+
+on:
+  schedule:
+    # 毎日11:00 JST = 02:00 UTC
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'dry-run で通知・履歴保存をスキップ'
+        required: false
+        default: 'false'
+
+env:
+  API_BASE_URL: https://tik-tok-ads-automation-backend.vercel.app
+
+jobs:
+  alert:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Run scraper + alert
+        env:
+          LSTEP_EMAIL: ${{ secrets.LSTEP_EMAIL }}
+          LSTEP_PASSWORD: ${{ secrets.LSTEP_PASSWORD }}
+          API_BASE_URL: ${{ env.API_BASE_URL }}
+          DRY_RUN: ${{ github.event.inputs.dry_run || 'false' }}
+        run: npx tsx scripts/fetch-lstep-and-alert.ts
+        timeout-minutes: 10
