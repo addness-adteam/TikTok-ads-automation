@@ -205,10 +205,45 @@ export class SchedulerService implements OnModuleInit {
             this.logger.warn(`Failed to fetch Smart+ ads for name mapping: ${error.message}`);
           }
 
+          // === N+1クエリ削減: ループ前に参照データを一括取得してMap化 ===
+          const adGroupTiktokIds = [...new Set(ads.map((a: any) => String(a.adgroup_id)).filter(Boolean))];
+          const videoIds = [...new Set(ads.map((a: any) => a.video_id).filter(Boolean))] as string[];
+          const imageIds = [...new Set(ads.flatMap((a: any) => a.image_ids ?? []).filter(Boolean))] as string[];
+          const candidateAdTiktokIds = [...new Set(ads.map((a: any) => String(a.smart_plus_ad_id ?? a.ad_id)).filter(Boolean))];
+          const [adGroupList, videoCreativeList, imageCreativeList, existingAdList] = await Promise.all([
+            adGroupTiktokIds.length ? this.prisma.adGroup.findMany({
+              where: { tiktokId: { in: adGroupTiktokIds } },
+              select: { id: true, tiktokId: true },
+            }) : Promise.resolve([]),
+            videoIds.length ? this.prisma.creative.findMany({
+              where: { tiktokVideoId: { in: videoIds } },
+              select: { id: true, tiktokVideoId: true },
+            }) : Promise.resolve([]),
+            imageIds.length ? this.prisma.creative.findMany({
+              where: { tiktokImageId: { in: imageIds } },
+              select: { id: true, tiktokImageId: true },
+            }) : Promise.resolve([]),
+            candidateAdTiktokIds.length ? this.prisma.ad.findMany({
+              where: { tiktokId: { in: candidateAdTiktokIds } },
+              select: { tiktokId: true, status: true },
+            }) : Promise.resolve([]),
+          ]);
+          const adGroupMap = new Map<string, { id: string; tiktokId: string }>(
+            (adGroupList as any[]).map((g) => [g.tiktokId, g])
+          );
+          const videoCreativeMap = new Map<string, { id: string }>(
+            (videoCreativeList as any[]).filter((c) => c.tiktokVideoId).map((c) => [c.tiktokVideoId, { id: c.id }])
+          );
+          const imageCreativeMap = new Map<string, { id: string }>(
+            (imageCreativeList as any[]).filter((c) => c.tiktokImageId).map((c) => [c.tiktokImageId, { id: c.id }])
+          );
+          const existingAdMap = new Map<string, { status: string }>(
+            (existingAdList as any[]).map((a) => [a.tiktokId, { status: a.status }])
+          );
+          this.logger.log(`Pre-fetch: ${adGroupMap.size} adgroups, ${videoCreativeMap.size} videos, ${imageCreativeMap.size} images, ${existingAdMap.size} existing ads`);
+
           for (const ad of ads) {
-            const adgroup = await this.prisma.adGroup.findUnique({
-              where: { tiktokId: String(ad.adgroup_id) },
-            });
+            const adgroup = adGroupMap.get(String(ad.adgroup_id));
 
             if (!adgroup) {
               this.logger.warn(`AdGroup ${ad.adgroup_id} not found, skipping ad ${ad.ad_id}`);
@@ -218,9 +253,7 @@ export class SchedulerService implements OnModuleInit {
             // Creativeを処理（既存のCreativeがあればそれを使用、なければ作成）
             let creativeId: string | null = null;
             if (ad.video_id) {
-              const creative = await this.prisma.creative.findFirst({
-                where: { tiktokVideoId: ad.video_id },
-              });
+              const creative = videoCreativeMap.get(ad.video_id);
 
               if (!creative) {
                 const newCreative = await this.prisma.creative.create({
@@ -234,13 +267,12 @@ export class SchedulerService implements OnModuleInit {
                   },
                 });
                 creativeId = newCreative.id;
+                videoCreativeMap.set(ad.video_id, { id: newCreative.id });
               } else {
                 creativeId = creative.id;
               }
             } else if (ad.image_ids && ad.image_ids.length > 0) {
-              const creative = await this.prisma.creative.findFirst({
-                where: { tiktokImageId: ad.image_ids[0] },
-              });
+              const creative = imageCreativeMap.get(ad.image_ids[0]);
 
               if (!creative) {
                 const newCreative = await this.prisma.creative.create({
@@ -254,6 +286,7 @@ export class SchedulerService implements OnModuleInit {
                   },
                 });
                 creativeId = newCreative.id;
+                imageCreativeMap.set(ad.image_ids[0], { id: newCreative.id });
               } else {
                 creativeId = creative.id;
               }
@@ -280,11 +313,8 @@ export class SchedulerService implements OnModuleInit {
               this.logger.debug(`Smart+ ad detected: ad_id=${ad.ad_id}, smart_plus_ad_id=${ad.smart_plus_ad_id}, name=${adNameToUse}, status=${statusToUse}`);
             }
 
-            // 手動停止検知: upsert前に既存レコードのstatusを確認
-            const existingAd = await this.prisma.ad.findUnique({
-              where: { tiktokId: tiktokIdToUse },
-              select: { status: true },
-            });
+            // 手動停止検知: upsert前に既存レコードのstatusを確認（事前取得Mapから）
+            const existingAd = existingAdMap.get(tiktokIdToUse);
             const wasEnabled = existingAd && !existingAd.status.includes('DISABLE');
             const isNowDisabled = statusToUse.includes('DISABLE');
 
@@ -312,6 +342,9 @@ export class SchedulerService implements OnModuleInit {
                 reviewStatus: ad.app_download_status || 'APPROVED',
               },
             });
+
+            // Smart+フォールバックで重複作成しないよう、Mapにも反映
+            existingAdMap.set(tiktokIdToUse, { status: statusToUse });
 
             // ENABLE → DISABLE に変わった場合、ChangeLogに手動停止を記録
             if (wasEnabled && isNowDisabled) {
@@ -343,6 +376,58 @@ export class SchedulerService implements OnModuleInit {
             );
             this.logger.log(`Checking ${smartPlusAds.length} Smart+ ads for fallback sync`);
 
+            // === Smart+ フォールバック用 pre-fetch ===
+            // adGroupMap はmain loopの物を再利用、不足分を追加取得
+            const spAdGroupIds = [...new Set(smartPlusAds.map((a: any) => a.adgroup_id ? String(a.adgroup_id) : null).filter(Boolean) as string[])];
+            const missingAdGroupIds = spAdGroupIds.filter((id) => !adGroupMap.has(id));
+            if (missingAdGroupIds.length > 0) {
+              const extra = await this.prisma.adGroup.findMany({
+                where: { tiktokId: { in: missingAdGroupIds } },
+                select: { id: true, tiktokId: true },
+              });
+              for (const g of extra) adGroupMap.set(g.tiktokId, g);
+            }
+            // Smart+ creative_list からvideo/image IDを抽出
+            const spVideoIds: string[] = [];
+            const spImageIds: string[] = [];
+            for (const spAd of smartPlusAds) {
+              const enabled = (spAd.creative_list ?? []).find((c: any) => c.material_operation_status === 'ENABLE');
+              const ci = enabled?.creative_info;
+              const vid = ci?.video_info?.video_id;
+              if (vid) spVideoIds.push(String(vid));
+              const imgs = ci?.image_info ?? [];
+              if (imgs.length > 0) {
+                const imgId = imgs[0].web_uri || imgs[0].image_id;
+                if (imgId) spImageIds.push(String(imgId));
+              }
+            }
+            const missingVideoIds = [...new Set(spVideoIds.filter((id) => !videoCreativeMap.has(id)))];
+            const missingImageIds = [...new Set(spImageIds.filter((id) => !imageCreativeMap.has(id)))];
+            if (missingVideoIds.length > 0) {
+              const extra = await this.prisma.creative.findMany({
+                where: { tiktokVideoId: { in: missingVideoIds } },
+                select: { id: true, tiktokVideoId: true },
+              });
+              for (const c of extra) if (c.tiktokVideoId) videoCreativeMap.set(c.tiktokVideoId, { id: c.id });
+            }
+            if (missingImageIds.length > 0) {
+              const extra = await this.prisma.creative.findMany({
+                where: { tiktokImageId: { in: missingImageIds } },
+                select: { id: true, tiktokImageId: true },
+              });
+              for (const c of extra) if (c.tiktokImageId) imageCreativeMap.set(c.tiktokImageId, { id: c.id });
+            }
+            // Smart+ 既存ad用Map: main loopのexistingAdMapを再利用。不足IDを追加取得
+            const spCandidateIds = smartPlusAds.map((a: any) => String(a.smart_plus_ad_id || a.ad_id)).filter(Boolean);
+            const missingSpIds = spCandidateIds.filter((id) => !existingAdMap.has(id));
+            if (missingSpIds.length > 0) {
+              const extra = await this.prisma.ad.findMany({
+                where: { tiktokId: { in: missingSpIds } },
+                select: { tiktokId: true, status: true },
+              });
+              for (const a of extra) existingAdMap.set(a.tiktokId, { status: a.status });
+            }
+
             for (const ad of smartPlusAds) {
               // Smart+ AdのIDを決定（smart_plus_ad_id を優先）
               const adId = ad.smart_plus_ad_id || ad.ad_id;
@@ -352,10 +437,7 @@ export class SchedulerService implements OnModuleInit {
               }
 
               // 既にDBに存在する場合はスキップ（通常広告同期で既に処理済み）
-              const existingAd = await this.prisma.ad.findUnique({
-                where: { tiktokId: String(adId) },
-              });
-              if (existingAd) {
+              if (existingAdMap.has(String(adId))) {
                 continue;
               }
 
@@ -365,9 +447,7 @@ export class SchedulerService implements OnModuleInit {
                 continue;
               }
 
-              const adgroup = await this.prisma.adGroup.findUnique({
-                where: { tiktokId: String(ad.adgroup_id) },
-              });
+              const adgroup = adGroupMap.get(String(ad.adgroup_id));
 
               if (!adgroup) {
                 this.logger.warn(`AdGroup ${ad.adgroup_id} not found for Smart+ ad ${adId} (${ad.ad_name}), skipping`);
@@ -389,9 +469,7 @@ export class SchedulerService implements OnModuleInit {
                 const imageInfo = creativeInfo.image_info;
 
                 if (videoId) {
-                  const creative = await this.prisma.creative.findFirst({
-                    where: { tiktokVideoId: videoId },
-                  });
+                  const creative = videoCreativeMap.get(String(videoId));
 
                   if (!creative) {
                     const newCreative = await this.prisma.creative.create({
@@ -405,6 +483,7 @@ export class SchedulerService implements OnModuleInit {
                       },
                     });
                     creativeId = newCreative.id;
+                    videoCreativeMap.set(String(videoId), { id: newCreative.id });
                   } else {
                     creativeId = creative.id;
                   }
@@ -413,9 +492,7 @@ export class SchedulerService implements OnModuleInit {
                   const imageId = imageInfo[0].web_uri || imageInfo[0].image_id;
 
                   if (imageId) {
-                    const creative = await this.prisma.creative.findFirst({
-                      where: { tiktokImageId: imageId },
-                    });
+                    const creative = imageCreativeMap.get(String(imageId));
 
                     if (!creative) {
                       const newCreative = await this.prisma.creative.create({
@@ -429,6 +506,7 @@ export class SchedulerService implements OnModuleInit {
                         },
                       });
                       creativeId = newCreative.id;
+                      imageCreativeMap.set(String(imageId), { id: newCreative.id });
                     } else {
                       creativeId = creative.id;
                     }
@@ -464,6 +542,7 @@ export class SchedulerService implements OnModuleInit {
                   reviewStatus: 'APPROVED',
                 },
               });
+              existingAdMap.set(String(adId), { status: ad.operation_status });
               smartPlusAdsSynced++;
               this.logger.log(`Fallback synced Smart+ ad: ${ad.ad_name} (${adId})`);
             }
