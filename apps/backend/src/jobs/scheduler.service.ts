@@ -575,6 +575,13 @@ export class SchedulerService implements OnModuleInit {
 
       let successCount = 0;
       let errorCount = 0;
+      const results: Array<{
+        advertiserId: string;
+        dataLevel: string;
+        status: 'success' | 'empty' | 'error';
+        recordCount?: number;
+        error?: string;
+      }> = [];
 
       // 各Advertiserとデータレベルに対してレポートを取得
       for (const token of oauthTokens) {
@@ -602,10 +609,12 @@ export class SchedulerService implements OnModuleInit {
                 `Successfully saved ${reportData.length} metrics for ${token.advertiserId} - ${dataLevel}`,
               );
               successCount++;
+              results.push({ advertiserId: token.advertiserId, dataLevel, status: 'success', recordCount: reportData.length });
             } else {
               this.logger.warn(
                 `No data returned for ${token.advertiserId} - ${dataLevel}`,
               );
+              results.push({ advertiserId: token.advertiserId, dataLevel, status: 'empty', recordCount: 0 });
             }
           } catch (error) {
             this.logger.error(
@@ -613,6 +622,7 @@ export class SchedulerService implements OnModuleInit {
               error.message,
             );
             errorCount++;
+            results.push({ advertiserId: token.advertiserId, dataLevel, status: 'error', error: error?.message ?? String(error) });
           }
         }
 
@@ -640,10 +650,12 @@ export class SchedulerService implements OnModuleInit {
               `Successfully saved ${smartPlusMetrics.length} Smart+ metrics for ${token.advertiserId}`,
             );
             successCount++;
+            results.push({ advertiserId: token.advertiserId, dataLevel: 'SMART_PLUS', status: 'success', recordCount: smartPlusMetrics.length });
           } else {
             this.logger.warn(
               `No Smart+ metrics returned for ${token.advertiserId}`,
             );
+            results.push({ advertiserId: token.advertiserId, dataLevel: 'SMART_PLUS', status: 'empty', recordCount: 0 });
           }
         } catch (error) {
           this.logger.error(
@@ -651,6 +663,7 @@ export class SchedulerService implements OnModuleInit {
             error.message,
           );
           errorCount++;
+          results.push({ advertiserId: token.advertiserId, dataLevel: 'SMART_PLUS', status: 'error', error: error?.message ?? String(error) });
         }
       }
 
@@ -664,6 +677,14 @@ export class SchedulerService implements OnModuleInit {
           `[S-03] Partial sync failure: ${errorCount} out of ${successCount + errorCount} operations failed`,
         );
       }
+
+      (this as any)._lastDailyReportSummary = {
+        startDate: startDateStr,
+        endDate: endDateStr,
+        successCount,
+        errorCount,
+        results,
+      };
 
       // ===== 新機能: 広告パフォーマンス分析 =====
       if (this.configService.get('FEATURE_AD_PERFORMANCE_ENABLED') === 'true') {

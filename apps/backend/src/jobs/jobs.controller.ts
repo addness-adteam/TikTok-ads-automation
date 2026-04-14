@@ -123,9 +123,11 @@ export class JobsController {
 
     try {
       await this.schedulerService.scheduleDailyReportFetch();
+      const summary = (this.schedulerService as any)._lastDailyReportSummary;
       return {
         success: true,
         message: 'Daily report fetch batch job completed',
+        summary,
       };
     } catch (error) {
       this.logger.error('Manual batch job failed', error);
