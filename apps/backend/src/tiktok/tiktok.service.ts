@@ -19,8 +19,10 @@ import {
  * @returns UTC 00:00:00 の Date オブジェクト
  */
 function parseStatDate(dateString: string): Date {
-  // "2025-12-01" → "2025-12-01T00:00:00.000Z" としてパース
-  return new Date(dateString + 'T00:00:00.000Z');
+  // TikTok APIは "2026-04-12" または "2026-04-12 00:00:00" の両形式を返しうる
+  // 空白前の日付部分のみ取り出してUTC 00:00:00のDateに変換
+  const dateOnly = (dateString ?? '').split(' ')[0];
+  return new Date(dateOnly + 'T00:00:00.000Z');
 }
 
 /**
