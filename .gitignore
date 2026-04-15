@@ -3,6 +3,11 @@ node_modules
 .pnp
 .pnp.js
 
+# Lステップセッション情報（機密）
+lstep-session.json
+lstep-session.b64.txt
+lstep-explore-output/
+
 # Testing
 coverage
 *.log

@@ -22,17 +22,25 @@ export class PlaywrightLstepScraper implements AttendanceCsvFetcher {
   private readonly parser = new LstepAttendanceCsvParser();
 
   async fetchAttendedEmails(): Promise<Set<string>> {
-    const email = process.env.LSTEP_EMAIL;
-    const password = process.env.LSTEP_PASSWORD;
-    if (!email || !password) {
-      throw new Error('LSTEP_EMAIL / LSTEP_PASSWORD 環境変数が未設定');
+    // LSTEP_STORAGE_STATE_B64 (base64エンコードされたstorageState) を使用してログイン画面をスキップ
+    const storageStateB64 = process.env.LSTEP_STORAGE_STATE_B64;
+    if (!storageStateB64) {
+      throw new Error(
+        'LSTEP_STORAGE_STATE_B64 環境変数が未設定。scripts/capture-lstep-session.ts で生成してGitHub Secretsに登録してください',
+      );
+    }
+    let storageState: any;
+    try {
+      const json = Buffer.from(storageStateB64, 'base64').toString('utf8');
+      storageState = JSON.parse(json);
+    } catch (e: any) {
+      throw new Error(`LSTEP_STORAGE_STATE_B64 のデコード失敗: ${e.message}`);
     }
 
     // 動的importでplaywright依存を必要時のみロード（CI環境以外で壊れない）
     const { chromium } = await import('playwright');
 
-    this.logger.log('Lステップスクレイピング開始');
-    // reCAPTCHA v2対策: navigator.webdriver偽装 + 実ブラウザ風User-Agent
+    this.logger.log('Lステップスクレイピング開始 (storageStateでログインスキップ)');
     const browser = await chromium.launch({
       headless: true,
       args: [
@@ -44,6 +52,7 @@ export class PlaywrightLstepScraper implements AttendanceCsvFetcher {
       acceptDownloads: true,
       viewport: { width: 1400, height: 900 },
       userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+      storageState,
     });
     await context.addInitScript(() => {
       Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
@@ -75,49 +84,17 @@ export class PlaywrightLstepScraper implements AttendanceCsvFetcher {
     };
 
     try {
-      // 1) ログイン（検証済セレクタ: #input_name, #input_password, button.loginButton）
-      await page.goto('https://manager.linestep.net/account/login', { waitUntil: 'domcontentloaded', timeout: 60000 });
-      try {
-        await page.waitForSelector('#input_name', { timeout: 30000 });
-      } catch (e) {
-        await dumpOnError('login-selector-timeout');
-        throw e;
+      // 1) セッション有効性チェック: ダッシュボードへ直接アクセス
+      await page.goto('https://manager.linestep.net/', { waitUntil: 'domcontentloaded', timeout: 60000 });
+      await page.waitForTimeout(2000);
+      if (page.url().includes('/account/login')) {
+        await dumpOnError('session-expired');
+        throw new Error(
+          'Lステップセッションが期限切れ。ローカルで scripts/capture-lstep-session.ts を再実行し、' +
+          'GitHub Secrets LSTEP_STORAGE_STATE_B64 を更新してください',
+        );
       }
-      await page.fill('#input_name', email);
-      await page.fill('#input_password', password);
-
-      // reCAPTCHA v2: チェックボックスクリック（iframe内）
-      // 人間的なマウス動作で信頼度を上げる
-      await page.mouse.move(200, 200);
-      await page.waitForTimeout(300);
-      await page.mouse.move(350, 400, { steps: 10 });
-      await page.waitForTimeout(200);
-      try {
-        const captchaFrame = page.frameLocator('iframe[src*="recaptcha"][src*="anchor"]').first();
-        await captchaFrame.locator('#recaptcha-anchor').click({ timeout: 15000 });
-        this.logger.log('reCAPTCHAチェックボックスクリック完了、10秒待機');
-        await page.waitForTimeout(10000);
-        // 画像パズルが出たかチェック
-        const bframeVisible = await page.locator('iframe[src*="recaptcha"][src*="bframe"]').isVisible().catch(() => false);
-        if (bframeVisible) {
-          await dumpOnError('recaptcha-image-challenge');
-          throw new Error('reCAPTCHA画像パズル出現 → 自動突破不可。案A(storageState)への切替が必要');
-        }
-      } catch (e: any) {
-        if (e.message?.includes('画像パズル')) throw e;
-        this.logger.warn(`reCAPTCHAチェック失敗（スキップ試行）: ${e.message}`);
-      }
-
-      // ログインボタン押下
-      const loginBtn = page.locator('button.loginButton');
-      const disabled = await loginBtn.isDisabled().catch(() => true);
-      if (disabled) {
-        await dumpOnError('login-button-disabled');
-        throw new Error('ログインボタンがdisabledのまま → reCAPTCHA未通過');
-      }
-      await loginBtn.click();
-      await page.waitForURL((url) => !url.toString().includes('/account/login'), { timeout: 30000 });
-      this.logger.log(`ログイン完了: ${page.url()}`);
+      this.logger.log(`セッション有効: ${page.url()}`);
 
       // 2) 友だちリスト直接遷移（URLで）
       await page.goto('https://manager.linestep.net/line/show', { waitUntil: 'domcontentloaded' });

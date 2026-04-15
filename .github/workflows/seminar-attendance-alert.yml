@@ -35,8 +35,7 @@ jobs:
 
       - name: Run scraper + alert
         env:
-          LSTEP_EMAIL: ${{ secrets.LSTEP_EMAIL }}
-          LSTEP_PASSWORD: ${{ secrets.LSTEP_PASSWORD }}
+          LSTEP_STORAGE_STATE_B64: ${{ secrets.LSTEP_STORAGE_STATE_B64 }}
           API_BASE_URL: ${{ env.API_BASE_URL }}
           DRY_RUN: ${{ github.event.inputs.dry_run || 'false' }}
         run: npx tsx scripts/fetch-lstep-and-alert.ts
