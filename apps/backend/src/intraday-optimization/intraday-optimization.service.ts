@@ -1141,6 +1141,7 @@ export class IntradayOptimizationService {
         // ChangeLog記録
         const entityType = log.isCBO ? 'CAMPAIGN' : 'ADGROUP';
         const entityId = log.isCBO ? log.campaignId : log.adgroupId;
+        if (!entityId) continue;
         await this.logChange(
           entityType,
           entityId,

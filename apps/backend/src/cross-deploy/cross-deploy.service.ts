@@ -625,7 +625,7 @@ export class CrossDeployService {
       sourceAdvertiserId: log.sourceAdvertiserId,
       sourceAdId: log.sourceAdId,
       targetAdvertiserIds: [log.targetAdvertiserId],
-      mode: log.mode,
+      mode: log.mode as any,
     };
 
     // 簡易実装: 最初から再実行

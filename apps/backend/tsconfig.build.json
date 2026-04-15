@@ -1,25 +1,11 @@
 {
   "extends": "./tsconfig.json",
+  "include": ["src/**/*"],
   "exclude": [
     "node_modules",
     "test",
     "dist",
     "**/*spec.ts",
-    "analyze-*.ts",
-    "check-631-*.ts",
-    "check-ai3-*.ts",
-    "check-all-*.ts",
-    "check-creative-*.ts",
-    "check-pause-*.ts",
-    "check-sns2-*.ts",
-    "deploy-sp-*.ts",
-    "find-cr*.ts",
-    "find-cr580b.ts",
-    "todo3-*.ts",
-    "todo45-*.ts",
-    "tmp-*.ts",
-    "redeploy-cr*.ts",
-    "batch-*.ts",
-    "campid-*.ts"
+    "_archive/**"
   ]
 }

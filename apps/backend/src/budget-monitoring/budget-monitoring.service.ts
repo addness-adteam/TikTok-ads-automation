@@ -248,8 +248,8 @@ export class BudgetMonitoringService {
     });
 
     const lastKnownBudget = lastChangeLog
-      ? (lastChangeLog.afterData?.budget ??
-        lastChangeLog.afterData?.newBudget ??
+      ? ((lastChangeLog.afterData as any)?.budget ??
+        (lastChangeLog.afterData as any)?.newBudget ??
         null)
       : null;
 
