@@ -1,9 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
-import {
-  AttendanceCountService,
-  ReservationRecord,
-} from '../domain/services/attendance-count-service';
+import { AttendanceCountService } from '../domain/services/attendance-count-service';
 import { AlertRuleEvaluator } from '../domain/services/alert-rule-evaluator';
 import { AdUnderEvaluation } from '../domain/entities/ad-under-evaluation';
 import { JPY } from '../domain/value-objects/jpy';
@@ -12,12 +9,9 @@ import { YearMonth } from '../domain/value-objects/allowable-seminar-seat-cpo';
 import { SheetsAllowableCpoResolver } from '../infrastructure/allowable-cpo-resolver';
 import { SheetsOptLatestPathReader } from '../infrastructure/opt-latest-path-reader';
 import { SheetsReservationSurveyReader } from '../infrastructure/reservation-survey-reader';
+import { SheetsAttendanceLineNameReader } from '../infrastructure/attendance-line-name-reader';
 import { PrismaAlertHistoryRepository } from '../infrastructure/alert-history-repository';
 import { AiSecretaryLineNotifier } from '../infrastructure/line-notifier';
-import {
-  AttendanceCsvFetcher,
-  PlaywrightLstepScraper,
-} from '../infrastructure/lstep-scraper';
 
 /** スキルプラス導線のアカウント */
 const SP_ADVERTISER_IDS: Record<string, string> = {
@@ -35,6 +29,7 @@ export interface AlertRunResult {
     underThreshold: number;
   };
   allowableCpo: number | null;
+  attendanceCount: number;
   errors: string[];
 }
 
@@ -49,22 +44,18 @@ export class SeminarAttendanceAlertUseCase {
     private readonly allowableResolver: SheetsAllowableCpoResolver,
     private readonly optReader: SheetsOptLatestPathReader,
     private readonly surveyReader: SheetsReservationSurveyReader,
+    private readonly attendanceReader: SheetsAttendanceLineNameReader,
     private readonly historyRepo: PrismaAlertHistoryRepository,
     private readonly notifier: AiSecretaryLineNotifier,
-    private readonly scraper: PlaywrightLstepScraper,
   ) {}
 
-  async run(
-    options: {
-      dryRun?: boolean;
-      attendanceCsvFetcher?: AttendanceCsvFetcher;
-    } = {},
-  ): Promise<AlertRunResult> {
+  async run(options: { dryRun?: boolean } = {}): Promise<AlertRunResult> {
     const result: AlertRunResult = {
       evaluated: 0,
       triggered: 0,
       skipped: { alreadyAlerted: 0, notEnoughDays: 0, underThreshold: 0 },
       allowableCpo: null,
+      attendanceCount: 0,
       errors: [],
     };
     const now = new Date();
@@ -82,23 +73,24 @@ export class SeminarAttendanceAlertUseCase {
     );
 
     // 2) 各データソースロード
-    const [optMap, reservations, attendedEmails] = await Promise.all([
+    const [optMap, reservations, attendedLineNames] = await Promise.all([
       this.optReader.load(),
       this.surveyReader.load(),
-      (options.attendanceCsvFetcher ?? this.scraper).fetchAttendedEmails(),
+      this.attendanceReader.load(),
     ]);
+    result.attendanceCount = attendedLineNames.size;
     this.logger.log(
-      `opt=${optMap.size} / 予約=${reservations.length} / 着座=${attendedEmails.size}`,
+      `opt=${optMap.size} / 予約=${reservations.length} / 着座=${attendedLineNames.size}`,
     );
 
     // 3) LP-CR × {予約数, 着座数}
     const countsByLpCr = this.counter.countByLpCr(
       optMap,
       reservations,
-      attendedEmails,
+      attendedLineNames,
     );
 
-    // 4) SP配下のアクティブ広告を取得（A: status ENABLE のみ）
+    // 4) SP配下のアクティブ広告を取得
     const ads = await this.prisma.ad.findMany({
       where: {
         status: 'ENABLE',
@@ -133,13 +125,12 @@ export class SeminarAttendanceAlertUseCase {
       const advId = ad.adGroup?.campaign?.advertiser?.tiktokAdvertiserId ?? '';
       const advName = SP_ADVERTISER_IDS[advId] ?? advId;
       const lpcrMatch = ad.name.match(/LP\d+-CR\d+/i);
-      if (!lpcrMatch) continue; // LP-CR抽出不能はスキップ
+      if (!lpcrMatch) continue;
       const lpCr = lpcrMatch[0].toUpperCase();
       const startDate = this.resolveDeliveryStart(ad);
       if (!startDate) continue;
 
       const period = DeliveryPeriod.between(startDate, now);
-      // B: 配信開始から30日超過した広告は監視対象外（古い広告を一斉通知しないため）
       if (period.elapsedDays > 30) continue;
       const spend = JPY.of(spendByAd.get(ad.id) ?? 0);
       const counts = countsByLpCr.get(lpCr) ?? {
@@ -223,7 +214,6 @@ export class SeminarAttendanceAlertUseCase {
   }
 
   private resolveDeliveryStart(ad: any): Date | null {
-    // AdGroup.schedule.startTime 優先、なければAd.createdAt
     const sched = ad.adGroup?.schedule;
     if (sched && typeof sched === 'object' && sched.startTime) {
       const d = new Date(sched.startTime);

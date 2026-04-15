@@ -18,25 +18,18 @@ jobs:
   alert:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'npm'
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Install Playwright chromium
-        run: npx playwright install --with-deps chromium
-
-      - name: Run scraper + alert
+      - name: Run alert via Vercel
         env:
-          LSTEP_STORAGE_STATE_B64: ${{ secrets.LSTEP_STORAGE_STATE_B64 }}
-          API_BASE_URL: ${{ env.API_BASE_URL }}
           DRY_RUN: ${{ github.event.inputs.dry_run || 'false' }}
-        run: npx tsx scripts/fetch-lstep-and-alert.ts
+        run: |
+          echo "POST /jobs/seminar-attendance-alert?dryRun=$DRY_RUN"
+          response=$(curl -s -w "\n%{http_code}" --max-time 300 \
+            -X POST "${{ env.API_BASE_URL }}/jobs/seminar-attendance-alert?dryRun=$DRY_RUN" \
+            -H "Content-Type: application/json" \
+            -d '{}')
+          http_code=$(echo "$response" | tail -n1)
+          body=$(echo "$response" | sed '$d')
+          echo "HTTP Status: $http_code"
+          echo "$body" | jq . || echo "$body"
+          [ "$http_code" -eq 200 ] || [ "$http_code" -eq 201 ]
         timeout-minutes: 10

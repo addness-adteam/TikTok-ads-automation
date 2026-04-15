@@ -3,12 +3,13 @@ import { GoogleSheetsService } from '../../google-sheets/google-sheets.service';
 import { ReservationRecord } from '../domain/services/attendance-count-service';
 
 const SURVEY_SHEET_ID = '1iKwplhJwldYqnr89NFoF5z3WS4GqnFVKBNfOdTZMF9c';
-/** 列位置（仮）: 実シート閲覧権限取得後に確定させる
+/** 列位置
  *   B列(col1) = 回答日時
- *   D列(col3) = 回答者名（参考）
+ *   D列(col3) = LINE名 (回答者名)
  *   H列(col7) = メールアドレス
  */
 const COL_RESERVED_AT = 1;
+const COL_LINE_NAME = 3;
 const COL_EMAIL = 7;
 
 export interface ReservationSurveyReader {
@@ -22,7 +23,6 @@ export class SheetsReservationSurveyReader implements ReservationSurveyReader {
   constructor(private readonly sheets: GoogleSheetsService) {}
 
   async load(): Promise<ReservationRecord[]> {
-    // 閲覧権限付与後、最初のタブ名を自動特定して読む
     const meta = await (this.sheets as any).sheets.spreadsheets.get({
       spreadsheetId: SURVEY_SHEET_ID,
     });
@@ -42,12 +42,14 @@ export class SheetsReservationSurveyReader implements ReservationSurveyReader {
       const row = rows[i] ?? [];
       const rawEmail = row[COL_EMAIL];
       const rawDate = row[COL_RESERVED_AT];
+      const rawLine = row[COL_LINE_NAME];
       if (!rawEmail || !rawDate) continue;
       const email = String(rawEmail).trim().toLowerCase();
       if (!email.includes('@')) continue;
+      const lineName = String(rawLine ?? '').trim();
       const reservedAt = this.parseTimestamp(rawDate);
       if (!reservedAt) continue;
-      result.push({ email, reservedAt });
+      result.push({ email, lineName, reservedAt });
     }
     this.logger.log(`予約者アンケート読込: ${result.length}件`);
     return result;
@@ -56,7 +58,6 @@ export class SheetsReservationSurveyReader implements ReservationSurveyReader {
   private parseTimestamp(v: any): Date | null {
     if (!v) return null;
     const s = String(v).trim();
-    // Google Form の日時は "2026/04/05 12:34:56" や "2026-04-05T12:34:56" 形式
     const normalized = s.replace(/\//g, '-').replace(' ', 'T');
     const tzAware =
       normalized.length > 10 &&

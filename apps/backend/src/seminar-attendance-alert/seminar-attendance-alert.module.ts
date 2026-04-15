@@ -5,9 +5,9 @@ import { SeminarAttendanceAlertUseCase } from './application/seminar-attendance-
 import { SheetsAllowableCpoResolver } from './infrastructure/allowable-cpo-resolver';
 import { SheetsOptLatestPathReader } from './infrastructure/opt-latest-path-reader';
 import { SheetsReservationSurveyReader } from './infrastructure/reservation-survey-reader';
+import { SheetsAttendanceLineNameReader } from './infrastructure/attendance-line-name-reader';
 import { PrismaAlertHistoryRepository } from './infrastructure/alert-history-repository';
 import { AiSecretaryLineNotifier } from './infrastructure/line-notifier';
-import { PlaywrightLstepScraper } from './infrastructure/lstep-scraper';
 
 @Module({
   imports: [GoogleSheetsModule],
@@ -17,9 +17,9 @@ import { PlaywrightLstepScraper } from './infrastructure/lstep-scraper';
     SheetsAllowableCpoResolver,
     SheetsOptLatestPathReader,
     SheetsReservationSurveyReader,
+    SheetsAttendanceLineNameReader,
     PrismaAlertHistoryRepository,
     AiSecretaryLineNotifier,
-    PlaywrightLstepScraper,
   ],
 })
 export class SeminarAttendanceAlertModule {}
