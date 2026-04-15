@@ -22,9 +22,6 @@
     "turbo": "^2.0.0",
     "typescript": "^5.3.0"
   },
-  "overrides": {
-    "eslint": "9.36.0"
-  },
   "engines": {
     "node": ">=18.0.0",
     "npm": ">=9.0.0"
