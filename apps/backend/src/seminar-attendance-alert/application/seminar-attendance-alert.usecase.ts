@@ -20,9 +20,25 @@ const SP_ADVERTISER_IDS: Record<string, string> = {
   '7616545514662051858': 'SP3',
 };
 
+export interface TriggeredAdDetail {
+  adTiktokId: string;
+  adName: string;
+  advertiserName: string;
+  lpCr: string;
+  deliveryDays: number;
+  totalSpend: number;
+  reservationCount: number;
+  attendanceCount: number;
+  actualCpo: number | null;
+  allowableCpo: number;
+  overageRate: number | null;
+  reason: string;
+}
+
 export interface AlertRunResult {
   evaluated: number;
   triggered: number;
+  triggeredAds: TriggeredAdDetail[];
   skipped: {
     alreadyAlerted: number;
     notEnoughDays: number;
@@ -53,6 +69,7 @@ export class SeminarAttendanceAlertUseCase {
     const result: AlertRunResult = {
       evaluated: 0,
       triggered: 0,
+      triggeredAds: [],
       skipped: { alreadyAlerted: 0, notEnoughDays: 0, underThreshold: 0 },
       allowableCpo: null,
       attendanceCount: 0,
@@ -171,6 +188,20 @@ export class SeminarAttendanceAlertUseCase {
 
       // 発火: 通知 + 履歴保存
       result.triggered++;
+      result.triggeredAds.push({
+        adTiktokId: ad.tiktokId,
+        adName: ad.name,
+        advertiserName: advName,
+        lpCr,
+        deliveryDays: period.elapsedDays,
+        totalSpend: spend.amount,
+        reservationCount: counts.reservationCount,
+        attendanceCount: counts.attendanceCount,
+        actualCpo: evaluation.seminarSeatCpo?.amount ?? null,
+        allowableCpo: allowable.amount.amount,
+        overageRate: decision.detail.overageRate ?? null,
+        reason: decision.reason!,
+      });
       if (options.dryRun) {
         this.logger.log(`[DRY-RUN] 発火: ${ad.name} (${decision.reason})`);
         continue;
