@@ -125,19 +125,19 @@ export class PlaywrightLstepScraper implements AttendanceCsvFetcher {
       await page.waitForTimeout(2000);
 
       // 3) CSV操作 → CSVエクスポート
-      // TODO: /line/exporter/XXXXX/register への直接URL取得方法を確定させる
-      //       今は text-matching で辿る（失敗したら診断ダンプを見て修正）
+      //   診断結果、ページには csv_export_mover_form (action=/line/exporter/start) がある。
+      //   テキストクリックで辿れない環境があるのでフォームを直接submitして確実に遷移させる。
       try {
-        await page.getByText('CSV操作', { exact: false }).first().click();
-        await page.waitForTimeout(1000);
-        await page
-          .getByText('CSVエクスポート', { exact: false })
-          .first()
-          .click();
-        await page.waitForLoadState('domcontentloaded');
-        await page.waitForURL(/\/line\/exporter\/.*\/register/, {
-          timeout: 15000,
-        });
+        await Promise.all([
+          page.waitForURL(/\/line\/exporter\/.*\/register/, { timeout: 30000 }),
+          page.evaluate(() => {
+            const f = document.getElementById(
+              'csv_export_mover_form',
+            ) as HTMLFormElement | null;
+            if (!f) throw new Error('csv_export_mover_form が見つからない');
+            f.submit();
+          }),
+        ]);
       } catch (e: any) {
         await dumpOnError('csv-export-nav');
         throw new Error(`CSVエクスポート画面への遷移失敗: ${e.message}`);
