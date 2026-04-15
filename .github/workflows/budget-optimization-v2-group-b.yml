@@ -1,4 +1,4 @@
-name: Hourly Budget Optimization V2 - Group A (AI)
+name: Hourly Budget Optimization V2 - Group B (SkillPlus)
 
 on:
   schedule:
@@ -14,13 +14,12 @@ on:
         default: false
 
 concurrency:
-  group: budget-v2-group-a
+  group: budget-v2-group-b
   cancel-in-progress: false
 
 env:
   API_BASE_URL: https://tik-tok-ads-automation-backend.vercel.app
   WAIT_BETWEEN_ACCOUNTS_SEC: 15
-  GROUP_ADVERTISER_IDS: '["7468288053866561553","7523128243466551303","7543540647266074641","7580666710525493255"]'
 
 jobs:
   optimize-budgets:
@@ -29,7 +28,7 @@ jobs:
       fail-fast: false
       max-parallel: 1
       matrix:
-        advertiser_id: ["7468288053866561553","7523128243466551303","7543540647266074641","7580666710525493255"]
+        advertiser_id: ["7474920444831875080","7592868952431362066","7616545514662051858"]
     steps:
       - name: Wait before processing
         run: sleep ${{ env.WAIT_BETWEEN_ACCOUNTS_SEC }}
@@ -37,12 +36,8 @@ jobs:
       - name: V2 Budget Optimization for ${{ matrix.advertiser_id }}
         id: optimize
         run: |
-          echo "Starting V2 budget optimization for: ${{ matrix.advertiser_id }}"
-
           dry_run_param="false"
-          if [ "${{ github.event.inputs.dry_run }}" = "true" ]; then
-            dry_run_param="true"
-          fi
+          if [ "${{ github.event.inputs.dry_run }}" = "true" ]; then dry_run_param="true"; fi
 
           max_retries=3
           retry_count=0
@@ -62,13 +57,11 @@ jobs:
 
             if [ $curl_exit_code -ne 0 ]; then
               retry_count=$((retry_count + 1))
-              echo "⚠️ curl failed (exit $curl_exit_code). Retry $retry_count/$max_retries..."
               [ $retry_count -lt $max_retries ] && sleep $((30 * retry_count)) && continue || break
             fi
 
             http_code=$(echo "$response" | tail -n1)
             body=$(echo "$response" | sed '$d')
-            echo "HTTP Status: $http_code"
 
             if [ "$http_code" -eq 200 ] || [ "$http_code" -eq 201 ]; then
               api_success=$(echo "$body" | jq -r '.success // false')
