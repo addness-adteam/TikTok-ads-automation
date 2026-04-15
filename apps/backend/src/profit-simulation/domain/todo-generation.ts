@@ -43,7 +43,11 @@ export async function generateTodos(
   // 1. ボトルネックベースのTODO
   if (direction === 'IMPROVE_ROAS' || direction === 'BOTH') {
     for (const bottleneck of bottlenecks) {
-      const bottleneckTodos = generateBottleneckTodos(channelType, period, bottleneck);
+      const bottleneckTodos = generateBottleneckTodos(
+        channelType,
+        period,
+        bottleneck,
+      );
       todos.push(...bottleneckTodos);
     }
   }
@@ -51,7 +55,9 @@ export async function generateTodos(
   // 2. 集客数増加のTODO
   if (direction === 'INCREASE_ACQUISITION' || direction === 'BOTH') {
     const acquisitionTodos = await generateAcquisitionTodos(
-      channelType, period, winningCreativeSource,
+      channelType,
+      period,
+      winningCreativeSource,
     );
     todos.push(...acquisitionTodos);
   }
@@ -73,55 +79,79 @@ function generateBottleneckTodos(
 
   if (stage === 'CPA' || stage.includes('CPA')) {
     // CPA高い → 調査（CPC確認含む）
-    todos.push(createTodo(channelType, period, bottleneck, {
-      action: `CPA改善: CPC¥100未満のCRがないか確認し、あれば停止検討。LP CVR改善も検討。`,
-      actionType: 'INVESTIGATION',
-      priority,
-    }));
-  } else if (stage.includes('リストイン') || stage.includes('メイン') || stage.includes('LINE')) {
+    todos.push(
+      createTodo(channelType, period, bottleneck, {
+        action: `CPA改善: CPC¥100未満のCRがないか確認し、あれば停止検討。LP CVR改善も検討。`,
+        actionType: 'INVESTIGATION',
+        priority,
+      }),
+    );
+  } else if (
+    stage.includes('リストイン') ||
+    stage.includes('メイン') ||
+    stage.includes('LINE')
+  ) {
     // リストイン率低下 → 導線確認 + CPC相関チェック
-    todos.push(createTodo(channelType, period, bottleneck, {
-      action: `リストイン率改善: サンクスページ→LINE登録導線の確認。CPC¥100未満のCRがないか確認。`,
-      actionType: 'INVESTIGATION',
-      priority,
-    }));
+    todos.push(
+      createTodo(channelType, period, bottleneck, {
+        action: `リストイン率改善: サンクスページ→LINE登録導線の確認。CPC¥100未満のCRがないか確認。`,
+        actionType: 'INVESTIGATION',
+        priority,
+      }),
+    );
   } else if (stage.includes('セミナー予約') || stage.includes('企画')) {
-    todos.push(createTodo(channelType, period, bottleneck, {
-      action: `セミナー予約率改善: セミナー訴求の見直し。LINE配信内容の確認。`,
-      actionType: 'FUNNEL_FIX',
-      priority,
-    }));
+    todos.push(
+      createTodo(channelType, period, bottleneck, {
+        action: `セミナー予約率改善: セミナー訴求の見直し。LINE配信内容の確認。`,
+        actionType: 'FUNNEL_FIX',
+        priority,
+      }),
+    );
   } else if (stage.includes('着座')) {
-    todos.push(createTodo(channelType, period, bottleneck, {
-      action: `着座率改善: リマインド配信の確認。セミナー日程・アクセス情報の改善。`,
-      actionType: 'FUNNEL_FIX',
-      priority,
-    }));
+    todos.push(
+      createTodo(channelType, period, bottleneck, {
+        action: `着座率改善: リマインド配信の確認。セミナー日程・アクセス情報の改善。`,
+        actionType: 'FUNNEL_FIX',
+        priority,
+      }),
+    );
   } else if (stage.includes('成約')) {
-    todos.push(createTodo(channelType, period, bottleneck, {
-      action: `成約率改善: セールスプロセスの確認。価格・オファーの見直し。`,
-      actionType: 'INVESTIGATION',
-      priority,
-    }));
+    todos.push(
+      createTodo(channelType, period, bottleneck, {
+        action: `成約率改善: セールスプロセスの確認。価格・オファーの見直し。`,
+        actionType: 'INVESTIGATION',
+        priority,
+      }),
+    );
   } else if (stage.includes('フロント')) {
-    todos.push(createTodo(channelType, period, bottleneck, {
-      action: `フロント購入率改善: OTO/メルマガのオファー訴求見直し。LP→購入導線の確認。`,
-      actionType: 'LP_IMPROVEMENT',
-      priority,
-    }));
-  } else if (stage.includes('個別') && !stage.includes('着座') && !stage.includes('成約')) {
-    todos.push(createTodo(channelType, period, bottleneck, {
-      action: `個別予約率改善: LINE配信での個別相談訴求の見直し。予約導線の確認。`,
-      actionType: 'FUNNEL_FIX',
-      priority,
-    }));
+    todos.push(
+      createTodo(channelType, period, bottleneck, {
+        action: `フロント購入率改善: OTO/メルマガのオファー訴求見直し。LP→購入導線の確認。`,
+        actionType: 'LP_IMPROVEMENT',
+        priority,
+      }),
+    );
+  } else if (
+    stage.includes('個別') &&
+    !stage.includes('着座') &&
+    !stage.includes('成約')
+  ) {
+    todos.push(
+      createTodo(channelType, period, bottleneck, {
+        action: `個別予約率改善: LINE配信での個別相談訴求の見直し。予約導線の確認。`,
+        actionType: 'FUNNEL_FIX',
+        priority,
+      }),
+    );
   } else {
     // 汎用
-    todos.push(createTodo(channelType, period, bottleneck, {
-      action: `${stage}の改善: 現状${(bottleneck.currentRate * 100).toFixed(1)}% → 目標${(bottleneck.targetRate * 100).toFixed(1)}%。原因調査が必要。`,
-      actionType: 'INVESTIGATION',
-      priority,
-    }));
+    todos.push(
+      createTodo(channelType, period, bottleneck, {
+        action: `${stage}の改善: 現状${(bottleneck.currentRate * 100).toFixed(1)}% → 目標${(bottleneck.targetRate * 100).toFixed(1)}%。原因調査が必要。`,
+        actionType: 'INVESTIGATION',
+        priority,
+      }),
+    );
   }
 
   return todos;
@@ -134,10 +164,12 @@ async function generateAcquisitionTodos(
   winningCreativeSource: WinningCreativeSource,
 ): Promise<GeneratedTodo[]> {
   const todos: GeneratedTodo[] = [];
-  const hasWinners = await winningCreativeSource.hasWinningCreatives(channelType);
+  const hasWinners =
+    await winningCreativeSource.hasWinningCreatives(channelType);
 
   if (hasWinners) {
-    const winners = await winningCreativeSource.getWinningCreatives(channelType);
+    const winners =
+      await winningCreativeSource.getWinningCreatives(channelType);
     todos.push({
       id: uuidv4(),
       channelType,
@@ -147,7 +179,10 @@ async function generateAcquisitionTodos(
       targetRate: 0,
       gapPoints: 0,
       profitImpact: 0,
-      action: `勝ちCR(${winners.length}本)の横展開を実行。候補: ${winners.slice(0, 3).map(w => w.adName).join(', ')}`,
+      action: `勝ちCR(${winners.length}本)の横展開を実行。候補: ${winners
+        .slice(0, 3)
+        .map((w) => w.adName)
+        .join(', ')}`,
       actionType: 'CROSS_DEPLOY',
       isAutoExecutable: true,
       priority: 'HIGH',
@@ -194,7 +229,11 @@ function createTodo(
   channelType: ChannelType,
   period: string,
   bottleneck: BottleneckResult,
-  opts: { action: string; actionType: TodoActionType; priority: GeneratedTodo['priority'] },
+  opts: {
+    action: string;
+    actionType: TodoActionType;
+    priority: GeneratedTodo['priority'];
+  },
 ): GeneratedTodo {
   return {
     id: uuidv4(),

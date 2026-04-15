@@ -1,11 +1,4 @@
-import {
-  Controller,
-  Get,
-  Patch,
-  Param,
-  Body,
-  Logger,
-} from '@nestjs/common';
+import { Controller, Get, Patch, Param, Body, Logger } from '@nestjs/common';
 import { AdvertiserService } from './advertiser.service';
 
 @Controller('api/advertisers')
@@ -48,7 +41,8 @@ export class AdvertiserController {
     this.logger.log(`Getting ads for advertiser: ${advertiserId}`);
 
     try {
-      const ads = await this.advertiserService.findAdsByAdvertiserId(advertiserId);
+      const ads =
+        await this.advertiserService.findAdsByAdvertiserId(advertiserId);
       return {
         success: true,
         data: ads,
@@ -103,7 +97,10 @@ export class AdvertiserController {
     this.logger.log(`Assigning appeal ${appealId} to advertiser ${id}`);
 
     try {
-      const advertiser = await this.advertiserService.assignAppeal(id, appealId);
+      const advertiser = await this.advertiserService.assignAppeal(
+        id,
+        appealId,
+      );
       return {
         success: true,
         data: advertiser,

@@ -86,7 +86,14 @@ export type OptimizationMode = 'ROAS_MAXIMIZE' | 'ACQUISITION_MAXIMIZE';
 export interface AdGroupOptimizationResult {
   adgroupId: string;
   campaignId: string;
-  action: 'PAUSE' | 'CONTINUE' | 'INCREASE_BUDGET' | 'NO_CHANGE' | 'ERROR' | 'SKIPPED_DUE_TO_CAP' | 'SKIPPED_DUE_TO_COOLDOWN';
+  action:
+    | 'PAUSE'
+    | 'CONTINUE'
+    | 'INCREASE_BUDGET'
+    | 'NO_CHANGE'
+    | 'ERROR'
+    | 'SKIPPED_DUE_TO_CAP'
+    | 'SKIPPED_DUE_TO_COOLDOWN';
   reason: string;
   isCBO: boolean; // キャンペーン予算（CBO）かどうか
   isSmartPlus?: boolean;
@@ -117,10 +124,19 @@ export class OptimizationService {
     if (!adName) return false;
 
     const videoExtensions = ['.mp4', '.MP4', '.mov', '.MOV', '.avi', '.AVI'];
-    const imageExtensions = ['.jpg', '.JPG', '.jpeg', '.JPEG', '.png', '.PNG', '.gif', '.GIF'];
+    const imageExtensions = [
+      '.jpg',
+      '.JPG',
+      '.jpeg',
+      '.JPEG',
+      '.png',
+      '.PNG',
+      '.gif',
+      '.GIF',
+    ];
     const allExtensions = [...videoExtensions, ...imageExtensions];
 
-    return allExtensions.some(ext => adName.includes(ext));
+    return allExtensions.some((ext) => adName.includes(ext));
   }
 
   /**
@@ -129,18 +145,32 @@ export class OptimizationService {
    * @param mode 最適化モード（デフォルト: ROAS_MAXIMIZE）
    * @param dryRun trueの場合、実際のAPI呼び出しをスキップ（テスト用）
    */
-  async executeOptimization(accessToken: string, mode: OptimizationMode = 'ROAS_MAXIMIZE', dryRun: boolean = false) {
-    this.logger.log(`Starting budget optimization for all advertisers (mode: ${mode}, dryRun: ${dryRun})`);
+  async executeOptimization(
+    accessToken: string,
+    mode: OptimizationMode = 'ROAS_MAXIMIZE',
+    dryRun: boolean = false,
+  ) {
+    this.logger.log(
+      `Starting budget optimization for all advertisers (mode: ${mode}, dryRun: ${dryRun})`,
+    );
 
     const advertiserIds = await this.getActiveAdvertiserIds();
     const results: any[] = [];
 
     for (const advertiserId of advertiserIds) {
       try {
-        const result = await this.optimizeAdvertiser(advertiserId, accessToken, mode, dryRun);
+        const result = await this.optimizeAdvertiser(
+          advertiserId,
+          accessToken,
+          mode,
+          dryRun,
+        );
         results.push(result);
       } catch (error) {
-        this.logger.error(`Failed to optimize advertiser ${advertiserId}:`, error);
+        this.logger.error(
+          `Failed to optimize advertiser ${advertiserId}:`,
+          error,
+        );
         results.push({
           advertiserId,
           success: false,
@@ -164,8 +194,15 @@ export class OptimizationService {
    * @param mode 最適化モード（デフォルト: ROAS_MAXIMIZE）
    * @param dryRun trueの場合、実際のAPI呼び出しをスキップ（テスト用）
    */
-  async optimizeAdvertiser(advertiserId: string, accessToken: string, mode: OptimizationMode = 'ROAS_MAXIMIZE', dryRun: boolean = false) {
-    this.logger.log(`Optimizing advertiser: ${advertiserId} (mode: ${mode}, dryRun: ${dryRun})`);
+  async optimizeAdvertiser(
+    advertiserId: string,
+    accessToken: string,
+    mode: OptimizationMode = 'ROAS_MAXIMIZE',
+    dryRun: boolean = false,
+  ) {
+    this.logger.log(
+      `Optimizing advertiser: ${advertiserId} (mode: ${mode}, dryRun: ${dryRun})`,
+    );
 
     // Google Sheetsのキャッシュをクリアして最新データを取得
     this.googleSheetsService.clearCache();
@@ -181,15 +218,21 @@ export class OptimizationService {
     if (!advertiser) {
       // O-03: Advertiser未検出
       const error = new Error(`Advertiser ${advertiserId} not found`);
-      const errorInfo = classifyOptimizationError(error, { entityId: advertiserId });
+      const errorInfo = classifyOptimizationError(error, {
+        entityId: advertiserId,
+      });
       logOptimizationError(this.logger, errorInfo, 'optimizeAdvertiser');
       throw error;
     }
 
     if (!advertiser.appeal) {
       // O-02: Appeal未設定
-      const error = new Error(`No appeal assigned to advertiser ${advertiserId}`);
-      const errorInfo = classifyOptimizationError(error, { entityId: advertiserId });
+      const error = new Error(
+        `No appeal assigned to advertiser ${advertiserId}`,
+      );
+      const errorInfo = classifyOptimizationError(error, {
+        entityId: advertiserId,
+      });
       logOptimizationError(this.logger, errorInfo, 'optimizeAdvertiser');
       throw error;
     }
@@ -214,7 +257,9 @@ export class OptimizationService {
 
     // 配信中の広告を取得
     const activeAds = await this.getActiveAds(advertiserId, accessToken);
-    this.logger.log(`Found ${activeAds.length} active ads for advertiser ${advertiserId}`);
+    this.logger.log(
+      `Found ${activeAds.length} active ads for advertiser ${advertiserId}`,
+    );
 
     // 処理済みキャンペーンIDを記録
     const processedCampaigns = new Set<string>();
@@ -232,7 +277,7 @@ export class OptimizationService {
       // ただし、新スマートプラス広告（isSmartPlus=true）の場合は、Phase 1で処理
       if (this.isCreativeName(ad.ad_name) && !ad.isSmartPlus) {
         this.logger.debug(
-          `Ad ${ad.ad_id} has creative name (${ad.ad_name}), skipping in Phase 1 (will be processed as Smart+ legacy in Phase 2)`
+          `Ad ${ad.ad_id} has creative name (${ad.ad_name}), skipping in Phase 1 (will be processed as Smart+ legacy in Phase 2)`,
         );
         continue;
       }
@@ -241,17 +286,26 @@ export class OptimizationService {
       processedCampaigns.add(ad.campaign_id);
 
       try {
-        const performance = await this.evaluateAdPerformance(ad, appeal, accessToken);
+        const performance = await this.evaluateAdPerformance(
+          ad,
+          appeal,
+          accessToken,
+        );
         if (performance) {
           adPerformances.push(performance);
         }
       } catch (error) {
-        this.logger.error(`Failed to evaluate ad ${ad.ad_id} (${ad.ad_name}):`, error.message);
+        this.logger.error(
+          `Failed to evaluate ad ${ad.ad_id} (${ad.ad_name}):`,
+          error.message,
+        );
         this.logger.error(`Error stack: ${error.stack}`);
       }
     }
 
-    this.logger.log(`Successfully evaluated ${adPerformances.length} ads out of ${activeAds.length} active ads`);
+    this.logger.log(
+      `Successfully evaluated ${adPerformances.length} ads out of ${activeAds.length} active ads`,
+    );
 
     // 最適化判断を実行
     const decisions: OptimizationDecision[] = [];
@@ -278,7 +332,10 @@ export class OptimizationService {
         );
         adgroupResults.push(result);
       } catch (error) {
-        this.logger.error(`Failed to determine optimization for adgroup ${adgroupId}:`, error);
+        this.logger.error(
+          `Failed to determine optimization for adgroup ${adgroupId}:`,
+          error,
+        );
         adgroupResults.push({
           adgroupId,
           campaignId: adDecisions[0]?.campaignId || '',
@@ -291,14 +348,21 @@ export class OptimizationService {
     }
 
     // Step 2: CBO/非CBOでグループ化
-    const nonCBOResults = adgroupResults.filter(r => !r.isCBO);
-    const cboResults = adgroupResults.filter(r => r.isCBO);
+    const nonCBOResults = adgroupResults.filter((r) => !r.isCBO);
+    const cboResults = adgroupResults.filter((r) => r.isCBO);
 
-    this.logger.log(`AdGroup results: ${nonCBOResults.length} non-CBO, ${cboResults.length} CBO`);
+    this.logger.log(
+      `AdGroup results: ${nonCBOResults.length} non-CBO, ${cboResults.length} CBO`,
+    );
 
     // Step 3: 非CBO（広告セット予算）は直接実行
     for (const result of nonCBOResults) {
-      const executed = await this.executeAdGroupBudgetChange(result, advertiserId, accessToken, dryRun);
+      const executed = await this.executeAdGroupBudgetChange(
+        result,
+        advertiserId,
+        accessToken,
+        dryRun,
+      );
       executionResults.push(executed);
     }
 
@@ -314,7 +378,9 @@ export class OptimizationService {
       }
 
       // 各キャンペーンで集約判定・実行
-      for (const [campaignId, campaignAdgroupResults] of Object.entries(cboByCampaign)) {
+      for (const [campaignId, campaignAdgroupResults] of Object.entries(
+        cboByCampaign,
+      )) {
         const cboExecutedResults = await this.executeCBOCampaignOptimization(
           campaignId,
           campaignAdgroupResults,
@@ -328,7 +394,7 @@ export class OptimizationService {
     }
 
     // 各広告の詳細ログを作成
-    const detailedLogs = decisions.map(decision => ({
+    const detailedLogs = decisions.map((decision) => ({
       adId: decision.adId,
       adName: decision.adName,
       adgroupId: decision.adgroupId,
@@ -350,19 +416,26 @@ export class OptimizationService {
         allowableCPA: appeal.allowableCPA,
         targetFrontCPO: appeal.targetFrontCPO,
         allowableFrontCPO: appeal.allowableFrontCPO,
-      }
+      },
     }));
 
-    this.logger.log(`Phase 1 completed: Processed ${processedCampaigns.size} campaigns with named ads`);
+    this.logger.log(
+      `Phase 1 completed: Processed ${processedCampaigns.size} campaigns with named ads`,
+    );
 
     // ========================================
     // Phase 2: キャンペーンレベルの予算調整（旧スマートプラス）
     // ========================================
     this.logger.log('========================================');
-    this.logger.log('Phase 2: Evaluating campaigns without ad_name (Smart+ legacy)');
+    this.logger.log(
+      'Phase 2: Evaluating campaigns without ad_name (Smart+ legacy)',
+    );
     this.logger.log('========================================');
 
-    const activeCampaigns = await this.getActiveCampaigns(advertiserId, accessToken);
+    const activeCampaigns = await this.getActiveCampaigns(
+      advertiserId,
+      accessToken,
+    );
     let smartPlusCampaignCount = 0;
     const campaignExecutionResults: any[] = [];
 
@@ -370,7 +443,7 @@ export class OptimizationService {
       // Phase 1で処理済みのキャンペーンはスキップ（通常キャンペーン）
       if (processedCampaigns.has(campaign.campaign_id)) {
         this.logger.debug(
-          `Campaign ${campaign.campaign_id} (${campaign.campaign_name}) already processed as manual campaign, skipping`
+          `Campaign ${campaign.campaign_id} (${campaign.campaign_name}) already processed as manual campaign, skipping`,
         );
         continue;
       }
@@ -379,22 +452,25 @@ export class OptimizationService {
       const campaignAds = await this.getAdsForCampaign(
         advertiserId,
         accessToken,
-        campaign.campaign_id
+        campaign.campaign_id,
       );
 
       // 全広告がCR名（拡張子含む）かどうかをチェック
-      const allAdsHaveCreativeNames = campaignAds.length > 0 && campaignAds.every(
-        (ad: any) => this.isCreativeName(ad.ad_name)
-      );
+      const allAdsHaveCreativeNames =
+        campaignAds.length > 0 &&
+        campaignAds.every((ad: any) => this.isCreativeName(ad.ad_name));
 
       // CR名でない広告名（手動の広告名）を持つ広告が1つでもあれば通常/新スマプラキャンペーン
       const hasManualAdNames = campaignAds.some(
-        (ad: any) => ad.ad_name && ad.ad_name.trim() !== '' && !this.isCreativeName(ad.ad_name)
+        (ad: any) =>
+          ad.ad_name &&
+          ad.ad_name.trim() !== '' &&
+          !this.isCreativeName(ad.ad_name),
       );
 
       if (hasManualAdNames) {
         this.logger.debug(
-          `Campaign ${campaign.campaign_id} (${campaign.campaign_name}) has manual ad names (not creative names), skipping in Phase 2`
+          `Campaign ${campaign.campaign_id} (${campaign.campaign_name}) has manual ad names (not creative names), skipping in Phase 2`,
         );
         continue;
       }
@@ -402,7 +478,7 @@ export class OptimizationService {
       // 全広告がCR名でない場合（空の広告名のみ）もスキップ
       if (!allAdsHaveCreativeNames) {
         this.logger.debug(
-          `Campaign ${campaign.campaign_id} (${campaign.campaign_name}) does not have all creative names, skipping in Phase 2`
+          `Campaign ${campaign.campaign_id} (${campaign.campaign_name}) does not have all creative names, skipping in Phase 2`,
         );
         continue;
       }
@@ -413,14 +489,14 @@ export class OptimizationService {
 
       if (!parsedName) {
         this.logger.warn(
-          `Campaign ${campaign.campaign_id} (${campaign.campaign_name}) has no named ads but campaign name is unparseable, skipping`
+          `Campaign ${campaign.campaign_id} (${campaign.campaign_name}) has no named ads but campaign name is unparseable, skipping`,
         );
         continue;
       }
 
       // ここから旧スマートプラスの評価
       this.logger.log(
-        `✓ Detected Smart+ legacy campaign: ${campaign.campaign_id} (${campaign.campaign_name})`
+        `✓ Detected Smart+ legacy campaign: ${campaign.campaign_id} (${campaign.campaign_name})`,
       );
       smartPlusCampaignCount++;
 
@@ -428,15 +504,20 @@ export class OptimizationService {
         const performance = await this.evaluateCampaignPerformance(
           campaign,
           appeal,
-          accessToken
+          accessToken,
         );
 
         if (!performance) {
-          this.logger.warn(`Failed to evaluate campaign ${campaign.campaign_id}, skipping`);
+          this.logger.warn(
+            `Failed to evaluate campaign ${campaign.campaign_id}, skipping`,
+          );
           continue;
         }
 
-        const decision = await this.makeCampaignOptimizationDecision(performance, appeal);
+        const decision = await this.makeCampaignOptimizationDecision(
+          performance,
+          appeal,
+        );
 
         // 判定に応じてアクションを実行
         if (decision.action === 'PAUSE') {
@@ -445,7 +526,7 @@ export class OptimizationService {
             advertiserId,
             accessToken,
             decision.reason,
-            dryRun
+            dryRun,
           );
           campaignExecutionResults.push({
             campaignId: campaign.campaign_id,
@@ -458,21 +539,23 @@ export class OptimizationService {
           const adgroups = await this.tiktokService.getAdGroups(
             advertiserId,
             accessToken,
-            [campaign.campaign_id]  // 配列として渡す
+            [campaign.campaign_id], // 配列として渡す
           );
 
           if (adgroups.data?.list?.length > 0) {
             const adgroupId = adgroups.data.list[0].adgroup_id;
 
             if (dryRun) {
-              this.logger.log(`[DRY RUN] Would increase campaign ${campaign.campaign_id} budget by 30%`);
+              this.logger.log(
+                `[DRY RUN] Would increase campaign ${campaign.campaign_id} budget by 30%`,
+              );
             } else {
               // 既存のincreaseBudgetメソッドが自動で判定
               await this.increaseBudget(
                 adgroupId,
                 advertiserId,
                 accessToken,
-                0.3,  // 30%増額
+                0.3, // 30%増額
               );
             }
             campaignExecutionResults.push({
@@ -482,7 +565,9 @@ export class OptimizationService {
               reason: dryRun ? `${decision.reason} [DRY RUN]` : decision.reason,
             });
           } else {
-            this.logger.warn(`No adgroups found for campaign ${campaign.campaign_id}, skipping budget increase`);
+            this.logger.warn(
+              `No adgroups found for campaign ${campaign.campaign_id}, skipping budget increase`,
+            );
           }
         } else {
           // CONTINUE
@@ -494,7 +579,10 @@ export class OptimizationService {
           });
         }
       } catch (error) {
-        this.logger.error(`Failed to optimize campaign ${campaign.campaign_id}:`, error);
+        this.logger.error(
+          `Failed to optimize campaign ${campaign.campaign_id}:`,
+          error,
+        );
         campaignExecutionResults.push({
           campaignId: campaign.campaign_id,
           campaignName: campaign.campaign_name,
@@ -506,7 +594,7 @@ export class OptimizationService {
     }
 
     this.logger.log(
-      `Phase 2 completed: Processed ${smartPlusCampaignCount} Smart+ legacy campaigns`
+      `Phase 2 completed: Processed ${smartPlusCampaignCount} Smart+ legacy campaigns`,
     );
     this.logger.log(`Optimization completed for advertiser: ${advertiserId}`);
 
@@ -533,21 +621,37 @@ export class OptimizationService {
    */
   private async getActiveAds(advertiserId: string, accessToken: string) {
     // 新スマートプラス広告を取得
-    const smartPlusAdsResponse = await this.tiktokService.getSmartPlusAds(advertiserId, accessToken, undefined, 'ENABLE');
+    const smartPlusAdsResponse = await this.tiktokService.getSmartPlusAds(
+      advertiserId,
+      accessToken,
+      undefined,
+      'ENABLE',
+    );
     const smartPlusAds = smartPlusAdsResponse.data?.list || [];
 
     // 新スマートプラス広告のIDセットを作成
-    const smartPlusAdIds = new Set(smartPlusAds.map((ad: any) => ad.smart_plus_ad_id));
+    const smartPlusAdIds = new Set(
+      smartPlusAds.map((ad: any) => ad.smart_plus_ad_id),
+    );
 
     // 通常の広告を取得
-    const adsResponse = await this.tiktokService.getAds(advertiserId, accessToken);
-    const allRegularAds = adsResponse.data?.list?.filter((ad: any) => ad.operation_status === 'ENABLE') || [];
+    const adsResponse = await this.tiktokService.getAds(
+      advertiserId,
+      accessToken,
+    );
+    const allRegularAds =
+      adsResponse.data?.list?.filter(
+        (ad: any) => ad.operation_status === 'ENABLE',
+      ) || [];
 
     // 通常の広告から新スマートプラス広告を除外（重複を避ける）
     // 通常のad/getでも新スマートプラス広告が返ってくるが、広告名がクリエイティブ名になっているため除外
     const regularAdsOnly = allRegularAds.filter((ad: any) => {
       // ad.ad_idまたはad.smart_plus_ad_idが新スマートプラス広告に含まれていない場合のみ残す
-      return !smartPlusAdIds.has(ad.ad_id) && !smartPlusAdIds.has(ad.smart_plus_ad_id);
+      return (
+        !smartPlusAdIds.has(ad.ad_id) &&
+        !smartPlusAdIds.has(ad.smart_plus_ad_id)
+      );
     });
 
     // 新スマートプラス広告を処理
@@ -563,9 +667,16 @@ export class OptimizationService {
     // 両方の広告を結合
     const allActiveAds = [...regularAdsOnly, ...smartPlusAds];
 
-    this.logger.log(`Active ads count: ${allActiveAds.length} (Regular: ${regularAdsOnly.length}, Smart+: ${smartPlusAds.length})`);
+    this.logger.log(
+      `Active ads count: ${allActiveAds.length} (Regular: ${regularAdsOnly.length}, Smart+: ${smartPlusAds.length})`,
+    );
     if (allActiveAds.length > 0) {
-      this.logger.log(`Sample ad names: ${allActiveAds.slice(0, 3).map((ad: any) => `${ad.ad_name}${ad.isSmartPlus ? ' [Smart+]' : ''}`).join(', ')}`);
+      this.logger.log(
+        `Sample ad names: ${allActiveAds
+          .slice(0, 3)
+          .map((ad: any) => `${ad.ad_name}${ad.isSmartPlus ? ' [Smart+]' : ''}`)
+          .join(', ')}`,
+      );
     }
 
     return allActiveAds;
@@ -588,10 +699,15 @@ export class OptimizationService {
       return null;
     }
 
-    this.logger.log(`Parsed ad name successfully: ${JSON.stringify(parsedName)}`);
+    this.logger.log(
+      `Parsed ad name successfully: ${JSON.stringify(parsedName)}`,
+    );
 
     // 登録経路を生成
-    const registrationPath = this.generateRegistrationPath(parsedName.lpName, appeal.name);
+    const registrationPath = this.generateRegistrationPath(
+      parsedName.lpName,
+      appeal.name,
+    );
 
     // 過去7日間の期間を計算（当日は含めない）
     const { startDate, endDate } = this.calculateEvaluationPeriod();
@@ -645,7 +761,12 @@ export class OptimizationService {
    * 形式: 出稿日/制作者名/CR名/LP名-番号
    * CR名は複数パートに分かれることがある（例: 問題ないです/ひったくりVer_リール投稿）
    */
-  private parseAdName(adName: string): { date: string; creator: string; creativeName: string; lpName: string } | null {
+  private parseAdName(adName: string): {
+    date: string;
+    creator: string;
+    creativeName: string;
+    lpName: string;
+  } | null {
     // O-01: 広告名形式検証
     const validation = validateAdNameFormat(adName);
 
@@ -693,8 +814,14 @@ export class OptimizationService {
    * 広告のメトリクスを取得（過去7日間）
    * @param tiktokAdId TikTok APIから返される広告ID
    */
-  private async getAdMetrics(tiktokAdId: string, startDate: Date, endDate: Date) {
-    this.logger.debug(`Getting metrics for ad ${tiktokAdId} from ${startDate.toISOString()} to ${endDate.toISOString()}`);
+  private async getAdMetrics(
+    tiktokAdId: string,
+    startDate: Date,
+    endDate: Date,
+  ) {
+    this.logger.debug(
+      `Getting metrics for ad ${tiktokAdId} from ${startDate.toISOString()} to ${endDate.toISOString()}`,
+    );
 
     // まずTikTok IDからAdレコードを検索（AdGroupも含めてSmart+判定用）
     const ad = await this.prisma.ad.findUnique({
@@ -721,7 +848,9 @@ export class OptimizationService {
     let metrics;
     if (isSmartPlus) {
       // Smart+広告の場合：最新の1レコードのみを使用（既に7日間の合算値）
-      this.logger.debug(`Smart+ ad detected, using latest single metric record`);
+      this.logger.debug(
+        `Smart+ ad detected, using latest single metric record`,
+      );
       metrics = await this.prisma.metric.findMany({
         where: {
           adId: ad.id,
@@ -747,10 +876,14 @@ export class OptimizationService {
       });
     }
 
-    this.logger.log(`Found ${metrics.length} metrics for ad ${tiktokAdId} (${ad.id}) [${isSmartPlus ? 'Smart+' : 'Regular'}]`);
+    this.logger.log(
+      `Found ${metrics.length} metrics for ad ${tiktokAdId} (${ad.id}) [${isSmartPlus ? 'Smart+' : 'Regular'}]`,
+    );
 
     if (metrics.length > 0) {
-      this.logger.debug(`Sample metric values: impressions=${metrics[0].impressions}, clicks=${metrics[0].clicks}, spend=${metrics[0].spend}`);
+      this.logger.debug(
+        `Sample metric values: impressions=${metrics[0].impressions}, clicks=${metrics[0].clicks}, spend=${metrics[0].spend}`,
+      );
     }
 
     // 合計を計算（Smart+の場合は1レコードのみなので実質そのまま、通常広告は7日分の合計）
@@ -758,7 +891,9 @@ export class OptimizationService {
     const totalClicks = metrics.reduce((sum, m) => sum + (m.clicks || 0), 0);
     const totalSpend = metrics.reduce((sum, m) => sum + m.spend, 0);
 
-    this.logger.debug(`Total metrics: impressions=${totalImpressions}, clicks=${totalClicks}, spend=${totalSpend}`);
+    this.logger.debug(
+      `Total metrics: impressions=${totalImpressions}, clicks=${totalClicks}, spend=${totalSpend}`,
+    );
 
     return {
       impressions: totalImpressions,
@@ -774,11 +909,18 @@ export class OptimizationService {
     performance: AdPerformance,
     appeal: any,
   ): Promise<OptimizationDecision> {
-    const { impressions, spend, cvCount, frontSalesCount, cpa, frontCPO } = performance;
-    const { allowableCPA, targetCPA, allowableFrontCPO, targetFrontCPO } = appeal;
+    const { impressions, spend, cvCount, frontSalesCount, cpa, frontCPO } =
+      performance;
+    const { allowableCPA, targetCPA, allowableFrontCPO, targetFrontCPO } =
+      appeal;
 
     // ヘルパー関数：decisionにperformanceを追加
-    const createDecision = (action: 'PAUSE' | 'CONTINUE' | 'INCREASE_BUDGET', reason: string, currentBudget?: number, newBudget?: number): OptimizationDecision => ({
+    const createDecision = (
+      action: 'PAUSE' | 'CONTINUE' | 'INCREASE_BUDGET',
+      reason: string,
+      currentBudget?: number,
+      newBudget?: number,
+    ): OptimizationDecision => ({
       adId: performance.adId,
       adName: performance.adName,
       adgroupId: performance.adgroupId,
@@ -793,17 +935,29 @@ export class OptimizationService {
 
     // 5000インプレッション未達の場合
     if (impressions < 5000) {
-      return createDecision('CONTINUE', `インプレッション数が5000未満（${impressions}）のため、継続配信`);
+      return createDecision(
+        'CONTINUE',
+        `インプレッション数が5000未満（${impressions}）のため、継続配信`,
+      );
     }
 
     // フロント販売が1件以上ある場合
     if (frontSalesCount >= 1) {
       if (frontCPO <= targetFrontCPO) {
-        return createDecision('INCREASE_BUDGET', `フロントCPO（¥${frontCPO.toFixed(0)}）が目標値（¥${targetFrontCPO}）以下のため、予算30%増額`);
+        return createDecision(
+          'INCREASE_BUDGET',
+          `フロントCPO（¥${frontCPO.toFixed(0)}）が目標値（¥${targetFrontCPO}）以下のため、予算30%増額`,
+        );
       } else if (frontCPO <= allowableFrontCPO) {
-        return createDecision('CONTINUE', `フロントCPO（¥${frontCPO.toFixed(0)}）が許容値（¥${allowableFrontCPO}）以下のため、継続配信`);
+        return createDecision(
+          'CONTINUE',
+          `フロントCPO（¥${frontCPO.toFixed(0)}）が許容値（¥${allowableFrontCPO}）以下のため、継続配信`,
+        );
       } else {
-        return createDecision('PAUSE', `フロントCPO（¥${frontCPO.toFixed(0)}）が許容値（¥${allowableFrontCPO}）を超過のため、停止`);
+        return createDecision(
+          'PAUSE',
+          `フロントCPO（¥${frontCPO.toFixed(0)}）が許容値（¥${allowableFrontCPO}）を超過のため、停止`,
+        );
       }
     }
 
@@ -818,9 +972,15 @@ export class OptimizationService {
       }
 
       if (cpa <= allowableCPA && totalSpend <= allowableFrontCPO) {
-        return createDecision('CONTINUE', `CPA（¥${cpa.toFixed(0)}）が許容値以下かつ累積広告費（¥${totalSpend.toFixed(0)}）が許容フロントCPO以下のため、継続配信`);
+        return createDecision(
+          'CONTINUE',
+          `CPA（¥${cpa.toFixed(0)}）が許容値以下かつ累積広告費（¥${totalSpend.toFixed(0)}）が許容フロントCPO以下のため、継続配信`,
+        );
       } else {
-        return createDecision('PAUSE', `CPA（¥${cpa.toFixed(0)}）が許容値を超過または累積広告費が許容フロントCPOを超過のため、停止`);
+        return createDecision(
+          'PAUSE',
+          `CPA（¥${cpa.toFixed(0)}）が許容値を超過または累積広告費が許容フロントCPOを超過のため、停止`,
+        );
       }
     }
 
@@ -839,7 +999,9 @@ export class OptimizationService {
     });
 
     if (!ad) {
-      this.logger.warn(`Ad not found in DB for tiktokId: ${tiktokAdId}, returning 0 for total spend`);
+      this.logger.warn(
+        `Ad not found in DB for tiktokId: ${tiktokAdId}, returning 0 for total spend`,
+      );
       return 0;
     }
 
@@ -848,7 +1010,9 @@ export class OptimizationService {
     });
 
     const totalSpend = metrics.reduce((sum, m) => sum + m.spend, 0);
-    this.logger.debug(`Total spend for ad ${tiktokAdId} (${ad.id}): ¥${totalSpend}`);
+    this.logger.debug(
+      `Total spend for ad ${tiktokAdId} (${ad.id}): ¥${totalSpend}`,
+    );
 
     return totalSpend;
   }
@@ -884,25 +1048,42 @@ export class OptimizationService {
     mode: OptimizationMode = 'ROAS_MAXIMIZE',
     dryRun: boolean = false,
   ): Promise<AdGroupOptimizationResult> {
-    this.logger.log(`Determining optimization for adgroup: ${adgroupId} (mode: ${mode}, dryRun: ${dryRun})`);
+    this.logger.log(
+      `Determining optimization for adgroup: ${adgroupId} (mode: ${mode}, dryRun: ${dryRun})`,
+    );
 
     const campaignId = decisions[0]?.campaignId || '';
 
     // 広告セット情報を取得してCBO判定
     let isCBO = false;
     try {
-      const adgroup = await this.tiktokService.getAdGroup(advertiserId, accessToken, adgroupId);
+      const adgroup = await this.tiktokService.getAdGroup(
+        advertiserId,
+        accessToken,
+        adgroupId,
+      );
       // budget_mode が設定されていて budget > 0 の場合は広告セット予算
       isCBO = !(adgroup.budget_mode && adgroup.budget && adgroup.budget > 0);
-      this.logger.log(`AdGroup ${adgroupId}: budget_mode=${adgroup.budget_mode}, budget=${adgroup.budget}, isCBO=${isCBO}`);
+      this.logger.log(
+        `AdGroup ${adgroupId}: budget_mode=${adgroup.budget_mode}, budget=${adgroup.budget}, isCBO=${isCBO}`,
+      );
     } catch (error) {
-      this.logger.warn(`Failed to get adgroup info for CBO check: ${error.message}`);
+      this.logger.warn(
+        `Failed to get adgroup info for CBO check: ${error.message}`,
+      );
     }
 
     // まず配信停止の広告を処理
     const pauseDecisions = decisions.filter((d) => d.action === 'PAUSE');
     for (const decision of pauseDecisions) {
-      await this.pauseAd(decision.adId, decision.adgroupId, advertiserId, accessToken, decision.reason, dryRun);
+      await this.pauseAd(
+        decision.adId,
+        decision.adgroupId,
+        advertiserId,
+        accessToken,
+        decision.reason,
+        dryRun,
+      );
     }
 
     // 残りの判断を確認
@@ -919,7 +1100,9 @@ export class OptimizationService {
     }
 
     // 判定ロジック
-    const hasIncreaseBudget = remainingDecisions.some((d) => d.action === 'INCREASE_BUDGET');
+    const hasIncreaseBudget = remainingDecisions.some(
+      (d) => d.action === 'INCREASE_BUDGET',
+    );
     const hasContinue = remainingDecisions.some((d) => d.action === 'CONTINUE');
     const isSmartPlus = remainingDecisions.some((d) => d.isSmartPlus);
 
@@ -927,7 +1110,9 @@ export class OptimizationService {
     if (hasIncreaseBudget && hasContinue) {
       // 混在ケース: モードで判断
       if (mode === 'ROAS_MAXIMIZE') {
-        this.logger.log(`Mode: ROAS_MAXIMIZE - Mixed decisions, choosing CONTINUE`);
+        this.logger.log(
+          `Mode: ROAS_MAXIMIZE - Mixed decisions, choosing CONTINUE`,
+        );
         return {
           adgroupId,
           campaignId,
@@ -938,7 +1123,9 @@ export class OptimizationService {
         };
       } else {
         // ACQUISITION_MAXIMIZE: 予算増額を選択
-        this.logger.log(`Mode: ACQUISITION_MAXIMIZE - Mixed decisions, choosing INCREASE_BUDGET`);
+        this.logger.log(
+          `Mode: ACQUISITION_MAXIMIZE - Mixed decisions, choosing INCREASE_BUDGET`,
+        );
         return {
           adgroupId,
           campaignId,
@@ -987,7 +1174,9 @@ export class OptimizationService {
 
     try {
       if (dryRun) {
-        this.logger.log(`[DRY RUN] Would increase budget for adgroup ${result.adgroupId}${result.isSmartPlus ? ' (Smart+)' : ''} by 30%`);
+        this.logger.log(
+          `[DRY RUN] Would increase budget for adgroup ${result.adgroupId}${result.isSmartPlus ? ' (Smart+)' : ''} by 30%`,
+        );
         return {
           ...result,
           reason: `${result.reason}${result.isSmartPlus ? '（Smart+ API使用）' : ''} [DRY RUN]`,
@@ -996,10 +1185,23 @@ export class OptimizationService {
 
       let budgetResult: any;
       if (result.isSmartPlus) {
-        this.logger.log(`Smart+ ad detected for adgroup ${result.adgroupId}, using Smart+ budget update API`);
-        budgetResult = await this.increaseSmartPlusBudget(result.adgroupId, result.campaignId, advertiserId, accessToken, 0.3);
+        this.logger.log(
+          `Smart+ ad detected for adgroup ${result.adgroupId}, using Smart+ budget update API`,
+        );
+        budgetResult = await this.increaseSmartPlusBudget(
+          result.adgroupId,
+          result.campaignId,
+          advertiserId,
+          accessToken,
+          0.3,
+        );
       } else {
-        budgetResult = await this.increaseBudget(result.adgroupId, advertiserId, accessToken, 0.3);
+        budgetResult = await this.increaseBudget(
+          result.adgroupId,
+          advertiserId,
+          accessToken,
+          0.3,
+        );
       }
 
       // クールダウンでスキップされた場合の処理
@@ -1025,7 +1227,10 @@ export class OptimizationService {
         reason: `${result.reason}${result.isSmartPlus ? '（Smart+ API使用）' : ''}`,
       };
     } catch (error) {
-      this.logger.error(`Failed to increase budget for adgroup ${result.adgroupId}:`, error);
+      this.logger.error(
+        `Failed to increase budget for adgroup ${result.adgroupId}:`,
+        error,
+      );
       return {
         ...result,
         action: 'ERROR',
@@ -1046,16 +1251,24 @@ export class OptimizationService {
     mode: OptimizationMode,
     dryRun: boolean = false,
   ): Promise<AdGroupOptimizationResult[]> {
-    this.logger.log(`Executing CBO campaign optimization for campaign: ${campaignId} (mode: ${mode}, dryRun: ${dryRun})`);
+    this.logger.log(
+      `Executing CBO campaign optimization for campaign: ${campaignId} (mode: ${mode}, dryRun: ${dryRun})`,
+    );
 
     // 増額判定と継続判定をカウント
-    const increaseResults = adgroupResults.filter(r => r.action === 'INCREASE_BUDGET');
-    const continueResults = adgroupResults.filter(r => r.action === 'CONTINUE');
+    const increaseResults = adgroupResults.filter(
+      (r) => r.action === 'INCREASE_BUDGET',
+    );
+    const continueResults = adgroupResults.filter(
+      (r) => r.action === 'CONTINUE',
+    );
 
     const hasIncreaseBudget = increaseResults.length > 0;
     const hasContinue = continueResults.length > 0;
 
-    this.logger.log(`CBO Campaign ${campaignId}: INCREASE_BUDGET=${increaseResults.length}, CONTINUE=${continueResults.length}`);
+    this.logger.log(
+      `CBO Campaign ${campaignId}: INCREASE_BUDGET=${increaseResults.length}, CONTINUE=${continueResults.length}`,
+    );
 
     // モードに応じた最終判定
     let finalAction: 'INCREASE_BUDGET' | 'CONTINUE' = 'CONTINUE';
@@ -1064,39 +1277,57 @@ export class OptimizationService {
     if (hasIncreaseBudget && hasContinue) {
       if (mode === 'ROAS_MAXIMIZE') {
         finalAction = 'CONTINUE';
-        finalReason = 'ROAS最大化モード: キャンペーン内の広告セット判定が分かれたため予算維持';
+        finalReason =
+          'ROAS最大化モード: キャンペーン内の広告セット判定が分かれたため予算維持';
       } else {
         finalAction = 'INCREASE_BUDGET';
-        finalReason = '集客数増加モード: キャンペーン内の広告セット判定が分かれたため予算増額';
+        finalReason =
+          '集客数増加モード: キャンペーン内の広告セット判定が分かれたため予算増額';
       }
     } else if (hasIncreaseBudget) {
       finalAction = 'INCREASE_BUDGET';
-      finalReason = 'キャンペーン内の全広告セットが予算増額判定のため、キャンペーン予算を30%増額';
+      finalReason =
+        'キャンペーン内の全広告セットが予算増額判定のため、キャンペーン予算を30%増額';
     } else {
       finalAction = 'CONTINUE';
       finalReason = 'キャンペーン予算維持';
     }
 
-    this.logger.log(`CBO Campaign ${campaignId}: Final decision = ${finalAction}`);
+    this.logger.log(
+      `CBO Campaign ${campaignId}: Final decision = ${finalAction}`,
+    );
 
     // 予算増額の場合、キャンペーン予算を更新（最初の広告セットのincreaseBudgetを使用）
     if (finalAction === 'INCREASE_BUDGET' && increaseResults.length > 0) {
       if (dryRun) {
-        this.logger.log(`[DRY RUN] Would increase CBO campaign ${campaignId} budget by 30%`);
+        this.logger.log(
+          `[DRY RUN] Would increase CBO campaign ${campaignId} budget by 30%`,
+        );
         finalReason = `${finalReason} [DRY RUN]`;
       } else {
         const firstResult = increaseResults[0];
         try {
           let budgetResult: any;
           if (firstResult.isSmartPlus) {
-            budgetResult = await this.increaseSmartPlusBudget(firstResult.adgroupId, campaignId, advertiserId, accessToken, 0.3);
+            budgetResult = await this.increaseSmartPlusBudget(
+              firstResult.adgroupId,
+              campaignId,
+              advertiserId,
+              accessToken,
+              0.3,
+            );
           } else {
-            budgetResult = await this.increaseBudget(firstResult.adgroupId, advertiserId, accessToken, 0.3);
+            budgetResult = await this.increaseBudget(
+              firstResult.adgroupId,
+              advertiserId,
+              accessToken,
+              0.3,
+            );
           }
 
           // クールダウンでスキップされた場合の処理
           if (budgetResult?.action === 'SKIPPED_DUE_TO_COOLDOWN') {
-            return adgroupResults.map(r => ({
+            return adgroupResults.map((r) => ({
               ...r,
               action: 'SKIPPED_DUE_TO_COOLDOWN' as const,
               reason: budgetResult.reason,
@@ -1105,7 +1336,7 @@ export class OptimizationService {
 
           // 上限日予算でスキップされた場合の処理
           if (budgetResult?.action === 'SKIPPED_DUE_TO_CAP') {
-            return adgroupResults.map(r => ({
+            return adgroupResults.map((r) => ({
               ...r,
               action: 'SKIPPED_DUE_TO_CAP' as const,
               reason: budgetResult.reason,
@@ -1113,7 +1344,7 @@ export class OptimizationService {
           }
         } catch (error) {
           this.logger.error(`Failed to increase CBO campaign budget:`, error);
-          return adgroupResults.map(r => ({
+          return adgroupResults.map((r) => ({
             ...r,
             action: 'ERROR' as const,
             error: error.message,
@@ -1123,7 +1354,7 @@ export class OptimizationService {
     }
 
     // 全ての広告セット結果を最終判定で上書き
-    return adgroupResults.map(r => ({
+    return adgroupResults.map((r) => ({
       ...r,
       action: finalAction,
       reason: finalReason,
@@ -1141,11 +1372,21 @@ export class OptimizationService {
     accessToken: string,
     mode: OptimizationMode = 'ROAS_MAXIMIZE',
   ) {
-    const result = await this.determineAdGroupOptimization(adgroupId, decisions, advertiserId, accessToken, mode);
+    const result = await this.determineAdGroupOptimization(
+      adgroupId,
+      decisions,
+      advertiserId,
+      accessToken,
+      mode,
+    );
 
     // CBOでない場合のみ直接実行
     if (!result.isCBO && result.action === 'INCREASE_BUDGET') {
-      return await this.executeAdGroupBudgetChange(result, advertiserId, accessToken);
+      return await this.executeAdGroupBudgetChange(
+        result,
+        advertiserId,
+        accessToken,
+      );
     }
 
     return result;
@@ -1155,7 +1396,14 @@ export class OptimizationService {
    * 広告を停止
    * @param dryRun trueの場合、実際のAPI呼び出しをスキップ
    */
-  private async pauseAd(adId: string, adgroupId: string, advertiserId: string, accessToken: string, reason: string, dryRun: boolean = false) {
+  private async pauseAd(
+    adId: string,
+    adgroupId: string,
+    advertiserId: string,
+    accessToken: string,
+    reason: string,
+    dryRun: boolean = false,
+  ) {
     try {
       if (dryRun) {
         this.logger.log(`[DRY RUN] Would pause ad: ${adId}, reason: ${reason}`);
@@ -1165,12 +1413,25 @@ export class OptimizationService {
       this.logger.log(`Pausing ad: ${adId}, reason: ${reason}`);
 
       // TikTok APIで広告を停止（専用のステータス更新エンドポイントを使用）
-      const response = await this.tiktokService.updateAdStatus(advertiserId, accessToken, [adId], 'DISABLE');
+      const response = await this.tiktokService.updateAdStatus(
+        advertiserId,
+        accessToken,
+        [adId],
+        'DISABLE',
+      );
 
       this.logger.log(`Ad pause response: ${JSON.stringify(response)}`);
 
       // ChangeLogに記録
-      await this.logChange('AD', adId, 'PAUSE', 'OPTIMIZATION', null, { status: 'DISABLE' }, reason);
+      await this.logChange(
+        'AD',
+        adId,
+        'PAUSE',
+        'OPTIMIZATION',
+        null,
+        { status: 'DISABLE' },
+        reason,
+      );
 
       return { success: true, adId, action: 'PAUSED' };
     } catch (error) {
@@ -1186,14 +1447,29 @@ export class OptimizationService {
   /**
    * 予算値を検証し、制限範囲内に収める
    */
-  private validateBudget(budget: number, context: string): { valid: boolean; adjustedBudget: number; message?: string } {
+  private validateBudget(
+    budget: number,
+    context: string,
+  ): { valid: boolean; adjustedBudget: number; message?: string } {
     if (budget < this.BUDGET_MIN) {
-      this.logger.warn(`[Budget Validation] ${context}: Budget ${budget} is below minimum ${this.BUDGET_MIN}, adjusting`);
-      return { valid: true, adjustedBudget: this.BUDGET_MIN, message: `最小予算${this.BUDGET_MIN}円に調整` };
+      this.logger.warn(
+        `[Budget Validation] ${context}: Budget ${budget} is below minimum ${this.BUDGET_MIN}, adjusting`,
+      );
+      return {
+        valid: true,
+        adjustedBudget: this.BUDGET_MIN,
+        message: `最小予算${this.BUDGET_MIN}円に調整`,
+      };
     }
     if (budget > this.BUDGET_MAX) {
-      this.logger.warn(`[Budget Validation] ${context}: Budget ${budget} exceeds maximum ${this.BUDGET_MAX}, adjusting`);
-      return { valid: true, adjustedBudget: this.BUDGET_MAX, message: `最大予算${this.BUDGET_MAX}円に調整` };
+      this.logger.warn(
+        `[Budget Validation] ${context}: Budget ${budget} exceeds maximum ${this.BUDGET_MAX}, adjusting`,
+      );
+      return {
+        valid: true,
+        adjustedBudget: this.BUDGET_MAX,
+        message: `最大予算${this.BUDGET_MAX}円に調整`,
+      };
     }
     return { valid: true, adjustedBudget: budget };
   }
@@ -1211,17 +1487,30 @@ export class OptimizationService {
     increaseRate: number,
   ) {
     try {
-      this.logger.log(`Increasing budget for adgroup: ${adgroupId} by ${increaseRate * 100}%`);
+      this.logger.log(
+        `Increasing budget for adgroup: ${adgroupId} by ${increaseRate * 100}%`,
+      );
 
       // 広告セット情報を取得
-      const adgroup = await this.tiktokService.getAdGroup(advertiserId, accessToken, adgroupId);
-      this.logger.log(`AdGroup fetched: budget=${adgroup.budget}, budget_mode=${adgroup.budget_mode}`);
+      const adgroup = await this.tiktokService.getAdGroup(
+        advertiserId,
+        accessToken,
+        adgroupId,
+      );
+      this.logger.log(
+        `AdGroup fetched: budget=${adgroup.budget}, budget_mode=${adgroup.budget_mode}`,
+      );
 
       // ===== クールダウンチェック（予算タイプに基づいて判定） =====
       const isAdGroupBudget = !!(adgroup.budget_mode && adgroup.budget);
       const cooldownEntityType = isAdGroupBudget ? 'ADGROUP' : 'CAMPAIGN';
-      const cooldownEntityId = isAdGroupBudget ? adgroupId : adgroup.campaign_id;
-      const cooldownCheck = await this.checkBudgetIncreaseCooldown(cooldownEntityType, cooldownEntityId);
+      const cooldownEntityId = isAdGroupBudget
+        ? adgroupId
+        : adgroup.campaign_id;
+      const cooldownCheck = await this.checkBudgetIncreaseCooldown(
+        cooldownEntityType,
+        cooldownEntityId,
+      );
 
       if (cooldownCheck.isInCooldown) {
         const lastIncreaseStr = cooldownCheck.lastIncreaseDate
@@ -1229,7 +1518,7 @@ export class OptimizationService {
           : '不明';
         this.logger.log(
           `Skipping budget increase for ${cooldownEntityType} ${cooldownEntityId}: cooldown period active ` +
-          `(last increase: ${cooldownCheck.lastIncreaseDate?.toISOString() || 'unknown'})`
+            `(last increase: ${cooldownCheck.lastIncreaseDate?.toISOString() || 'unknown'})`,
         );
         return {
           success: true,
@@ -1244,14 +1533,20 @@ export class OptimizationService {
       let newBudget = Math.floor(currentBudget * (1 + increaseRate));
 
       // 予算バリデーション（最小値・最大値チェック）
-      const budgetValidation = this.validateBudget(newBudget, `AdGroup ${adgroupId}`);
+      const budgetValidation = this.validateBudget(
+        newBudget,
+        `AdGroup ${adgroupId}`,
+      );
       if (budgetValidation.adjustedBudget !== newBudget) {
-        this.logger.log(`Budget adjusted: ${newBudget} -> ${budgetValidation.adjustedBudget} (${budgetValidation.message})`);
+        this.logger.log(
+          `Budget adjusted: ${newBudget} -> ${budgetValidation.adjustedBudget} (${budgetValidation.message})`,
+        );
         newBudget = budgetValidation.adjustedBudget;
       }
 
       // ===== 上限日予算チェック（新機能） =====
-      const budgetCapEnabled = this.configService.get('FEATURE_AD_PERFORMANCE_ENABLED') === 'true';
+      const budgetCapEnabled =
+        this.configService.get('FEATURE_AD_PERFORMANCE_ENABLED') === 'true';
       if (budgetCapEnabled) {
         const budgetCapResult = await this.applyBudgetCapCheck(
           adgroupId,
@@ -1263,7 +1558,12 @@ export class OptimizationService {
         );
 
         if (budgetCapResult.skipped) {
-          return { success: true, adgroupId, action: 'SKIPPED_DUE_TO_CAP', reason: budgetCapResult.reason };
+          return {
+            success: true,
+            adgroupId,
+            action: 'SKIPPED_DUE_TO_CAP',
+            reason: budgetCapResult.reason,
+          };
         }
 
         if (budgetCapResult.adjustedBudget !== null) {
@@ -1273,40 +1573,65 @@ export class OptimizationService {
 
       // 予算が広告セットに設定されている場合
       if (adgroup.budget_mode && adgroup.budget) {
-        const response = await this.tiktokService.updateAdGroup(advertiserId, accessToken, adgroupId, {
-          budget: newBudget,
-        });
+        const response = await this.tiktokService.updateAdGroup(
+          advertiserId,
+          accessToken,
+          adgroupId,
+          {
+            budget: newBudget,
+          },
+        );
 
-        this.logger.log(`AdGroup budget update response: ${JSON.stringify(response)}`);
+        this.logger.log(
+          `AdGroup budget update response: ${JSON.stringify(response)}`,
+        );
 
         // DB操作にリトライを適用（D-01, D-03対応）
         await withDatabaseRetry(
-          () => this.logChange(
-            'ADGROUP',
-            adgroupId,
-            'UPDATE_BUDGET',
-            'OPTIMIZATION',
-            { budget: currentBudget },
-            { budget: newBudget },
-            `予算を${increaseRate * 100}%増額（${currentBudget} → ${newBudget}）`,
-          ),
+          () =>
+            this.logChange(
+              'ADGROUP',
+              adgroupId,
+              'UPDATE_BUDGET',
+              'OPTIMIZATION',
+              { budget: currentBudget },
+              { budget: newBudget },
+              `予算を${increaseRate * 100}%増額（${currentBudget} → ${newBudget}）`,
+            ),
           { logger: this.logger, context: 'logChange(ADGROUP)' },
         );
 
-        return { success: true, adgroupId, action: 'BUDGET_INCREASED', oldBudget: currentBudget, newBudget };
+        return {
+          success: true,
+          adgroupId,
+          action: 'BUDGET_INCREASED',
+          oldBudget: currentBudget,
+          newBudget,
+        };
       } else {
         // 予算がキャンペーンに設定されている場合
-        const campaign = await this.tiktokService.getCampaign(advertiserId, accessToken, adgroup.campaign_id);
+        const campaign = await this.tiktokService.getCampaign(
+          advertiserId,
+          accessToken,
+          adgroup.campaign_id,
+        );
         this.logger.log(`Campaign fetched: budget=${campaign.budget}`);
 
         const currentCampaignBudget = campaign.budget;
         // 小数点以下を切り捨て（TikTok APIは整数のみ受け付けるため）
-        let newCampaignBudget = Math.floor(currentCampaignBudget * (1 + increaseRate));
+        let newCampaignBudget = Math.floor(
+          currentCampaignBudget * (1 + increaseRate),
+        );
 
         // 予算バリデーション（最小値・最大値チェック）
-        const campaignBudgetValidation = this.validateBudget(newCampaignBudget, `Campaign ${adgroup.campaign_id}`);
+        const campaignBudgetValidation = this.validateBudget(
+          newCampaignBudget,
+          `Campaign ${adgroup.campaign_id}`,
+        );
         if (campaignBudgetValidation.adjustedBudget !== newCampaignBudget) {
-          this.logger.log(`Campaign budget adjusted: ${newCampaignBudget} -> ${campaignBudgetValidation.adjustedBudget} (${campaignBudgetValidation.message})`);
+          this.logger.log(
+            `Campaign budget adjusted: ${newCampaignBudget} -> ${campaignBudgetValidation.adjustedBudget} (${campaignBudgetValidation.message})`,
+          );
           newCampaignBudget = campaignBudgetValidation.adjustedBudget;
         }
 
@@ -1322,7 +1647,12 @@ export class OptimizationService {
           );
 
           if (budgetCapResult.skipped) {
-            return { success: true, campaignId: adgroup.campaign_id, action: 'SKIPPED_DUE_TO_CAP', reason: budgetCapResult.reason };
+            return {
+              success: true,
+              campaignId: adgroup.campaign_id,
+              action: 'SKIPPED_DUE_TO_CAP',
+              reason: budgetCapResult.reason,
+            };
           }
 
           if (budgetCapResult.adjustedBudget !== null) {
@@ -1330,31 +1660,47 @@ export class OptimizationService {
           }
         }
 
-        const response = await this.tiktokService.updateCampaign(advertiserId, accessToken, adgroup.campaign_id, {
-          budget: newCampaignBudget,
-        });
+        const response = await this.tiktokService.updateCampaign(
+          advertiserId,
+          accessToken,
+          adgroup.campaign_id,
+          {
+            budget: newCampaignBudget,
+          },
+        );
 
-        this.logger.log(`Campaign budget update response: ${JSON.stringify(response)}`);
+        this.logger.log(
+          `Campaign budget update response: ${JSON.stringify(response)}`,
+        );
 
         // DB操作にリトライを適用（D-01, D-03対応）
         await withDatabaseRetry(
-          () => this.logChange(
-            'CAMPAIGN',
-            adgroup.campaign_id,
-            'UPDATE_BUDGET',
-            'OPTIMIZATION',
-            { budget: currentCampaignBudget },
-            { budget: newCampaignBudget },
-            `予算を${increaseRate * 100}%増額（${currentCampaignBudget} → ${newCampaignBudget}）`,
-          ),
+          () =>
+            this.logChange(
+              'CAMPAIGN',
+              adgroup.campaign_id,
+              'UPDATE_BUDGET',
+              'OPTIMIZATION',
+              { budget: currentCampaignBudget },
+              { budget: newCampaignBudget },
+              `予算を${increaseRate * 100}%増額（${currentCampaignBudget} → ${newCampaignBudget}）`,
+            ),
           { logger: this.logger, context: 'logChange(CAMPAIGN)' },
         );
 
-        return { success: true, campaignId: adgroup.campaign_id, action: 'BUDGET_INCREASED', oldBudget: currentCampaignBudget, newBudget: newCampaignBudget };
+        return {
+          success: true,
+          campaignId: adgroup.campaign_id,
+          action: 'BUDGET_INCREASED',
+          oldBudget: currentCampaignBudget,
+          newBudget: newCampaignBudget,
+        };
       }
     } catch (error) {
       // O-06: 予算更新API失敗
-      const errorInfo = classifyOptimizationError(error, { entityId: adgroupId });
+      const errorInfo = classifyOptimizationError(error, {
+        entityId: adgroupId,
+      });
       logOptimizationError(this.logger, errorInfo, 'increaseBudget');
       throw new Error(`予算増額に失敗: ${error.message}`);
     }
@@ -1379,11 +1725,18 @@ export class OptimizationService {
     try {
       // 広告セット/キャンペーン内の有効な上限日予算を取得
       const budgetCapInfo = isAdGroupBudget
-        ? await this.adBudgetCapService.getEffectiveBudgetCapForAdGroup(adgroupId)
-        : await this.adBudgetCapService.getEffectiveBudgetCapForCampaign(campaignId);
+        ? await this.adBudgetCapService.getEffectiveBudgetCapForAdGroup(
+            adgroupId,
+          )
+        : await this.adBudgetCapService.getEffectiveBudgetCapForCampaign(
+            campaignId,
+          );
 
       // 上限設定がない場合は通常処理
-      if (budgetCapInfo.maxBudget === null || budgetCapInfo.limitingAd === null) {
+      if (
+        budgetCapInfo.maxBudget === null ||
+        budgetCapInfo.limitingAd === null
+      ) {
         return { skipped: false, adjustedBudget: null };
       }
 
@@ -1479,7 +1832,9 @@ export class OptimizationService {
       return { isInCooldown: false };
     } catch (error) {
       // DBエラー時は安全側に倒してクールダウン中として扱う
-      this.logger.error(`Failed to check cooldown for ${entityType} ${entityId}: ${error.message}`);
+      this.logger.error(
+        `Failed to check cooldown for ${entityType} ${entityId}: ${error.message}`,
+      );
       return { isInCooldown: true, lastIncreaseDate: undefined };
     }
   }
@@ -1497,30 +1852,46 @@ export class OptimizationService {
     increaseRate: number,
   ) {
     try {
-      this.logger.log(`Increasing Smart+ budget for adgroup: ${adgroupId}, campaign: ${campaignId} by ${increaseRate * 100}%`);
+      this.logger.log(
+        `Increasing Smart+ budget for adgroup: ${adgroupId}, campaign: ${campaignId} by ${increaseRate * 100}%`,
+      );
 
       // Smart+キャンペーン情報を取得してCBOが有効かどうかを確認
-      const campaignsResponse = await this.tiktokService.getCampaigns(advertiserId, accessToken);
-      const campaign = campaignsResponse.data?.list?.find((c: any) => c.campaign_id === campaignId);
+      const campaignsResponse = await this.tiktokService.getCampaigns(
+        advertiserId,
+        accessToken,
+      );
+      const campaign = campaignsResponse.data?.list?.find(
+        (c: any) => c.campaign_id === campaignId,
+      );
 
       if (!campaign) {
         throw new Error(`Smart+ campaign not found: ${campaignId}`);
       }
 
-      this.logger.log(`Smart+ campaign fetched: budget=${campaign.budget}, budget_optimize_on=${campaign.budget_optimize_on}, budget_mode=${campaign.budget_mode}`);
+      this.logger.log(
+        `Smart+ campaign fetched: budget=${campaign.budget}, budget_optimize_on=${campaign.budget_optimize_on}, budget_mode=${campaign.budget_mode}`,
+      );
 
       // CBO有効かどうかを判定
       // budget_optimize_on === true の場合のみCBO有効
       // undefined や false の場合は広告セット予算を使用
       // また、budget_mode が BUDGET_MODE_INFINITE の場合もキャンペーン予算は無制限なので広告セット予算を使用
-      const isCBOEnabled = campaign.budget_optimize_on === true && campaign.budget_mode !== 'BUDGET_MODE_INFINITE';
+      const isCBOEnabled =
+        campaign.budget_optimize_on === true &&
+        campaign.budget_mode !== 'BUDGET_MODE_INFINITE';
 
-      this.logger.log(`CBO判定: budget_optimize_on=${campaign.budget_optimize_on}, budget_mode=${campaign.budget_mode}, isCBOEnabled=${isCBOEnabled}`);
+      this.logger.log(
+        `CBO判定: budget_optimize_on=${campaign.budget_optimize_on}, budget_mode=${campaign.budget_mode}, isCBOEnabled=${isCBOEnabled}`,
+      );
 
       // ===== クールダウンチェック（予算タイプに基づいて判定） =====
       const cooldownEntityType = isCBOEnabled ? 'CAMPAIGN' : 'ADGROUP';
       const cooldownEntityId = isCBOEnabled ? campaignId : adgroupId;
-      const cooldownCheck = await this.checkBudgetIncreaseCooldown(cooldownEntityType, cooldownEntityId);
+      const cooldownCheck = await this.checkBudgetIncreaseCooldown(
+        cooldownEntityType,
+        cooldownEntityId,
+      );
 
       if (cooldownCheck.isInCooldown) {
         const lastIncreaseStr = cooldownCheck.lastIncreaseDate
@@ -1528,7 +1899,7 @@ export class OptimizationService {
           : '不明';
         this.logger.log(
           `Skipping Smart+ budget increase for ${cooldownEntityType} ${cooldownEntityId}: cooldown period active ` +
-          `(last increase: ${cooldownCheck.lastIncreaseDate?.toISOString() || 'unknown'})`
+            `(last increase: ${cooldownCheck.lastIncreaseDate?.toISOString() || 'unknown'})`,
         );
         return {
           success: true,
@@ -1544,7 +1915,9 @@ export class OptimizationService {
         const currentBudget = campaign.budget;
         const newBudget = Math.floor(currentBudget * (1 + increaseRate));
 
-        this.logger.log(`CBO enabled, updating campaign budget: ${currentBudget} → ${newBudget}`);
+        this.logger.log(
+          `CBO enabled, updating campaign budget: ${currentBudget} → ${newBudget}`,
+        );
 
         const response = await this.tiktokService.updateSmartPlusCampaignBudget(
           advertiserId,
@@ -1553,7 +1926,9 @@ export class OptimizationService {
           newBudget,
         );
 
-        this.logger.log(`Smart+ campaign budget update response: ${JSON.stringify(response)}`);
+        this.logger.log(
+          `Smart+ campaign budget update response: ${JSON.stringify(response)}`,
+        );
 
         await this.logChange(
           'CAMPAIGN',
@@ -1565,12 +1940,26 @@ export class OptimizationService {
           `Smart+キャンペーン予算を${increaseRate * 100}%増額（${currentBudget} → ${newBudget}）`,
         );
 
-        return { success: true, campaignId, action: 'BUDGET_INCREASED', oldBudget: currentBudget, newBudget, isSmartPlus: true, level: 'CAMPAIGN' };
+        return {
+          success: true,
+          campaignId,
+          action: 'BUDGET_INCREASED',
+          oldBudget: currentBudget,
+          newBudget,
+          isSmartPlus: true,
+          level: 'CAMPAIGN',
+        };
       } else {
         // CBO無効：広告セット予算を更新
         // 広告セット情報を取得
-        const adgroupsResponse = await this.tiktokService.getAdGroups(advertiserId, accessToken, [campaignId]);
-        const adgroup = adgroupsResponse.data?.list?.find((ag: any) => ag.adgroup_id === adgroupId);
+        const adgroupsResponse = await this.tiktokService.getAdGroups(
+          advertiserId,
+          accessToken,
+          [campaignId],
+        );
+        const adgroup = adgroupsResponse.data?.list?.find(
+          (ag: any) => ag.adgroup_id === adgroupId,
+        );
 
         if (!adgroup) {
           throw new Error(`Smart+ adgroup not found: ${adgroupId}`);
@@ -1579,7 +1968,9 @@ export class OptimizationService {
         const currentBudget = adgroup.budget;
         const newBudget = Math.floor(currentBudget * (1 + increaseRate));
 
-        this.logger.log(`CBO disabled, updating adgroup budget: ${currentBudget} → ${newBudget}`);
+        this.logger.log(
+          `CBO disabled, updating adgroup budget: ${currentBudget} → ${newBudget}`,
+        );
 
         const response = await this.tiktokService.updateSmartPlusAdGroupBudgets(
           advertiserId,
@@ -1587,7 +1978,9 @@ export class OptimizationService {
           [{ adgroup_id: adgroupId, budget: newBudget }],
         );
 
-        this.logger.log(`Smart+ adgroup budget update response: ${JSON.stringify(response)}`);
+        this.logger.log(
+          `Smart+ adgroup budget update response: ${JSON.stringify(response)}`,
+        );
 
         await this.logChange(
           'ADGROUP',
@@ -1599,10 +1992,21 @@ export class OptimizationService {
           `Smart+広告セット予算を${increaseRate * 100}%増額（${currentBudget} → ${newBudget}）`,
         );
 
-        return { success: true, adgroupId, action: 'BUDGET_INCREASED', oldBudget: currentBudget, newBudget, isSmartPlus: true, level: 'ADGROUP' };
+        return {
+          success: true,
+          adgroupId,
+          action: 'BUDGET_INCREASED',
+          oldBudget: currentBudget,
+          newBudget,
+          isSmartPlus: true,
+          level: 'ADGROUP',
+        };
       }
     } catch (error) {
-      this.logger.error(`Failed to increase Smart+ budget for adgroup ${adgroupId}:`, error);
+      this.logger.error(
+        `Failed to increase Smart+ budget for adgroup ${adgroupId}:`,
+        error,
+      );
       throw new Error(`Smart+予算増額に失敗: ${error.message}`);
     }
   }
@@ -1657,23 +2061,33 @@ export class OptimizationService {
   private async getAdsForCampaign(
     advertiserId: string,
     accessToken: string,
-    campaignId: string
+    campaignId: string,
   ) {
     // 通常の広告を取得
-    const adsResponse = await this.tiktokService.getAds(advertiserId, accessToken);
+    const adsResponse = await this.tiktokService.getAds(
+      advertiserId,
+      accessToken,
+    );
     const regularAds = adsResponse.data?.list || [];
 
     // 新スマートプラス広告を取得
-    const smartPlusAdsResponse = await this.tiktokService.getSmartPlusAds(advertiserId, accessToken);
+    const smartPlusAdsResponse = await this.tiktokService.getSmartPlusAds(
+      advertiserId,
+      accessToken,
+    );
     const smartPlusAds = smartPlusAdsResponse.data?.list || [];
 
     // 全広告を結合
     const allAds = [...regularAds, ...smartPlusAds];
 
     // 指定キャンペーン配下の広告のみフィルタ
-    const campaignAds = allAds.filter((ad: any) => ad.campaign_id === campaignId);
+    const campaignAds = allAds.filter(
+      (ad: any) => ad.campaign_id === campaignId,
+    );
 
-    this.logger.debug(`Found ${campaignAds.length} ads for campaign ${campaignId} (Regular: ${regularAds.filter((ad: any) => ad.campaign_id === campaignId).length}, Smart+: ${smartPlusAds.filter((ad: any) => ad.campaign_id === campaignId).length})`);
+    this.logger.debug(
+      `Found ${campaignAds.length} ads for campaign ${campaignId} (Regular: ${regularAds.filter((ad: any) => ad.campaign_id === campaignId).length}, Smart+: ${smartPlusAds.filter((ad: any) => ad.campaign_id === campaignId).length})`,
+    );
     return campaignAds;
   }
 
@@ -1683,13 +2097,14 @@ export class OptimizationService {
   private async getActiveCampaigns(advertiserId: string, accessToken: string) {
     const campaignsResponse = await this.tiktokService.getCampaigns(
       advertiserId,
-      accessToken
+      accessToken,
     );
 
     // ステータスが配信中（ENABLE）のキャンペーンのみフィルタリング
-    const activeCampaigns = campaignsResponse.data?.list?.filter(
-      (campaign: any) => campaign.operation_status === 'ENABLE'
-    ) || [];
+    const activeCampaigns =
+      campaignsResponse.data?.list?.filter(
+        (campaign: any) => campaign.operation_status === 'ENABLE',
+      ) || [];
 
     this.logger.log(`Active campaigns count: ${activeCampaigns.length}`);
     return activeCampaigns;
@@ -1703,19 +2118,28 @@ export class OptimizationService {
     appeal: any,
     accessToken: string,
   ): Promise<CampaignPerformance | null> {
-    this.logger.log(`Evaluating campaign: ${campaign.campaign_id}, name: ${campaign.campaign_name}`);
+    this.logger.log(
+      `Evaluating campaign: ${campaign.campaign_id}, name: ${campaign.campaign_name}`,
+    );
 
     // キャンペーン名をパース
     const parsedName = this.parseAdName(campaign.campaign_name);
     if (!parsedName) {
-      this.logger.warn(`Invalid campaign name format, skipping: ${campaign.campaign_name}`);
+      this.logger.warn(
+        `Invalid campaign name format, skipping: ${campaign.campaign_name}`,
+      );
       return null;
     }
 
-    this.logger.log(`Parsed campaign name successfully: ${JSON.stringify(parsedName)}`);
+    this.logger.log(
+      `Parsed campaign name successfully: ${JSON.stringify(parsedName)}`,
+    );
 
     // 登録経路を生成
-    const registrationPath = this.generateRegistrationPath(parsedName.lpName, appeal.name);
+    const registrationPath = this.generateRegistrationPath(
+      parsedName.lpName,
+      appeal.name,
+    );
 
     // 評価期間を計算（過去7日間）
     const { startDate, endDate } = this.calculateEvaluationPeriod();
@@ -1724,7 +2148,7 @@ export class OptimizationService {
     const metrics = await this.getCampaignMetrics(
       campaign.campaign_id,
       startDate,
-      endDate
+      endDate,
     );
 
     // Google SheetsからCV数とフロント販売本数を取得
@@ -1769,7 +2193,7 @@ export class OptimizationService {
   private async getCampaignMetrics(
     tiktokCampaignId: string,
     startDate: Date,
-    endDate: Date
+    endDate: Date,
   ) {
     this.logger.debug(`Getting metrics for campaign ${tiktokCampaignId}`);
 
@@ -1788,8 +2212,8 @@ export class OptimizationService {
       where: {
         entityType: 'CAMPAIGN',
         campaignId: campaign.id,
-        statDate: { gte: startDate, lte: endDate }
-      }
+        statDate: { gte: startDate, lte: endDate },
+      },
     });
 
     // 広告セットレベルのメトリクスも取得（フォールバック）
@@ -1797,14 +2221,17 @@ export class OptimizationService {
       where: {
         entityType: 'ADGROUP',
         adGroup: { campaignId: campaign.id },
-        statDate: { gte: startDate, lte: endDate }
-      }
+        statDate: { gte: startDate, lte: endDate },
+      },
     });
 
     // キャンペーンメトリクスを優先、なければ広告セットメトリクスを使用
-    const metrics = campaignMetrics.length > 0 ? campaignMetrics : adgroupMetrics;
+    const metrics =
+      campaignMetrics.length > 0 ? campaignMetrics : adgroupMetrics;
 
-    this.logger.log(`Found ${metrics.length} metrics for campaign ${tiktokCampaignId} (using ${campaignMetrics.length > 0 ? 'CAMPAIGN' : 'ADGROUP'} level)`);
+    this.logger.log(
+      `Found ${metrics.length} metrics for campaign ${tiktokCampaignId} (using ${campaignMetrics.length > 0 ? 'CAMPAIGN' : 'ADGROUP'} level)`,
+    );
 
     // 合計を計算
     return {
@@ -1826,7 +2253,9 @@ export class OptimizationService {
     dryRun: boolean = false,
   ) {
     if (dryRun) {
-      this.logger.log(`[DRY RUN] Would pause campaign ${campaignId}: ${reason}`);
+      this.logger.log(
+        `[DRY RUN] Would pause campaign ${campaignId}: ${reason}`,
+      );
       return;
     }
 
@@ -1834,7 +2263,7 @@ export class OptimizationService {
       advertiserId,
       accessToken,
       campaignId,
-      { status: 'DISABLE' }
+      { status: 'DISABLE' },
     );
 
     // ChangeLogに記録
@@ -1858,13 +2287,15 @@ export class OptimizationService {
     performance: CampaignPerformance,
     appeal: any,
   ): Promise<CampaignOptimizationDecision> {
-    const { impressions, spend, cvCount, frontSalesCount, cpa, frontCPO } = performance;
-    const { allowableCPA, targetCPA, allowableFrontCPO, targetFrontCPO } = appeal;
+    const { impressions, spend, cvCount, frontSalesCount, cpa, frontCPO } =
+      performance;
+    const { allowableCPA, targetCPA, allowableFrontCPO, targetFrontCPO } =
+      appeal;
 
     // ヘルパー関数：decisionを作成
     const createDecision = (
       action: 'PAUSE' | 'CONTINUE' | 'INCREASE_BUDGET',
-      reason: string
+      reason: string,
     ): CampaignOptimizationDecision => ({
       campaignId: performance.campaignId,
       campaignName: performance.campaignName,
@@ -1875,32 +2306,53 @@ export class OptimizationService {
 
     // 5000インプレッション未達の場合
     if (impressions < 5000) {
-      return createDecision('CONTINUE', `インプレッション数が5000未満（${impressions}）のため、継続配信`);
+      return createDecision(
+        'CONTINUE',
+        `インプレッション数が5000未満（${impressions}）のため、継続配信`,
+      );
     }
 
     // フロント販売が1件以上ある場合
     if (frontSalesCount >= 1) {
       if (frontCPO <= targetFrontCPO) {
-        return createDecision('INCREASE_BUDGET', `フロントCPO（¥${frontCPO.toFixed(0)}）が目標値（¥${targetFrontCPO}）以下のため、予算30%増額`);
+        return createDecision(
+          'INCREASE_BUDGET',
+          `フロントCPO（¥${frontCPO.toFixed(0)}）が目標値（¥${targetFrontCPO}）以下のため、予算30%増額`,
+        );
       } else if (frontCPO <= allowableFrontCPO) {
-        return createDecision('CONTINUE', `フロントCPO（¥${frontCPO.toFixed(0)}）が許容値（¥${allowableFrontCPO}）以下のため、継続配信`);
+        return createDecision(
+          'CONTINUE',
+          `フロントCPO（¥${frontCPO.toFixed(0)}）が許容値（¥${allowableFrontCPO}）以下のため、継続配信`,
+        );
       } else {
-        return createDecision('PAUSE', `フロントCPO（¥${frontCPO.toFixed(0)}）が許容値（¥${allowableFrontCPO}）を超過したため停止`);
+        return createDecision(
+          'PAUSE',
+          `フロントCPO（¥${frontCPO.toFixed(0)}）が許容値（¥${allowableFrontCPO}）を超過したため停止`,
+        );
       }
     }
 
     // フロント販売が0件の場合
     if (frontSalesCount === 0) {
       if (cpa === 0) {
-        return createDecision('PAUSE', `CVもフロント販売も0件のため停止（広告費: ¥${spend.toFixed(0)}）`);
+        return createDecision(
+          'PAUSE',
+          `CVもフロント販売も0件のため停止（広告費: ¥${spend.toFixed(0)}）`,
+        );
       }
 
       // CVはあるがフロント販売が0件の場合
       const totalSpend = spend; // キャンペーンレベルでは累積広告費を使用
       if (cpa <= allowableCPA && totalSpend <= allowableFrontCPO) {
-        return createDecision('CONTINUE', `CPA（¥${cpa.toFixed(0)}）が許容値以下で累積広告費も範囲内のため継続配信`);
+        return createDecision(
+          'CONTINUE',
+          `CPA（¥${cpa.toFixed(0)}）が許容値以下で累積広告費も範囲内のため継続配信`,
+        );
       } else {
-        return createDecision('PAUSE', `CPA（¥${cpa.toFixed(0)}）または累積広告費（¥${totalSpend.toFixed(0)}）が基準を超過したため停止`);
+        return createDecision(
+          'PAUSE',
+          `CPA（¥${cpa.toFixed(0)}）または累積広告費（¥${totalSpend.toFixed(0)}）が基準を超過したため停止`,
+        );
       }
     }
 

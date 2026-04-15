@@ -41,9 +41,14 @@ export class BudgetMonitoringService {
   /**
    * 全対象アカウントの予算異常を検知
    */
-  async monitorAllBudgets(accessToken: string, dryRun = false): Promise<MonitorResult> {
+  async monitorAllBudgets(
+    accessToken: string,
+    dryRun = false,
+  ): Promise<MonitorResult> {
     const jstNow = new Date(Date.now() + 9 * 60 * 60 * 1000);
-    this.logger.log(`[BudgetMonitor] 予算監視開始 (JST: ${jstNow.toISOString()}, dryRun: ${dryRun})`);
+    this.logger.log(
+      `[BudgetMonitor] 予算監視開始 (JST: ${jstNow.toISOString()}, dryRun: ${dryRun})`,
+    );
 
     // 対象アカウント取得（V2と同じ: appealが設定されているアカウント）
     const advertisers = await this.prisma.advertiser.findMany({
@@ -74,12 +79,14 @@ export class BudgetMonitoringService {
 
     // 異常検知結果のログ出力
     if (allAnomalies.length > 0) {
-      this.logger.warn(`[BudgetMonitor] ${allAnomalies.length}件の予算異常を検知!`);
+      this.logger.warn(
+        `[BudgetMonitor] ${allAnomalies.length}件の予算異常を検知!`,
+      );
       for (const anomaly of allAnomalies) {
         this.logger.warn(
           `[BudgetMonitor] 異常: ${anomaly.advertiserName} | adgroup=${anomaly.adgroupId} | ` +
-          `現在=\u00A5${anomaly.currentBudget} | 前回=\u00A5${anomaly.lastKnownBudget ?? 'N/A'} | ` +
-          `比率=${anomaly.ratio?.toFixed(2) ?? 'N/A'} | ${anomaly.reason}`,
+            `現在=\u00A5${anomaly.currentBudget} | 前回=\u00A5${anomaly.lastKnownBudget ?? 'N/A'} | ` +
+            `比率=${anomaly.ratio?.toFixed(2) ?? 'N/A'} | ${anomaly.reason}`,
         );
       }
 
@@ -90,7 +97,9 @@ export class BudgetMonitoringService {
         await this.sendSlackSummary(allAnomalies);
       }
     } else {
-      this.logger.log(`[BudgetMonitor] 予算異常なし (チェック済みadgroup: ${totalAdgroups}件)`);
+      this.logger.log(
+        `[BudgetMonitor] 予算異常なし (チェック済みadgroup: ${totalAdgroups}件)`,
+      );
     }
 
     return {
@@ -117,29 +126,45 @@ export class BudgetMonitoringService {
     let smartPlusRawAds: any[] = [];
     try {
       const response = await this.tiktokService.getSmartPlusAds(
-        advertiserId, accessToken, undefined, 'ENABLE',
+        advertiserId,
+        accessToken,
+        undefined,
+        'ENABLE',
       );
       smartPlusRawAds = response.data?.list || [];
-      this.logger.log(`[BudgetMonitor] ${advertiserName}: Smart+ ads ${smartPlusRawAds.length}件`);
+      this.logger.log(
+        `[BudgetMonitor] ${advertiserName}: Smart+ ads ${smartPlusRawAds.length}件`,
+      );
     } catch (error) {
-      this.logger.warn(`[BudgetMonitor] ${advertiserName}: Smart+ ads取得失敗: ${error.message}`);
+      this.logger.warn(
+        `[BudgetMonitor] ${advertiserName}: Smart+ ads取得失敗: ${error.message}`,
+      );
     }
 
     // === 通常広告を取得 ===
     let regularRawAds: any[] = [];
     try {
       const regularResponse = await this.tiktokService.getAds(
-        advertiserId, accessToken, undefined, 'ENABLE',
+        advertiserId,
+        accessToken,
+        undefined,
+        'ENABLE',
       );
       const allRegularAds = regularResponse.data?.list || [];
       // Smart+広告と重複するad_idを除外
-      const smartPlusAdIds = new Set(smartPlusRawAds.map((ad: any) => ad.smart_plus_ad_id));
-      regularRawAds = allRegularAds.filter((ad: any) => !smartPlusAdIds.has(ad.ad_id));
+      const smartPlusAdIds = new Set(
+        smartPlusRawAds.map((ad: any) => ad.smart_plus_ad_id),
+      );
+      regularRawAds = allRegularAds.filter(
+        (ad: any) => !smartPlusAdIds.has(ad.ad_id),
+      );
       this.logger.log(
         `[BudgetMonitor] ${advertiserName}: Regular ads ${allRegularAds.length}件, dedup後 ${regularRawAds.length}件`,
       );
     } catch (error) {
-      this.logger.error(`[BudgetMonitor] ${advertiserName}: Regular ads取得失敗: ${error.message}`);
+      this.logger.error(
+        `[BudgetMonitor] ${advertiserName}: Regular ads取得失敗: ${error.message}`,
+      );
     }
 
     // === 全広告からcampaignIds/adgroupIdsを集約 ===
@@ -148,7 +173,9 @@ export class BudgetMonitoringService {
       return { anomalies: [], adgroupCount: 0 };
     }
 
-    const campaignIds = [...new Set(allAds.map((ad: any) => ad.campaign_id).filter(Boolean))] as string[];
+    const campaignIds = [
+      ...new Set(allAds.map((ad: any) => ad.campaign_id).filter(Boolean)),
+    ] as string[];
 
     // adgroup_id → ad_name のマップ（レポート用）
     const adgroupAdNameMap = new Map<string, string>();
@@ -163,7 +190,9 @@ export class BudgetMonitoringService {
     if (campaignIds.length > 0) {
       try {
         const adgroupResponse = await this.tiktokService.getAdGroups(
-          advertiserId, accessToken, campaignIds,
+          advertiserId,
+          accessToken,
+          campaignIds,
         );
         const adgroups = adgroupResponse.data?.list || [];
         for (const ag of adgroups) {
@@ -175,7 +204,9 @@ export class BudgetMonitoringService {
           `[BudgetMonitor] ${advertiserName}: AdGroup予算取得 ${adgroupBudgetMap.size}件`,
         );
       } catch (error) {
-        this.logger.error(`[BudgetMonitor] ${advertiserName}: AdGroup予算取得失敗: ${error.message}`);
+        this.logger.error(
+          `[BudgetMonitor] ${advertiserName}: AdGroup予算取得失敗: ${error.message}`,
+        );
       }
     }
 
@@ -217,14 +248,18 @@ export class BudgetMonitoringService {
     });
 
     const lastKnownBudget = lastChangeLog
-      ? ((lastChangeLog.afterData as any)?.budget ?? (lastChangeLog.afterData as any)?.newBudget ?? null)
+      ? (lastChangeLog.afterData?.budget ??
+        lastChangeLog.afterData?.newBudget ??
+        null)
       : null;
 
     const reasons: string[] = [];
 
     // 検知ルール1: 予算 > ¥100,000 は無条件で異常
     if (currentBudget > 100000) {
-      reasons.push(`予算が\u00A5100,000超 (現在\u00A5${currentBudget.toLocaleString()})`);
+      reasons.push(
+        `予算が\u00A5100,000超 (現在\u00A5${currentBudget.toLocaleString()})`,
+      );
     }
 
     // 検知ルール2: ChangeLogからの変動比率 > 1.5x
@@ -304,7 +339,9 @@ export class BudgetMonitoringService {
         );
       }
     }
-    this.logger.log(`[BudgetMonitor] ${anomalies.length}件の異常をChangeLogに記録`);
+    this.logger.log(
+      `[BudgetMonitor] ${anomalies.length}件の異常をChangeLogに記録`,
+    );
   }
 
   /**
@@ -331,7 +368,9 @@ export class BudgetMonitoringService {
   private async sendSlackNotification(message: string): Promise<void> {
     const webhookUrl = process.env.SLACK_WEBHOOK_URL;
     if (!webhookUrl) {
-      this.logger.warn('[BudgetMonitor] SLACK_WEBHOOK_URL未設定のためSlack通知をスキップ');
+      this.logger.warn(
+        '[BudgetMonitor] SLACK_WEBHOOK_URL未設定のためSlack通知をスキップ',
+      );
       return;
     }
 
@@ -342,7 +381,9 @@ export class BudgetMonitoringService {
         body: JSON.stringify({ text: message }),
       });
       if (!response.ok) {
-        this.logger.warn(`[BudgetMonitor] Slack通知失敗: HTTP ${response.status}`);
+        this.logger.warn(
+          `[BudgetMonitor] Slack通知失敗: HTTP ${response.status}`,
+        );
       } else {
         this.logger.log('[BudgetMonitor] Slack通知送信完了');
       }

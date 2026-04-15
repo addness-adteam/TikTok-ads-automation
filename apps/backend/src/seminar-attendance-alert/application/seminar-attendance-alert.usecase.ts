@@ -1,6 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
-import { AttendanceCountService, ReservationRecord } from '../domain/services/attendance-count-service';
+import {
+  AttendanceCountService,
+  ReservationRecord,
+} from '../domain/services/attendance-count-service';
 import { AlertRuleEvaluator } from '../domain/services/alert-rule-evaluator';
 import { AdUnderEvaluation } from '../domain/entities/ad-under-evaluation';
 import { JPY } from '../domain/value-objects/jpy';
@@ -11,7 +14,10 @@ import { SheetsOptLatestPathReader } from '../infrastructure/opt-latest-path-rea
 import { SheetsReservationSurveyReader } from '../infrastructure/reservation-survey-reader';
 import { PrismaAlertHistoryRepository } from '../infrastructure/alert-history-repository';
 import { AiSecretaryLineNotifier } from '../infrastructure/line-notifier';
-import { AttendanceCsvFetcher, PlaywrightLstepScraper } from '../infrastructure/lstep-scraper';
+import {
+  AttendanceCsvFetcher,
+  PlaywrightLstepScraper,
+} from '../infrastructure/lstep-scraper';
 
 /** スキルプラス導線のアカウント */
 const SP_ADVERTISER_IDS: Record<string, string> = {
@@ -23,7 +29,11 @@ const SP_ADVERTISER_IDS: Record<string, string> = {
 export interface AlertRunResult {
   evaluated: number;
   triggered: number;
-  skipped: { alreadyAlerted: number; notEnoughDays: number; underThreshold: number };
+  skipped: {
+    alreadyAlerted: number;
+    notEnoughDays: number;
+    underThreshold: number;
+  };
   allowableCpo: number | null;
   errors: string[];
 }
@@ -44,11 +54,18 @@ export class SeminarAttendanceAlertUseCase {
     private readonly scraper: PlaywrightLstepScraper,
   ) {}
 
-  async run(options: { dryRun?: boolean; attendanceCsvFetcher?: AttendanceCsvFetcher } = {}): Promise<AlertRunResult> {
+  async run(
+    options: {
+      dryRun?: boolean;
+      attendanceCsvFetcher?: AttendanceCsvFetcher;
+    } = {},
+  ): Promise<AlertRunResult> {
     const result: AlertRunResult = {
-      evaluated: 0, triggered: 0,
+      evaluated: 0,
+      triggered: 0,
       skipped: { alreadyAlerted: 0, notEnoughDays: 0, underThreshold: 0 },
-      allowableCpo: null, errors: [],
+      allowableCpo: null,
+      errors: [],
     };
     const now = new Date();
 
@@ -60,7 +77,9 @@ export class SeminarAttendanceAlertUseCase {
       return result;
     }
     result.allowableCpo = allowable.amount.amount;
-    this.logger.log(`許容セミナー着座CPO (${ym.toString()}) = ¥${result.allowableCpo}`);
+    this.logger.log(
+      `許容セミナー着座CPO (${ym.toString()}) = ¥${result.allowableCpo}`,
+    );
 
     // 2) 各データソースロード
     const [optMap, reservations, attendedEmails] = await Promise.all([
@@ -68,18 +87,32 @@ export class SeminarAttendanceAlertUseCase {
       this.surveyReader.load(),
       (options.attendanceCsvFetcher ?? this.scraper).fetchAttendedEmails(),
     ]);
-    this.logger.log(`opt=${optMap.size} / 予約=${reservations.length} / 着座=${attendedEmails.size}`);
+    this.logger.log(
+      `opt=${optMap.size} / 予約=${reservations.length} / 着座=${attendedEmails.size}`,
+    );
 
     // 3) LP-CR × {予約数, 着座数}
-    const countsByLpCr = this.counter.countByLpCr(optMap, reservations, attendedEmails);
+    const countsByLpCr = this.counter.countByLpCr(
+      optMap,
+      reservations,
+      attendedEmails,
+    );
 
     // 4) SP配下のアクティブ広告を取得（A: status ENABLE のみ）
     const ads = await this.prisma.ad.findMany({
       where: {
         status: 'ENABLE',
-        adGroup: { campaign: { advertiser: { tiktokAdvertiserId: { in: Object.keys(SP_ADVERTISER_IDS) } } } },
+        adGroup: {
+          campaign: {
+            advertiser: {
+              tiktokAdvertiserId: { in: Object.keys(SP_ADVERTISER_IDS) },
+            },
+          },
+        },
       },
-      include: { adGroup: { include: { campaign: { include: { advertiser: true } } } } },
+      include: {
+        adGroup: { include: { campaign: { include: { advertiser: true } } } },
+      },
     });
     const adIds = ads.map((a) => a.id);
     const metrics = await this.prisma.metric.findMany({
@@ -109,7 +142,10 @@ export class SeminarAttendanceAlertUseCase {
       // B: 配信開始から30日超過した広告は監視対象外（古い広告を一斉通知しないため）
       if (period.elapsedDays > 30) continue;
       const spend = JPY.of(spendByAd.get(ad.id) ?? 0);
-      const counts = countsByLpCr.get(lpCr) ?? { reservationCount: 0, attendanceCount: 0 };
+      const counts = countsByLpCr.get(lpCr) ?? {
+        reservationCount: 0,
+        attendanceCount: 0,
+      };
 
       let evaluation: AdUnderEvaluation;
       try {
@@ -129,7 +165,11 @@ export class SeminarAttendanceAlertUseCase {
       }
 
       result.evaluated++;
-      const decision = this.evaluator.evaluate(evaluation, allowable, alreadyAlerted.has(ad.tiktokId));
+      const decision = this.evaluator.evaluate(
+        evaluation,
+        allowable,
+        alreadyAlerted.has(ad.tiktokId),
+      );
 
       if (!decision.shouldAlert) {
         if (decision.detail.alreadyAlerted) result.skipped.alreadyAlerted++;
@@ -176,7 +216,9 @@ export class SeminarAttendanceAlertUseCase {
       }
     }
 
-    this.logger.log(`完了: evaluated=${result.evaluated} triggered=${result.triggered}`);
+    this.logger.log(
+      `完了: evaluated=${result.evaluated} triggered=${result.triggered}`,
+    );
     return result;
   }
 

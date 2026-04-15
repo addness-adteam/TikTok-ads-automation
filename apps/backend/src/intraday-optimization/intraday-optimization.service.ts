@@ -73,7 +73,9 @@ export class IntradayOptimizationService {
    */
   async runIntradayCPACheck() {
     // フィーチャーフラグチェック
-    if (this.configService.get('FEATURE_INTRADAY_CPA_CHECK_ENABLED') !== 'true') {
+    if (
+      this.configService.get('FEATURE_INTRADAY_CPA_CHECK_ENABLED') !== 'true'
+    ) {
       this.logger.log('Intraday CPA check is disabled');
       return;
     }
@@ -82,7 +84,9 @@ export class IntradayOptimizationService {
 
     // ロック取得
     if (!batchJobLock.acquire(jobName, 1800000)) {
-      this.logger.warn(`[IC-01] Previous intraday CPA check is still running. Skipping...`);
+      this.logger.warn(
+        `[IC-01] Previous intraday CPA check is still running. Skipping...`,
+      );
       return;
     }
 
@@ -104,7 +108,9 @@ export class IntradayOptimizationService {
    */
   async runIntradayResume() {
     // フィーチャーフラグチェック
-    if (this.configService.get('FEATURE_INTRADAY_CPA_CHECK_ENABLED') !== 'true') {
+    if (
+      this.configService.get('FEATURE_INTRADAY_CPA_CHECK_ENABLED') !== 'true'
+    ) {
       this.logger.log('Intraday resume is disabled');
       return;
     }
@@ -112,7 +118,9 @@ export class IntradayOptimizationService {
     const jobName = 'intraday-resume';
 
     if (!batchJobLock.acquire(jobName, 600000)) {
-      this.logger.warn(`[IR-01] Previous intraday resume is still running. Skipping...`);
+      this.logger.warn(
+        `[IR-01] Previous intraday resume is still running. Skipping...`,
+      );
       return;
     }
 
@@ -134,7 +142,9 @@ export class IntradayOptimizationService {
    */
   async runIntradayBudgetRestore() {
     // フィーチャーフラグチェック
-    if (this.configService.get('FEATURE_INTRADAY_CPA_CHECK_ENABLED') !== 'true') {
+    if (
+      this.configService.get('FEATURE_INTRADAY_CPA_CHECK_ENABLED') !== 'true'
+    ) {
       this.logger.log('Intraday budget restore is disabled');
       return;
     }
@@ -142,7 +152,9 @@ export class IntradayOptimizationService {
     const jobName = 'intraday-budget-restore';
 
     if (!batchJobLock.acquire(jobName, 600000)) {
-      this.logger.warn(`[IB-01] Previous intraday budget restore is still running. Skipping...`);
+      this.logger.warn(
+        `[IB-01] Previous intraday budget restore is still running. Skipping...`,
+      );
       return;
     }
 
@@ -163,15 +175,22 @@ export class IntradayOptimizationService {
    * @param dryRun trueの場合、実際のAPI呼び出しをスキップして判定結果のみ返す
    * @param additionalExcludedAdvertisers 追加で除外するAdvertiser IDs（API呼び出し時に指定）
    */
-  async executeIntradayCPACheck(dryRun = false, additionalExcludedAdvertisers?: string[]): Promise<DryRunResult | void> {
+  async executeIntradayCPACheck(
+    dryRun = false,
+    additionalExcludedAdvertisers?: string[],
+  ): Promise<DryRunResult | void> {
     if (dryRun) {
       this.logger.log('=== DRY RUN MODE: No actual changes will be made ===');
     }
 
     // 除外Advertiser設定を取得（追加の除外リストを含む）
-    const excludedAdvertisers = this.getExcludedAdvertisers(additionalExcludedAdvertisers);
+    const excludedAdvertisers = this.getExcludedAdvertisers(
+      additionalExcludedAdvertisers,
+    );
     if (excludedAdvertisers.length > 0) {
-      this.logger.log(`Excluded advertisers: ${excludedAdvertisers.join(', ')}`);
+      this.logger.log(
+        `Excluded advertisers: ${excludedAdvertisers.join(', ')}`,
+      );
     }
 
     // 有効なOAuthTokenを持つAdvertiserを取得
@@ -188,7 +207,12 @@ export class IntradayOptimizationService {
         return {
           dryRun: true,
           advertisers: [],
-          summary: { totalAds: 0, wouldPause: 0, wouldReduce: 0, wouldContinue: 0 },
+          summary: {
+            totalAds: 0,
+            wouldPause: 0,
+            wouldReduce: 0,
+            wouldContinue: 0,
+          },
         };
       }
       return;
@@ -201,7 +225,11 @@ export class IntradayOptimizationService {
 
     for (const token of oauthTokens) {
       try {
-        const result = await this.checkAdvertiser(token.advertiserId, token.accessToken, dryRun);
+        const result = await this.checkAdvertiser(
+          token.advertiserId,
+          token.accessToken,
+          dryRun,
+        );
         totalPaused += result.paused;
         totalReduced += result.reduced;
         totalContinued += result.continued;
@@ -213,11 +241,15 @@ export class IntradayOptimizationService {
           });
         }
       } catch (error) {
-        this.logger.error(`[IC-01] Failed to check advertiser ${token.advertiserId}: ${error.message}`);
+        this.logger.error(
+          `[IC-01] Failed to check advertiser ${token.advertiserId}: ${error.message}`,
+        );
       }
     }
 
-    this.logger.log(`Intraday CPA check completed. Paused: ${totalPaused}, Reduced: ${totalReduced}, Continued: ${totalContinued}`);
+    this.logger.log(
+      `Intraday CPA check completed. Paused: ${totalPaused}, Reduced: ${totalReduced}, Continued: ${totalContinued}`,
+    );
 
     if (dryRun) {
       return {
@@ -240,8 +272,16 @@ export class IntradayOptimizationService {
     advertiserId: string,
     accessToken: string,
     dryRun = false,
-  ): Promise<{ paused: number; reduced: number; continued: number; checkResults?: IntradayCheckResult[]; debug?: any }> {
-    this.logger.log(`Checking advertiser: ${advertiserId}${dryRun ? ' (DRY RUN)' : ''}`);
+  ): Promise<{
+    paused: number;
+    reduced: number;
+    continued: number;
+    checkResults?: IntradayCheckResult[];
+    debug?: any;
+  }> {
+    this.logger.log(
+      `Checking advertiser: ${advertiserId}${dryRun ? ' (DRY RUN)' : ''}`,
+    );
 
     // Advertiser情報とAppeal設定を取得
     const advertiser = await this.prisma.advertiser.findUnique({
@@ -257,7 +297,9 @@ export class IntradayOptimizationService {
     const { targetCPA, allowableCPA } = advertiser.appeal;
 
     if (!targetCPA || !allowableCPA) {
-      this.logger.warn(`CPA settings incomplete for advertiser ${advertiserId}`);
+      this.logger.warn(
+        `CPA settings incomplete for advertiser ${advertiserId}`,
+      );
       return { paused: 0, reduced: 0, continued: 0, checkResults: [] };
     }
 
@@ -274,10 +316,18 @@ export class IntradayOptimizationService {
     const todayStr = this.formatDateStr(today);
 
     // 当日メトリクス取得（TikTok API）
-    const todayMetrics = await this.getTodayMetrics(advertiserId, accessToken, todayStr);
+    const todayMetrics = await this.getTodayMetrics(
+      advertiserId,
+      accessToken,
+      todayStr,
+    );
 
     // CV数取得（Google Sheets）- 当日と過去7日間
-    const cvData = await this.getCVDataForAds(advertiser.appeal, activeAds, today);
+    const cvData = await this.getCVDataForAds(
+      advertiser.appeal,
+      activeAds,
+      today,
+    );
 
     let paused = 0;
     let reduced = 0;
@@ -303,19 +353,25 @@ export class IntradayOptimizationService {
           if (!dryRun) {
             await this.pauseAd(result, advertiserId, accessToken, today);
           } else {
-            this.logger.log(`[DRY RUN] Would PAUSE ad ${result.adId}: ${result.reason}`);
+            this.logger.log(
+              `[DRY RUN] Would PAUSE ad ${result.adId}: ${result.reason}`,
+            );
           }
           paused++;
         } else if (result.decision === 'REDUCE_BUDGET') {
           if (!dryRun) {
             await this.reduceBudget(result, advertiserId, accessToken, today);
           } else {
-            this.logger.log(`[DRY RUN] Would REDUCE_BUDGET for ad ${result.adId}: ${result.reason}`);
+            this.logger.log(
+              `[DRY RUN] Would REDUCE_BUDGET for ad ${result.adId}: ${result.reason}`,
+            );
           }
           reduced++;
         } else {
           if (dryRun) {
-            this.logger.log(`[DRY RUN] Would CONTINUE ad ${result.adId}: ${result.reason}`);
+            this.logger.log(
+              `[DRY RUN] Would CONTINUE ad ${result.adId}: ${result.reason}`,
+            );
           }
           continued++;
         }
@@ -324,7 +380,9 @@ export class IntradayOptimizationService {
           `Ad ${ad.ad_id} (${ad.ad_name}): ${result.decision} - ${result.reason}`,
         );
       } catch (error) {
-        this.logger.error(`Failed to evaluate ad ${ad.ad_id}: ${error.message}`);
+        this.logger.error(
+          `Failed to evaluate ad ${ad.ad_id}: ${error.message}`,
+        );
       }
     }
 
@@ -339,10 +397,19 @@ export class IntradayOptimizationService {
     if (!adName) return false;
 
     const videoExtensions = ['.mp4', '.MP4', '.mov', '.MOV', '.avi', '.AVI'];
-    const imageExtensions = ['.jpg', '.JPG', '.jpeg', '.JPEG', '.png', '.PNG', '.gif', '.GIF'];
+    const imageExtensions = [
+      '.jpg',
+      '.JPG',
+      '.jpeg',
+      '.JPEG',
+      '.png',
+      '.PNG',
+      '.gif',
+      '.GIF',
+    ];
     const allExtensions = [...videoExtensions, ...imageExtensions];
 
-    return allExtensions.some(ext => adName.includes(ext));
+    return allExtensions.some((ext) => adName.includes(ext));
   }
 
   /**
@@ -350,23 +417,42 @@ export class IntradayOptimizationService {
    * 通常広告とSmart+広告を取得し、Smart+広告は正しい広告名を持つAPIから取得
    * クリエイティブ名（旧スマプラ等）の広告は除外
    */
-  private async getActiveAds(advertiserId: string, accessToken: string): Promise<any[]> {
+  private async getActiveAds(
+    advertiserId: string,
+    accessToken: string,
+  ): Promise<any[]> {
     try {
       // 1. Smart+広告を先に取得（/smart_plus/ad/get/ からは正しいad_nameが返される）
-      const smartPlusResponse = await this.tiktokService.getSmartPlusAds(advertiserId, accessToken, undefined, 'ENABLE');
+      const smartPlusResponse = await this.tiktokService.getSmartPlusAds(
+        advertiserId,
+        accessToken,
+        undefined,
+        'ENABLE',
+      );
       const smartPlusAds = smartPlusResponse.data?.list || [];
 
       // 2. Smart+広告のIDセットを作成
-      const smartPlusAdIds = new Set(smartPlusAds.map((ad: any) => ad.smart_plus_ad_id));
+      const smartPlusAdIds = new Set(
+        smartPlusAds.map((ad: any) => ad.smart_plus_ad_id),
+      );
 
       // 3. 通常広告を取得
-      const adsResponse = await this.tiktokService.getAds(advertiserId, accessToken);
-      const allRegularAds = adsResponse.data?.list?.filter((ad: any) => ad.operation_status === 'ENABLE') || [];
+      const adsResponse = await this.tiktokService.getAds(
+        advertiserId,
+        accessToken,
+      );
+      const allRegularAds =
+        adsResponse.data?.list?.filter(
+          (ad: any) => ad.operation_status === 'ENABLE',
+        ) || [];
 
       // 4. 通常広告からSmart+広告を除外
       // 通常の/ad/get/でもSmart+広告が返ってくるが、広告名がクリエイティブ名になっているため除外
       const regularAdsOnly = allRegularAds.filter((ad: any) => {
-        return !smartPlusAdIds.has(ad.ad_id) && !smartPlusAdIds.has(ad.smart_plus_ad_id);
+        return (
+          !smartPlusAdIds.has(ad.ad_id) &&
+          !smartPlusAdIds.has(ad.smart_plus_ad_id)
+        );
       });
 
       // 5. Smart+広告にフラグを付与
@@ -391,7 +477,9 @@ export class IntradayOptimizationService {
       });
       const excludedCount = allActiveAds.length - targetAds.length;
 
-      this.logger.log(`Active ads: ${targetAds.length} (Total: ${allActiveAds.length}, Excluded: ${excludedCount})`);
+      this.logger.log(
+        `Active ads: ${targetAds.length} (Total: ${allActiveAds.length}, Excluded: ${excludedCount})`,
+      );
 
       return targetAds;
     } catch (error) {
@@ -408,8 +496,13 @@ export class IntradayOptimizationService {
     advertiserId: string,
     accessToken: string,
     todayStr: string,
-  ): Promise<Map<string, { spend: number; impressions: number; clicks: number }>> {
-    const metricsMap = new Map<string, { spend: number; impressions: number; clicks: number }>();
+  ): Promise<
+    Map<string, { spend: number; impressions: number; clicks: number }>
+  > {
+    const metricsMap = new Map<
+      string,
+      { spend: number; impressions: number; clicks: number }
+    >();
 
     // 1. 通常広告のメトリクス取得（AUCTION_AD）
     try {
@@ -451,7 +544,10 @@ export class IntradayOptimizationService {
 
       // Smart+メトリクスはsmart_plus_ad_idごとに集計
       const smartPlusData = smartPlusMetrics.data?.list || [];
-      const smartPlusAggregated = new Map<string, { spend: number; impressions: number; clicks: number }>();
+      const smartPlusAggregated = new Map<
+        string,
+        { spend: number; impressions: number; clicks: number }
+      >();
 
       for (const row of smartPlusData) {
         const smartPlusAdId = row.dimensions?.smart_plus_ad_id;
@@ -468,7 +564,11 @@ export class IntradayOptimizationService {
           existing.impressions += impressions;
           existing.clicks += clicks;
         } else {
-          smartPlusAggregated.set(smartPlusAdId, { spend, impressions, clicks });
+          smartPlusAggregated.set(smartPlusAdId, {
+            spend,
+            impressions,
+            clicks,
+          });
         }
       }
 
@@ -556,7 +656,9 @@ export class IntradayOptimizationService {
           `CV data for ${lpName}: today=${todayCV}, last7Days=${last7DaysCV}`,
         );
       } catch (error) {
-        this.logger.warn(`Failed to get CV for ${registrationPath}: ${error.message}`);
+        this.logger.warn(
+          `Failed to get CV for ${registrationPath}: ${error.message}`,
+        );
         cvData.set(lpName, { todayCV: 0, last7DaysCV: 0 });
       }
     }
@@ -570,7 +672,10 @@ export class IntradayOptimizationService {
   private async evaluateAd(
     ad: any,
     advertiser: any,
-    todayMetrics: Map<string, { spend: number; impressions: number; clicks: number }>,
+    todayMetrics: Map<
+      string,
+      { spend: number; impressions: number; clicks: number }
+    >,
     cvData: Map<string, { todayCV: number; last7DaysCV: number }>,
     targetCPA: number,
     allowableCPA: number,
@@ -600,7 +705,11 @@ export class IntradayOptimizationService {
     }
 
     // メトリクス取得
-    const metrics = todayMetrics.get(adId) || { spend: 0, impressions: 0, clicks: 0 };
+    const metrics = todayMetrics.get(adId) || {
+      spend: 0,
+      impressions: 0,
+      clicks: 0,
+    };
     const todaySpend = metrics.spend;
 
     // LP名からCV数を取得
@@ -708,7 +817,12 @@ export class IntradayOptimizationService {
   ) {
     try {
       // TikTok APIで広告を停止
-      await this.tiktokService.updateAdStatus(advertiserId, accessToken, [result.adId], 'DISABLE');
+      await this.tiktokService.updateAdStatus(
+        advertiserId,
+        accessToken,
+        [result.adId],
+        'DISABLE',
+      );
 
       // IntradayPauseLogに記録
       // 注: yesterdayCPAフィールドには過去7日間平均CPAを保存（後でDBフィールド名を更新予定）
@@ -720,7 +834,10 @@ export class IntradayOptimizationService {
               advertiserId,
               pauseDate: today,
               pauseTime: new Date(),
-              pauseReason: result.todayCPA === null ? 'NO_CV_WITH_PREVIOUS_CV' : 'CPA_EXCEEDED',
+              pauseReason:
+                result.todayCPA === null
+                  ? 'NO_CV_WITH_PREVIOUS_CV'
+                  : 'CPA_EXCEEDED',
               todaySpend: result.todaySpend,
               todayCPA: result.todayCPA,
               yesterdayCPA: result.last7DaysCPA, // 過去7日間平均CPA
@@ -732,14 +849,24 @@ export class IntradayOptimizationService {
       );
 
       // ChangeLogに記録
-      await this.logChange('AD', result.adId, 'INTRADAY_PAUSE', 'INTRADAY_OPTIMIZATION', null, { status: 'DISABLE' }, result.reason);
+      await this.logChange(
+        'AD',
+        result.adId,
+        'INTRADAY_PAUSE',
+        'INTRADAY_OPTIMIZATION',
+        null,
+        { status: 'DISABLE' },
+        result.reason,
+      );
 
       // 通知作成
       await this.createPauseNotification(result, advertiserId);
 
       this.logger.log(`Paused ad ${result.adId}: ${result.reason}`);
     } catch (error) {
-      this.logger.error(`[IC-03] Failed to pause ad ${result.adId}: ${error.message}`);
+      this.logger.error(
+        `[IC-03] Failed to pause ad ${result.adId}: ${error.message}`,
+      );
       throw error;
     }
   }
@@ -755,8 +882,16 @@ export class IntradayOptimizationService {
   ) {
     try {
       // 広告セット情報を取得
-      const adgroup = await this.tiktokService.getAdGroup(advertiserId, accessToken, result.adgroupId);
-      const isCBO = !(adgroup.budget_mode && adgroup.budget && adgroup.budget > 0);
+      const adgroup = await this.tiktokService.getAdGroup(
+        advertiserId,
+        accessToken,
+        result.adgroupId,
+      );
+      const isCBO = !(
+        adgroup.budget_mode &&
+        adgroup.budget &&
+        adgroup.budget > 0
+      );
 
       let originalBudget: number;
       let reducedBudget: number;
@@ -764,23 +899,37 @@ export class IntradayOptimizationService {
 
       if (isCBO) {
         // キャンペーン予算の場合
-        const campaign = await this.tiktokService.getCampaign(advertiserId, accessToken, result.campaignId);
+        const campaign = await this.tiktokService.getCampaign(
+          advertiserId,
+          accessToken,
+          result.campaignId,
+        );
         originalBudget = campaign.budget;
         reducedBudget = Math.floor(originalBudget * this.BUDGET_REDUCTION_RATE);
         entityId = result.campaignId;
 
-        await this.tiktokService.updateCampaign(advertiserId, accessToken, result.campaignId, {
-          budget: reducedBudget,
-        });
+        await this.tiktokService.updateCampaign(
+          advertiserId,
+          accessToken,
+          result.campaignId,
+          {
+            budget: reducedBudget,
+          },
+        );
       } else {
         // 広告セット予算の場合
         originalBudget = adgroup.budget;
         reducedBudget = Math.floor(originalBudget * this.BUDGET_REDUCTION_RATE);
         entityId = result.adgroupId;
 
-        await this.tiktokService.updateAdGroup(advertiserId, accessToken, result.adgroupId, {
-          budget: reducedBudget,
-        });
+        await this.tiktokService.updateAdGroup(
+          advertiserId,
+          accessToken,
+          result.adgroupId,
+          {
+            budget: reducedBudget,
+          },
+        );
       }
 
       // IntradayBudgetReductionLogに記録
@@ -814,11 +963,20 @@ export class IntradayOptimizationService {
       );
 
       // 通知作成
-      await this.createBudgetReduceNotification(result, advertiserId, originalBudget, reducedBudget);
+      await this.createBudgetReduceNotification(
+        result,
+        advertiserId,
+        originalBudget,
+        reducedBudget,
+      );
 
-      this.logger.log(`Reduced budget for ${isCBO ? 'campaign' : 'adgroup'} ${entityId}: ¥${originalBudget} → ¥${reducedBudget}`);
+      this.logger.log(
+        `Reduced budget for ${isCBO ? 'campaign' : 'adgroup'} ${entityId}: ¥${originalBudget} → ¥${reducedBudget}`,
+      );
     } catch (error) {
-      this.logger.error(`[IC-03] Failed to reduce budget for adgroup ${result.adgroupId}: ${error.message}`);
+      this.logger.error(
+        `[IC-03] Failed to reduce budget for adgroup ${result.adgroupId}: ${error.message}`,
+      );
       throw error;
     }
   }
@@ -865,7 +1023,12 @@ export class IntradayOptimizationService {
         }
 
         // 広告を再開
-        await this.tiktokService.updateAdStatus(log.advertiserId, token.accessToken, [log.adId], 'ENABLE');
+        await this.tiktokService.updateAdStatus(
+          log.advertiserId,
+          token.accessToken,
+          [log.adId],
+          'ENABLE',
+        );
 
         // ログ更新
         await this.prisma.intradayPauseLog.update({
@@ -877,17 +1040,29 @@ export class IntradayOptimizationService {
         });
 
         // ChangeLog記録
-        await this.logChange('AD', log.adId, 'INTRADAY_RESUME', 'INTRADAY_OPTIMIZATION', { status: 'DISABLE' }, { status: 'ENABLE' }, '23:59自動再開');
+        await this.logChange(
+          'AD',
+          log.adId,
+          'INTRADAY_RESUME',
+          'INTRADAY_OPTIMIZATION',
+          { status: 'DISABLE' },
+          { status: 'ENABLE' },
+          '23:59自動再開',
+        );
 
         resumed++;
         this.logger.log(`Resumed ad ${log.adId}`);
       } catch (error) {
-        this.logger.error(`[IR-02] Failed to resume ad ${log.adId}: ${error.message}`);
+        this.logger.error(
+          `[IR-02] Failed to resume ad ${log.adId}: ${error.message}`,
+        );
         failed++;
       }
     }
 
-    this.logger.log(`Intraday resume completed. Resumed: ${resumed}, Failed: ${failed}`);
+    this.logger.log(
+      `Intraday resume completed. Resumed: ${resumed}, Failed: ${failed}`,
+    );
   }
 
   /**
@@ -902,12 +1077,14 @@ export class IntradayOptimizationService {
 
     // 当日または前日に削減&未復元を取得
     // （GitHub Actionsの遅延で日付が変わっても対応可能）
-    const reductionLogs = await this.prisma.intradayBudgetReductionLog.findMany({
-      where: {
-        reductionDate: { in: [today, yesterday] },
-        restored: false,
+    const reductionLogs = await this.prisma.intradayBudgetReductionLog.findMany(
+      {
+        where: {
+          reductionDate: { in: [today, yesterday] },
+          restored: false,
+        },
       },
-    });
+    );
 
     if (reductionLogs.length === 0) {
       this.logger.log('No budgets to restore');
@@ -933,13 +1110,23 @@ export class IntradayOptimizationService {
 
         // 予算を復元
         if (log.isCBO && log.campaignId) {
-          await this.tiktokService.updateCampaign(log.advertiserId, token.accessToken, log.campaignId, {
-            budget: log.originalBudget,
-          });
+          await this.tiktokService.updateCampaign(
+            log.advertiserId,
+            token.accessToken,
+            log.campaignId,
+            {
+              budget: log.originalBudget,
+            },
+          );
         } else {
-          await this.tiktokService.updateAdGroup(log.advertiserId, token.accessToken, log.adgroupId, {
-            budget: log.originalBudget,
-          });
+          await this.tiktokService.updateAdGroup(
+            log.advertiserId,
+            token.accessToken,
+            log.adgroupId,
+            {
+              budget: log.originalBudget,
+            },
+          );
         }
 
         // ログ更新
@@ -956,7 +1143,7 @@ export class IntradayOptimizationService {
         const entityId = log.isCBO ? log.campaignId : log.adgroupId;
         await this.logChange(
           entityType,
-          entityId!,
+          entityId,
           'INTRADAY_BUDGET_RESTORE',
           'INTRADAY_OPTIMIZATION',
           { budget: log.reducedBudget },
@@ -965,14 +1152,20 @@ export class IntradayOptimizationService {
         );
 
         restored++;
-        this.logger.log(`Restored budget for ${entityType} ${entityId}: ¥${log.reducedBudget} → ¥${log.originalBudget}`);
+        this.logger.log(
+          `Restored budget for ${entityType} ${entityId}: ¥${log.reducedBudget} → ¥${log.originalBudget}`,
+        );
       } catch (error) {
-        this.logger.error(`[IB-02] Failed to restore budget for ${log.adgroupId}: ${error.message}`);
+        this.logger.error(
+          `[IB-02] Failed to restore budget for ${log.adgroupId}: ${error.message}`,
+        );
         failed++;
       }
     }
 
-    this.logger.log(`Intraday budget restore completed. Restored: ${restored}, Failed: ${failed}`);
+    this.logger.log(
+      `Intraday budget restore completed. Restored: ${restored}, Failed: ${failed}`,
+    );
   }
 
   /**
@@ -1007,7 +1200,10 @@ export class IntradayOptimizationService {
   /**
    * 停止通知を作成
    */
-  private async createPauseNotification(result: IntradayCheckResult, advertiserId: string) {
+  private async createPauseNotification(
+    result: IntradayCheckResult,
+    advertiserId: string,
+  ) {
     const advertiser = await this.prisma.advertiser.findUnique({
       where: { tiktokAdvertiserId: advertiserId },
     });
@@ -1075,8 +1271,12 @@ export class IntradayOptimizationService {
    * @param additionalExcluded 追加で除外するAdvertiser IDs（API呼び出し時に指定）
    */
   getExcludedAdvertisers(additionalExcluded?: string[]): string[] {
-    const excluded = this.configService.get('INTRADAY_EXCLUDED_ADVERTISERS') || '';
-    const fromEnv = excluded.split(',').map((id: string) => id.trim()).filter((id: string) => id);
+    const excluded =
+      this.configService.get('INTRADAY_EXCLUDED_ADVERTISERS') || '';
+    const fromEnv = excluded
+      .split(',')
+      .map((id: string) => id.trim())
+      .filter((id: string) => id);
 
     // 追加の除外リストがあればマージ
     if (additionalExcluded && additionalExcluded.length > 0) {

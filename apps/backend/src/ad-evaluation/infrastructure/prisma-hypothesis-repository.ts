@@ -41,25 +41,35 @@ export class PrismaHypothesisRepository {
         ...(state.adName !== undefined && { adName: state.adName }),
         ...(state.account !== undefined && { account: state.account }),
         ...(state.verdict !== undefined && { verdict: state.verdict }),
-        ...(state.interpretation !== undefined && { interpretation: state.interpretation }),
+        ...(state.interpretation !== undefined && {
+          interpretation: state.interpretation,
+        }),
         ...(state.nextAction !== undefined && { nextAction: state.nextAction }),
         ...(state.spend !== undefined && { spend: state.spend }),
         ...(state.optins !== undefined && { optins: state.optins }),
-        ...(state.frontPurchases !== undefined && { frontPurchases: state.frontPurchases }),
-        ...(state.individualRes !== undefined && { individualRes: state.individualRes }),
+        ...(state.frontPurchases !== undefined && {
+          frontPurchases: state.frontPurchases,
+        }),
+        ...(state.individualRes !== undefined && {
+          individualRes: state.individualRes,
+        }),
         ...(state.cpa !== undefined && { cpa: state.cpa }),
         ...(state.indResCPO !== undefined && { indResCPO: state.indResCPO }),
-        ...(state.evaluatedAt !== undefined && { evaluatedAt: state.evaluatedAt }),
+        ...(state.evaluatedAt !== undefined && {
+          evaluatedAt: state.evaluatedAt,
+        }),
       },
     });
   }
 
-  async findByStatus(status: string): Promise<(HypothesisState & { id: string })[]> {
+  async findByStatus(
+    status: string,
+  ): Promise<(HypothesisState & { id: string })[]> {
     const records = await this.prisma.hypothesisTest.findMany({
       where: { status },
       orderBy: { createdAt: 'desc' },
     });
-    return records.map(r => ({
+    return records.map((r) => ({
       id: r.id,
       channelType: r.channelType as 'AI' | 'SNS' | 'SKILL_PLUS',
       hypothesis: r.hypothesis,
@@ -80,7 +90,9 @@ export class PrismaHypothesisRepository {
     }));
   }
 
-  async findByAdId(adId: string): Promise<(HypothesisState & { id: string }) | null> {
+  async findByAdId(
+    adId: string,
+  ): Promise<(HypothesisState & { id: string }) | null> {
     const record = await this.prisma.hypothesisTest.findFirst({
       where: { adId },
       orderBy: { createdAt: 'desc' },
@@ -97,12 +109,14 @@ export class PrismaHypothesisRepository {
     };
   }
 
-  async findRecent(limit = 20): Promise<(HypothesisState & { id: string; createdAt: Date })[]> {
+  async findRecent(
+    limit = 20,
+  ): Promise<(HypothesisState & { id: string; createdAt: Date })[]> {
     const records = await this.prisma.hypothesisTest.findMany({
       orderBy: { createdAt: 'desc' },
       take: limit,
     });
-    return records.map(r => ({
+    return records.map((r) => ({
       id: r.id,
       channelType: r.channelType as 'AI' | 'SNS' | 'SKILL_PLUS',
       hypothesis: r.hypothesis,

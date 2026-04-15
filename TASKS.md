@@ -4,6 +4,27 @@
 
 ---
 
+## 🔧 Neon DB転送量削減（5GB超過対策）継続作業
+
+### ステータス
+- 2026-04-12時点: 5GB/5GB超過、次回リセット5/1
+- 完了: ad-performance.service.ts 5段ネスト→select化 (`bbebbba`)
+- 完了: budget-optimization-v2.service.ts 両findManyにselect追加 (`26fe549`)
+
+### 次にやる候補（優先度順）
+1. **scheduler.service.ts のN+1クエリ修正**（最大効果、2-3GB/月削減見込み）
+   - line 209-260: Ad/AdGroup/Campaign毎にfindUnique連発 → 一括取得＋Map lookup化
+   - line 221-260, 392-416: Creativeループ内findFirst → 事前一括取得
+   - リスク: 中（dailyエンティティ同期の動作変更）
+2. HourlyOptimizationSnapshotの保持期間見直し（30日→7日）
+3. データクリーンアップ（古いMetric/Snapshot削除）
+
+### 監査レポートの信頼性メモ
+監査エージェントの指摘は誤認識が多かった（ad-count-recording/creator-stop-rateは既に最適化済みだった）。
+実コード確認してから着手すること。
+
+---
+
 ## 🚀 実装予定: 広告文テンプレート機能
 
 ### 📅 ステータス

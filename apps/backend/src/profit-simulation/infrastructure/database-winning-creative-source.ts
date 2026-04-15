@@ -32,7 +32,9 @@ export class DatabaseWinningCreativeSource implements WinningCreativeSource {
     return winners.length > 0;
   }
 
-  async getWinningCreatives(channelType: ChannelType): Promise<WinningCreative[]> {
+  async getWinningCreatives(
+    channelType: ChannelType,
+  ): Promise<WinningCreative[]> {
     // 対象チャネルのアカウントIDを取得
     const advertiserIds = Object.entries(ACCOUNT_CHANNEL)
       .filter(([, ch]) => ch === channelType)

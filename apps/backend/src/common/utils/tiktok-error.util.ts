@@ -72,7 +72,11 @@ export function classifyTikTokError(error: any): TikTokErrorInfo {
   }
 
   // ネットワークエラー
-  if (error.code === 'ENOTFOUND' || error.code === 'ECONNREFUSED' || error.code === 'ECONNRESET') {
+  if (
+    error.code === 'ENOTFOUND' ||
+    error.code === 'ECONNREFUSED' ||
+    error.code === 'ECONNRESET'
+  ) {
     return {
       type: TikTokErrorType.NETWORK_ERROR,
       code: error.code,
@@ -89,8 +93,11 @@ export function classifyTikTokError(error: any): TikTokErrorInfo {
 
     // TikTokが返したエラー詳細（あれば全エラーパスで使う）
     const tiktokMsg = data?.message ? ` | TikTok message: ${data.message}` : '';
-    const tiktokCode = data?.code !== undefined ? ` | TikTok code: ${data.code}` : '';
-    const tiktokReqId = data?.request_id ? ` | request_id: ${data.request_id}` : '';
+    const tiktokCode =
+      data?.code !== undefined ? ` | TikTok code: ${data.code}` : '';
+    const tiktokReqId = data?.request_id
+      ? ` | request_id: ${data.request_id}`
+      : '';
 
     // data.message/code が無い場合（プロキシ/ゲートウェイが弾いたケース）の詳細ダンプ
     let rawDump = '';
@@ -98,7 +105,10 @@ export function classifyTikTokError(error: any): TikTokErrorInfo {
       const contentType = error.response.headers?.['content-type'] || 'unknown';
       let bodyStr = '';
       try {
-        bodyStr = typeof data === 'string' ? data.slice(0, 500) : JSON.stringify(data ?? '').slice(0, 500);
+        bodyStr =
+          typeof data === 'string'
+            ? data.slice(0, 500)
+            : JSON.stringify(data ?? '').slice(0, 500);
       } catch {
         bodyStr = '(stringify failed)';
       }
@@ -111,11 +121,13 @@ export function classifyTikTokError(error: any): TikTokErrorInfo {
       } catch {
         paramsSize = -1;
       }
-      const paramsKeys = cfg.params ? Object.keys(cfg.params).join(',') : '(none)';
+      const paramsKeys = cfg.params
+        ? Object.keys(cfg.params).join(',')
+        : '(none)';
       const filteringLen = cfg.params?.filtering
-        ? (typeof cfg.params.filtering === 'string'
-            ? cfg.params.filtering.length
-            : JSON.stringify(cfg.params.filtering).length)
+        ? typeof cfg.params.filtering === 'string'
+          ? cfg.params.filtering.length
+          : JSON.stringify(cfg.params.filtering).length
         : 0;
       rawDump = ` | DEBUG content-type=${contentType} paramsSize=${paramsSize} filteringLen=${filteringLen} paramsKeys=[${paramsKeys}] url=${requestUrl} body="${bodyStr}"`;
     }
@@ -129,9 +141,15 @@ export function classifyTikTokError(error: any): TikTokErrorInfo {
       return {
         type: errorType,
         code: apiCode,
-        message: (data?.message || `TikTok API Error: ${apiCode}`) + tiktokReqId,
-        isRetryable: errorType === TikTokErrorType.RATE_LIMIT || errorType === TikTokErrorType.API_ERROR,
-        retryAfterMs: errorType === TikTokErrorType.RATE_LIMIT ? getRetryAfterMs(error.response) : undefined,
+        message:
+          (data?.message || `TikTok API Error: ${apiCode}`) + tiktokReqId,
+        isRetryable:
+          errorType === TikTokErrorType.RATE_LIMIT ||
+          errorType === TikTokErrorType.API_ERROR,
+        retryAfterMs:
+          errorType === TikTokErrorType.RATE_LIMIT
+            ? getRetryAfterMs(error.response)
+            : undefined,
         originalError: error,
       };
     }
@@ -235,7 +253,11 @@ function getRetryAfterMs(response: any): number {
 /**
  * TikTokエラーのログ出力
  */
-export function logTikTokError(logger: Logger, errorInfo: TikTokErrorInfo, context?: string): void {
+export function logTikTokError(
+  logger: Logger,
+  errorInfo: TikTokErrorInfo,
+  context?: string,
+): void {
   const prefix = context ? `[${context}] ` : '';
   const codeStr = errorInfo.code ? ` (code: ${errorInfo.code})` : '';
 
@@ -244,19 +266,29 @@ export function logTikTokError(logger: Logger, errorInfo: TikTokErrorInfo, conte
       logger.warn(`${prefix}[T-01] レート制限${codeStr}: ${errorInfo.message}`);
       break;
     case TikTokErrorType.AUTH_ERROR:
-      logger.error(`${prefix}[T-02] 認証エラー${codeStr}: ${errorInfo.message}`);
+      logger.error(
+        `${prefix}[T-02] 認証エラー${codeStr}: ${errorInfo.message}`,
+      );
       break;
     case TikTokErrorType.PERMISSION_ERROR:
-      logger.error(`${prefix}[T-03] 権限エラー${codeStr}: ${errorInfo.message}`);
+      logger.error(
+        `${prefix}[T-03] 権限エラー${codeStr}: ${errorInfo.message}`,
+      );
       break;
     case TikTokErrorType.NOT_FOUND:
-      logger.warn(`${prefix}[T-04] リソース不存在${codeStr}: ${errorInfo.message}`);
+      logger.warn(
+        `${prefix}[T-04] リソース不存在${codeStr}: ${errorInfo.message}`,
+      );
       break;
     case TikTokErrorType.TIMEOUT:
-      logger.warn(`${prefix}[T-06] タイムアウト${codeStr}: ${errorInfo.message}`);
+      logger.warn(
+        `${prefix}[T-06] タイムアウト${codeStr}: ${errorInfo.message}`,
+      );
       break;
     case TikTokErrorType.NETWORK_ERROR:
-      logger.error(`${prefix}ネットワークエラー${codeStr}: ${errorInfo.message}`);
+      logger.error(
+        `${prefix}ネットワークエラー${codeStr}: ${errorInfo.message}`,
+      );
       break;
     case TikTokErrorType.API_ERROR:
       logger.error(`${prefix}APIエラー${codeStr}: ${errorInfo.message}`);
@@ -305,7 +337,12 @@ export function validateTikTokResponse<T = any>(
 ): {
   isValid: boolean;
   list: T[];
-  pageInfo: { totalNumber: number; totalPage: number; page: number; pageSize: number };
+  pageInfo: {
+    totalNumber: number;
+    totalPage: number;
+    page: number;
+    pageSize: number;
+  };
   code: number;
   message: string;
   warning?: string;
@@ -363,7 +400,9 @@ export function validateTikTokResponse<T = any>(
   }
 
   // listの取得（存在しない場合は空配列）
-  const list = Array.isArray(apiResponse.data.list) ? apiResponse.data.list : [];
+  const list = Array.isArray(apiResponse.data.list)
+    ? apiResponse.data.list
+    : [];
 
   // pageInfoの取得（存在しない場合はデフォルト値）
   const pageInfo = {
@@ -388,7 +427,10 @@ export function validateTikTokResponse<T = any>(
  * @param defaultValue デフォルト値（空配列）
  * @returns リストデータ
  */
-export function safeGetList<T = any>(response: any, defaultValue: T[] = []): T[] {
+export function safeGetList<T = any>(
+  response: any,
+  defaultValue: T[] = [],
+): T[] {
   try {
     const list = response?.data?.data?.list;
     return Array.isArray(list) ? list : defaultValue;

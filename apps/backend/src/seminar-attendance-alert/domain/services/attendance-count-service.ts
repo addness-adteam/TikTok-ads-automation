@@ -41,7 +41,10 @@ export class AttendanceCountService {
       if (!opt) continue; // LP-CR不明はカウント対象外
 
       const lpCr = opt.lpCr.toUpperCase();
-      const cur = result.get(lpCr) ?? { reservationCount: 0, attendanceCount: 0 };
+      const cur = result.get(lpCr) ?? {
+        reservationCount: 0,
+        attendanceCount: 0,
+      };
       cur.reservationCount += 1;
       if (attended.has(email)) cur.attendanceCount += 1;
       result.set(lpCr, cur);

@@ -12,7 +12,9 @@ import {
 } from './types';
 
 /** 導線タイプに応じたファネルステージ定義を返す */
-export function getStageDefinition(channelType: ChannelType): readonly string[] {
+export function getStageDefinition(
+  channelType: ChannelType,
+): readonly string[] {
   if (channelType === 'SKILL_PLUS') {
     return SKILL_PLUS_STAGES;
   }
@@ -42,7 +44,9 @@ export function buildFunnelModel(
 }
 
 /** 隣接ステージ間の転換率を算出する */
-export function calculateConversionRates(stages: FunnelStage[]): ConversionRate[] {
+export function calculateConversionRates(
+  stages: FunnelStage[],
+): ConversionRate[] {
   const rates: ConversionRate[] = [];
 
   for (let i = 0; i < stages.length - 1; i++) {

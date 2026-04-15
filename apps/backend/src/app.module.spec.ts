@@ -48,7 +48,7 @@ describe('AppModule bootstrap', () => {
       // 本番相当の環境ではpass。ローカル実行時はちゃんと起動するので問題なし
       console.warn(
         `[app.module.spec] Bootstrap failed on non-DI error. ` +
-        `CI環境の接続系エラーの可能性が高いため pass扱い: ${msg.slice(0, 300)}`,
+          `CI環境の接続系エラーの可能性が高いため pass扱い: ${msg.slice(0, 300)}`,
       );
     }
   }, 30000);

@@ -6,9 +6,21 @@ import { Injectable, Logger } from '@nestjs/common';
 import * as fs from 'fs';
 import * as path from 'path';
 import { ReportOutput } from '../domain/ports';
-import { TotalProfitSummary, BottleneckResult, GeneratedTodo } from '../domain/types';
+import {
+  TotalProfitSummary,
+  BottleneckResult,
+  GeneratedTodo,
+} from '../domain/types';
 
-const KNOWLEDGE_DIR = path.join(__dirname, '..', '..', '..', '..', 'docs', 'knowledge');
+const KNOWLEDGE_DIR = path.join(
+  __dirname,
+  '..',
+  '..',
+  '..',
+  '..',
+  'docs',
+  'knowledge',
+);
 
 @Injectable()
 export class MarkdownReportOutput implements ReportOutput {
@@ -57,11 +69,17 @@ export class MarkdownReportOutput implements ReportOutput {
     lines.push('');
     lines.push(`| 項目 | 金額 |`);
     lines.push(`|------|------|`);
-    lines.push(`| 実績粗利（累計） | ${this.formatYen(summary.totalActualProfit)} |`);
-    lines.push(`| 推定月末粗利 | ${this.formatYen(summary.totalProjectedProfit)} |`);
+    lines.push(
+      `| 実績粗利（累計） | ${this.formatYen(summary.totalActualProfit)} |`,
+    );
+    lines.push(
+      `| 推定月末粗利 | ${this.formatYen(summary.totalProjectedProfit)} |`,
+    );
     lines.push(`| 目標粗利 | ${this.formatYen(summary.totalTargetProfit)} |`);
     lines.push(`| 目標差分 | ${this.formatYen(summary.totalGapToTarget)} |`);
-    lines.push(`| 到達見込み | ${summary.isOnTrack ? '✅ 達成見込み' : '❌ 未達見込み'} |`);
+    lines.push(
+      `| 到達見込み | ${summary.isOnTrack ? '✅ 達成見込み' : '❌ 未達見込み'} |`,
+    );
     lines.push('');
 
     // 導線別
@@ -80,7 +98,9 @@ export class MarkdownReportOutput implements ReportOutput {
     if (bottlenecks.length > 0) {
       lines.push('## ボトルネック一覧（粗利インパクト順）');
       lines.push('');
-      lines.push('| Rank | ステージ | 現状 | KPI許容 | 乖離 | 粗利インパクト |');
+      lines.push(
+        '| Rank | ステージ | 現状 | KPI許容 | 乖離 | 粗利インパクト |',
+      );
       lines.push('|------|---------|------|---------|------|---------------|');
       for (const b of bottlenecks) {
         lines.push(
@@ -100,7 +120,9 @@ export class MarkdownReportOutput implements ReportOutput {
         lines.push('');
         lines.push(`- **アクション:** ${todo.action}`);
         lines.push(`- **タイプ:** ${todo.actionType}`);
-        lines.push(`- **粗利インパクト:** ${this.formatYen(todo.profitImpact)}`);
+        lines.push(
+          `- **粗利インパクト:** ${this.formatYen(todo.profitImpact)}`,
+        );
         lines.push(`- **ID:** ${todo.id}`);
         lines.push('');
       }

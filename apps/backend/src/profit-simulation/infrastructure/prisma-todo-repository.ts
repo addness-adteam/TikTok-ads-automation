@@ -77,7 +77,10 @@ export class PrismaTodoRepository implements TodoRepository {
     }));
   }
 
-  async updateStatus(id: string, status: GeneratedTodo['status']): Promise<void> {
+  async updateStatus(
+    id: string,
+    status: GeneratedTodo['status'],
+  ): Promise<void> {
     await this.prisma.profitSimulationTodo.update({
       where: { id },
       data: { status },

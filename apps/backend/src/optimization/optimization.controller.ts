@@ -38,11 +38,14 @@ export class OptimizationController {
   ) {
     const validatedMode = this.validateMode(mode);
     const isDryRun = dryRun === true;
-    this.logger.log(`Budget optimization execution requested (mode: ${validatedMode}, dryRun: ${isDryRun})`);
+    this.logger.log(
+      `Budget optimization execution requested (mode: ${validatedMode}, dryRun: ${isDryRun})`,
+    );
 
     try {
       // アクセストークンが指定されていない場合は環境変数から取得
-      const token = accessToken || this.configService.get<string>('TIKTOK_ACCESS_TOKEN');
+      const token =
+        accessToken || this.configService.get<string>('TIKTOK_ACCESS_TOKEN');
 
       if (!token) {
         return {
@@ -51,7 +54,11 @@ export class OptimizationController {
         };
       }
 
-      const result = await this.optimizationService.executeOptimization(token, validatedMode, isDryRun);
+      const result = await this.optimizationService.executeOptimization(
+        token,
+        validatedMode,
+        isDryRun,
+      );
 
       return {
         success: true,
@@ -81,10 +88,13 @@ export class OptimizationController {
   ) {
     const validatedMode = this.validateMode(mode);
     const isDryRun = dryRun === true;
-    this.logger.log(`Budget optimization execution requested for advertiser: ${advertiserId} (mode: ${validatedMode}, dryRun: ${isDryRun})`);
+    this.logger.log(
+      `Budget optimization execution requested for advertiser: ${advertiserId} (mode: ${validatedMode}, dryRun: ${isDryRun})`,
+    );
 
     try {
-      const token = accessToken || this.configService.get<string>('TIKTOK_ACCESS_TOKEN');
+      const token =
+        accessToken || this.configService.get<string>('TIKTOK_ACCESS_TOKEN');
 
       if (!token) {
         return {
@@ -93,7 +103,12 @@ export class OptimizationController {
         };
       }
 
-      const result = await this.optimizationService.optimizeAdvertiser(advertiserId, token, validatedMode, isDryRun);
+      const result = await this.optimizationService.optimizeAdvertiser(
+        advertiserId,
+        token,
+        validatedMode,
+        isDryRun,
+      );
 
       return {
         success: true,
@@ -123,7 +138,9 @@ export class OptimizationController {
   ) {
     const validatedMode = this.validateMode(mode);
     const isDryRun = dryRun === true;
-    this.logger.log(`Budget optimization execution requested for ${advertiserIds?.length || 0} advertisers (mode: ${validatedMode}, dryRun: ${isDryRun})`);
+    this.logger.log(
+      `Budget optimization execution requested for ${advertiserIds?.length || 0} advertisers (mode: ${validatedMode}, dryRun: ${isDryRun})`,
+    );
 
     try {
       if (!advertiserIds || advertiserIds.length === 0) {
@@ -133,7 +150,8 @@ export class OptimizationController {
         };
       }
 
-      const token = accessToken || this.configService.get<string>('TIKTOK_ACCESS_TOKEN');
+      const token =
+        accessToken || this.configService.get<string>('TIKTOK_ACCESS_TOKEN');
 
       if (!token) {
         return {
@@ -146,11 +164,21 @@ export class OptimizationController {
       const results: any[] = [];
       for (const advertiserId of advertiserIds) {
         try {
-          this.logger.log(`Executing optimization for advertiser: ${advertiserId}${isDryRun ? ' (DRY RUN)' : ''}`);
-          const result = await this.optimizationService.optimizeAdvertiser(advertiserId, token, validatedMode, isDryRun);
+          this.logger.log(
+            `Executing optimization for advertiser: ${advertiserId}${isDryRun ? ' (DRY RUN)' : ''}`,
+          );
+          const result = await this.optimizationService.optimizeAdvertiser(
+            advertiserId,
+            token,
+            validatedMode,
+            isDryRun,
+          );
           results.push(result);
         } catch (error) {
-          this.logger.error(`Failed to optimize advertiser ${advertiserId}:`, error);
+          this.logger.error(
+            `Failed to optimize advertiser ${advertiserId}:`,
+            error,
+          );
           results.push({
             advertiserId,
             success: false,
@@ -164,15 +192,15 @@ export class OptimizationController {
         mode: validatedMode,
         dryRun: isDryRun,
         totalAdvertisers: advertiserIds.length,
-        successCount: results.filter(r => r.success).length,
-        failureCount: results.filter(r => !r.success).length,
+        successCount: results.filter((r) => r.success).length,
+        failureCount: results.filter((r) => !r.success).length,
         totalAds: results.reduce((sum, r) => sum + (r.totalAds || 0), 0),
         evaluated: results.reduce((sum, r) => sum + (r.evaluated || 0), 0),
         decisions: results.reduce((sum, r) => sum + (r.decisions || 0), 0),
         executed: results.reduce((sum, r) => sum + (r.executed || 0), 0),
         results: results,
         // 全ての詳細ログを結合
-        detailedLogs: results.flatMap(r => r.detailedLogs || []),
+        detailedLogs: results.flatMap((r) => r.detailedLogs || []),
       };
 
       return {
@@ -181,7 +209,10 @@ export class OptimizationController {
         data: totalResults,
       };
     } catch (error) {
-      this.logger.error('Failed to execute budget optimization for selected advertisers', error);
+      this.logger.error(
+        'Failed to execute budget optimization for selected advertisers',
+        error,
+      );
       return {
         success: false,
         error: error.message,

@@ -145,10 +145,15 @@ export class AppealController {
     @Param('appealId') appealId: string,
     @Param('advertiserId') advertiserId: string,
   ) {
-    this.logger.log(`Assigning appeal ${appealId} to advertiser ${advertiserId}`);
+    this.logger.log(
+      `Assigning appeal ${appealId} to advertiser ${advertiserId}`,
+    );
 
     try {
-      const advertiser = await this.appealService.assignToAdvertiser(appealId, advertiserId);
+      const advertiser = await this.appealService.assignToAdvertiser(
+        appealId,
+        advertiserId,
+      );
       return {
         success: true,
         data: advertiser,

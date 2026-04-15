@@ -41,7 +41,10 @@ export function classifyOptimizationError(
   const message = error.message || '';
 
   // メッセージベースでエラータイプを判定
-  if (message.includes('Invalid ad name') || message.includes('Invalid campaign name')) {
+  if (
+    message.includes('Invalid ad name') ||
+    message.includes('Invalid campaign name')
+  ) {
     return {
       type: OptimizationErrorType.AD_NAME_PARSE_ERROR,
       code: 'O-01',
@@ -51,7 +54,10 @@ export function classifyOptimizationError(
     };
   }
 
-  if (message.includes('No appeal assigned') || message.includes('Appeal not found')) {
+  if (
+    message.includes('No appeal assigned') ||
+    message.includes('Appeal not found')
+  ) {
     return {
       type: OptimizationErrorType.APPEAL_NOT_ASSIGNED,
       code: 'O-02',
@@ -86,7 +92,11 @@ export function classifyOptimizationError(
     };
   }
 
-  if (message.includes('budget') || message.includes('Budget') || message.includes('予算')) {
+  if (
+    message.includes('budget') ||
+    message.includes('Budget') ||
+    message.includes('予算')
+  ) {
     return {
       type: OptimizationErrorType.BUDGET_UPDATE_FAILED,
       code: 'O-06',
@@ -114,26 +124,40 @@ export function logOptimizationError(
   context?: string,
 ): void {
   const prefix = context ? `[${context}] ` : '';
-  const entityStr = errorInfo.entityId ? ` (${errorInfo.entityName || errorInfo.entityId})` : '';
+  const entityStr = errorInfo.entityId
+    ? ` (${errorInfo.entityName || errorInfo.entityId})`
+    : '';
 
   switch (errorInfo.type) {
     case OptimizationErrorType.AD_NAME_PARSE_ERROR:
-      logger.warn(`${prefix}[O-01] 広告名パース失敗${entityStr}: ${errorInfo.message}`);
+      logger.warn(
+        `${prefix}[O-01] 広告名パース失敗${entityStr}: ${errorInfo.message}`,
+      );
       break;
     case OptimizationErrorType.APPEAL_NOT_ASSIGNED:
-      logger.warn(`${prefix}[O-02] Appeal未設定${entityStr}: ${errorInfo.message}`);
+      logger.warn(
+        `${prefix}[O-02] Appeal未設定${entityStr}: ${errorInfo.message}`,
+      );
       break;
     case OptimizationErrorType.ADVERTISER_NOT_FOUND:
-      logger.warn(`${prefix}[O-03] Advertiser未検出${entityStr}: ${errorInfo.message}`);
+      logger.warn(
+        `${prefix}[O-03] Advertiser未検出${entityStr}: ${errorInfo.message}`,
+      );
       break;
     case OptimizationErrorType.TARGET_NOT_SET:
-      logger.warn(`${prefix}[O-04] 目標CPA/CPO未設定${entityStr}: ${errorInfo.message}`);
+      logger.warn(
+        `${prefix}[O-04] 目標CPA/CPO未設定${entityStr}: ${errorInfo.message}`,
+      );
       break;
     case OptimizationErrorType.SMART_PLUS_DETECTION_ERROR:
-      logger.warn(`${prefix}[O-05] Smart+判定エラー${entityStr}: ${errorInfo.message}`);
+      logger.warn(
+        `${prefix}[O-05] Smart+判定エラー${entityStr}: ${errorInfo.message}`,
+      );
       break;
     case OptimizationErrorType.BUDGET_UPDATE_FAILED:
-      logger.error(`${prefix}[O-06] 予算更新API失敗${entityStr}: ${errorInfo.message}`);
+      logger.error(
+        `${prefix}[O-06] 予算更新API失敗${entityStr}: ${errorInfo.message}`,
+      );
       break;
     default:
       logger.error(`${prefix}不明なエラー${entityStr}: ${errorInfo.message}`);
@@ -148,7 +172,12 @@ export function validateAppealSettings(appeal: any): {
   missingFields: string[];
   warning?: OptimizationErrorInfo;
 } {
-  const requiredFields = ['targetCPA', 'allowableCPA', 'targetFrontCPO', 'allowableFrontCPO'];
+  const requiredFields = [
+    'targetCPA',
+    'allowableCPA',
+    'targetFrontCPO',
+    'allowableFrontCPO',
+  ];
   const missingFields: string[] = [];
 
   for (const field of requiredFields) {
@@ -183,7 +212,12 @@ export function validateAppealSettings(appeal: any): {
  */
 export function validateAdNameFormat(adName: string): {
   isValid: boolean;
-  parsed?: { date: string; creator: string; creativeName: string; lpName: string };
+  parsed?: {
+    date: string;
+    creator: string;
+    creativeName: string;
+    lpName: string;
+  };
   warning?: OptimizationErrorInfo;
 } {
   if (!adName || typeof adName !== 'string') {
@@ -292,7 +326,9 @@ export function validateDateRange(
   }
 
   // 期間が極端に長い場合の警告（90日以上）
-  const daysDiff = Math.floor((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
+  const daysDiff = Math.floor(
+    (endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24),
+  );
   if (daysDiff > 90) {
     return {
       isValid: true, // 処理は継続するが警告

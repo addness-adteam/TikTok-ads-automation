@@ -31,15 +31,17 @@ export class UtageService {
     if (setCookieHeaders.length === 0) {
       const raw = response.headers.get('set-cookie');
       if (raw) {
-        const cookies = raw.split(/,(?=\s*[a-zA-Z_]+=)/).map(c => c.split(';')[0].trim());
+        const cookies = raw
+          .split(/,(?=\s*[a-zA-Z_]+=)/)
+          .map((c) => c.split(';')[0].trim());
         const merged = new Map<string, string>();
         if (existing) {
-          existing.split('; ').forEach(c => {
+          existing.split('; ').forEach((c) => {
             const [k] = c.split('=');
             merged.set(k, c);
           });
         }
-        cookies.forEach(c => {
+        cookies.forEach((c) => {
           const [k] = c.split('=');
           merged.set(k, c);
         });
@@ -50,12 +52,12 @@ export class UtageService {
 
     const merged = new Map<string, string>();
     if (existing) {
-      existing.split('; ').forEach(c => {
+      existing.split('; ').forEach((c) => {
         const [k] = c.split('=');
         merged.set(k, c);
       });
     }
-    setCookieHeaders.forEach(header => {
+    setCookieHeaders.forEach((header) => {
       const cookie = header.split(';')[0].trim();
       const [k] = cookie.split('=');
       merged.set(k, cookie);
@@ -64,35 +66,50 @@ export class UtageService {
   }
 
   private extractCsrfToken(html: string): string {
-    const inputMatch = html.match(/<input[^>]+name=["']_token["'][^>]+value=["']([^"']+)["']/);
+    const inputMatch = html.match(
+      /<input[^>]+name=["']_token["'][^>]+value=["']([^"']+)["']/,
+    );
     if (inputMatch) return inputMatch[1];
-    const inputMatch2 = html.match(/value=["']([^"']+)["'][^>]+name=["']_token["']/);
+    const inputMatch2 = html.match(
+      /value=["']([^"']+)["'][^>]+name=["']_token["']/,
+    );
     if (inputMatch2) return inputMatch2[1];
-    const metaMatch = html.match(/<meta[^>]+name=["']csrf-token["'][^>]+content=["']([^"']+)["']/);
+    const metaMatch = html.match(
+      /<meta[^>]+name=["']csrf-token["'][^>]+content=["']([^"']+)["']/,
+    );
     if (metaMatch) return metaMatch[1];
     throw new Error('UTAGE: CSRFトークンが見つかりません');
   }
 
   async login(): Promise<void> {
-    const email = this.configService.get<string>('UTAGE_EMAIL') || 'chiba.nobuteru@team.addness.co.jp';
-    const password = this.configService.get<string>('UTAGE_PASSWORD') || 'bC4F6mkV';
+    const email =
+      this.configService.get<string>('UTAGE_EMAIL') ||
+      'chiba.nobuteru@team.addness.co.jp';
+    const password =
+      this.configService.get<string>('UTAGE_PASSWORD') || 'bC4F6mkV';
 
     this.logger.log('UTAGE: ログイン中...');
 
     // Step 1: ログインページ取得
-    const loginPageResp = await fetch(OPERATOR_LOGIN_URL, { redirect: 'manual' });
+    const loginPageResp = await fetch(OPERATOR_LOGIN_URL, {
+      redirect: 'manual',
+    });
     this.sessionCookies = this.mergeCookies('', loginPageResp);
     const loginPageHtml = await loginPageResp.text();
     this.csrfToken = this.extractCsrfToken(loginPageHtml);
 
     // Step 2: ログインPOST
-    const formBody = new URLSearchParams({ _token: this.csrfToken, email, password });
+    const formBody = new URLSearchParams({
+      _token: this.csrfToken,
+      email,
+      password,
+    });
     const loginResp = await fetch(OPERATOR_LOGIN_URL, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
-        'Cookie': this.sessionCookies,
-        'Referer': OPERATOR_LOGIN_URL,
+        Cookie: this.sessionCookies,
+        Referer: OPERATOR_LOGIN_URL,
       },
       body: formBody.toString(),
       redirect: 'manual',
@@ -104,9 +121,12 @@ export class UtageService {
       this.logger.log('UTAGE: ログイン成功');
       const redirectResp = await fetch(
         location.startsWith('http') ? location : `${UTAGE_BASE_URL}${location}`,
-        { headers: { 'Cookie': this.sessionCookies }, redirect: 'manual' },
+        { headers: { Cookie: this.sessionCookies }, redirect: 'manual' },
       );
-      this.sessionCookies = this.mergeCookies(this.sessionCookies, redirectResp);
+      this.sessionCookies = this.mergeCookies(
+        this.sessionCookies,
+        redirectResp,
+      );
     } else {
       throw new Error('UTAGEログインに失敗しました');
     }
@@ -118,7 +138,10 @@ export class UtageService {
     }
   }
 
-  private async authedGet(url: string, retryCount = 0): Promise<{ html: string; finalUrl: string }> {
+  private async authedGet(
+    url: string,
+    retryCount = 0,
+  ): Promise<{ html: string; finalUrl: string }> {
     if (retryCount > 3) {
       throw new Error(`UTAGE: 認証リトライ上限超過 (URL: ${url})`);
     }
@@ -126,14 +149,16 @@ export class UtageService {
     await this.ensureSession();
 
     const resp = await fetch(url, {
-      headers: { 'Cookie': this.sessionCookies },
+      headers: { Cookie: this.sessionCookies },
       redirect: 'manual',
     });
     this.sessionCookies = this.mergeCookies(this.sessionCookies, resp);
 
     if (resp.status === 302) {
       const location = resp.headers.get('location') || '';
-      const redirectUrl = location.startsWith('http') ? location : `${UTAGE_BASE_URL}${location}`;
+      const redirectUrl = location.startsWith('http')
+        ? location
+        : `${UTAGE_BASE_URL}${location}`;
       if (redirectUrl.includes('/login')) {
         this.logger.log('UTAGE: セッション切れ検出、再ログイン...');
         await this.login();
@@ -144,7 +169,9 @@ export class UtageService {
 
     const html = await resp.text();
     if (html.includes('name="password"') && html.includes('login')) {
-      this.logger.log('UTAGE: セッション切れ検出（HTML内ログインフォーム）、再ログイン...');
+      this.logger.log(
+        'UTAGE: セッション切れ検出（HTML内ログインフォーム）、再ログイン...',
+      );
       await this.login();
       return this.authedGet(url, retryCount + 1);
     }
@@ -165,7 +192,10 @@ export class UtageService {
 
     // UTAGE一覧は古い順に並ぶため、最新CRは最終ページにある。全ページ走査してmaxを取る。
     const trackingUrl = `${UTAGE_BASE_URL}/funnel/${config.funnelId}/tracking`;
-    const pattern = new RegExp(`TikTok広告-${appeal}-LP${lpNumber}-CR(0\\d{4})`, 'g');
+    const pattern = new RegExp(
+      `TikTok広告-${appeal}-LP${lpNumber}-CR(0\\d{4})`,
+      'g',
+    );
     const allNumbers: number[] = [];
     const MAX_PAGES = 30;
 
@@ -173,17 +203,21 @@ export class UtageService {
       const url = page === 1 ? trackingUrl : `${trackingUrl}?page=${page}`;
       const { html } = await this.authedGet(url);
       const matches = [...html.matchAll(pattern)];
-      allNumbers.push(...matches.map(m => parseInt(m[1])));
+      allNumbers.push(...matches.map((m) => parseInt(m[1])));
       if (!html.includes(`page=${page + 1}`)) break;
     }
 
     if (allNumbers.length === 0) {
-      this.logger.log(`UTAGE: ${appeal} LP${lpNumber} の既存登録経路が見つかりません。CR00001から開始します。`);
+      this.logger.log(
+        `UTAGE: ${appeal} LP${lpNumber} の既存登録経路が見つかりません。CR00001から開始します。`,
+      );
       return 0;
     }
 
     const maxCr = Math.max(...allNumbers);
-    this.logger.log(`UTAGE: ${appeal} LP${lpNumber} 最新CR番号 = ${maxCr} (${allNumbers.length}件中、全ページ走査)`);
+    this.logger.log(
+      `UTAGE: ${appeal} LP${lpNumber} 最新CR番号 = ${maxCr} (${allNumbers.length}件中、全ページ走査)`,
+    );
     return maxCr;
   }
 
@@ -205,7 +239,9 @@ export class UtageService {
         await this.prisma.crNumberReservation.create({
           data: { appeal, lpNumber, crNumber: candidate },
         });
-        this.logger.log(`CR番号予約成功: ${appeal} LP${lpNumber} CR${String(candidate).padStart(5, '0')} (utageMax=${utageMax}, dbMax=${dbMax})`);
+        this.logger.log(
+          `CR番号予約成功: ${appeal} LP${lpNumber} CR${String(candidate).padStart(5, '0')} (utageMax=${utageMax}, dbMax=${dbMax})`,
+        );
         return candidate;
       } catch (e: any) {
         if (e?.code === 'P2002') {
@@ -241,17 +277,25 @@ export class UtageService {
     const createFormUrl = `${UTAGE_BASE_URL}/funnel/${config.funnelId}/tracking/create`;
     const { html: formHtml } = await this.authedGet(createFormUrl);
     const formToken = (() => {
-      try { return this.extractCsrfToken(formHtml); } catch { return this.csrfToken; }
+      try {
+        return this.extractCsrfToken(formHtml);
+      } catch {
+        return this.csrfToken;
+      }
     })();
 
     // フォームのaction URLを取得（name="name"またはname="group_id"を含むフォームを探す）
     let formAction = '';
-    const formRegex = /<form[^>]*action=["']([^"']*)["'][^>]*>([\s\S]*?)<\/form>/gi;
+    const formRegex =
+      /<form[^>]*action=["']([^"']*)["'][^>]*>([\s\S]*?)<\/form>/gi;
     let formMatch: RegExpExecArray | null;
     while ((formMatch = formRegex.exec(formHtml)) !== null) {
       const action = formMatch[1];
       const formBody = formMatch[2];
-      if (formBody.includes('name="name"') || formBody.includes('name="group_id"')) {
+      if (
+        formBody.includes('name="name"') ||
+        formBody.includes('name="group_id"')
+      ) {
         formAction = action;
         break;
       }
@@ -259,7 +303,9 @@ export class UtageService {
     if (!formAction) {
       formAction = `${UTAGE_BASE_URL}/funnel/${config.funnelId}/tracking`;
     }
-    const postUrl = formAction.startsWith('http') ? formAction : `${UTAGE_BASE_URL}${formAction}`;
+    const postUrl = formAction.startsWith('http')
+      ? formAction
+      : `${UTAGE_BASE_URL}${formAction}`;
 
     // Step 2: フォームをPOST送信
     const body = new URLSearchParams({
@@ -273,8 +319,8 @@ export class UtageService {
       method: 'POST',
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
-        'Cookie': this.sessionCookies,
-        'Referer': createFormUrl,
+        Cookie: this.sessionCookies,
+        Referer: createFormUrl,
       },
       body: body.toString(),
       redirect: 'manual',
@@ -285,7 +331,9 @@ export class UtageService {
     let listingHtml = '';
     if (postResp.status === 302) {
       const location = postResp.headers.get('location') || '';
-      const redirectUrl = location.startsWith('http') ? location : `${UTAGE_BASE_URL}${location}`;
+      const redirectUrl = location.startsWith('http')
+        ? location
+        : `${UTAGE_BASE_URL}${location}`;
       const { html } = await this.authedGet(redirectUrl);
       listingHtml = html;
     } else {
@@ -311,7 +359,9 @@ export class UtageService {
     if (foundIdx === -1) {
       const trackingListUrl = `${UTAGE_BASE_URL}/funnel/${config.funnelId}/tracking`;
       for (let page = 2; page <= 10; page++) {
-        const { html } = await this.authedGet(`${trackingListUrl}?page=${page}`);
+        const { html } = await this.authedGet(
+          `${trackingListUrl}?page=${page}`,
+        );
         foundIdx = html.indexOf(registrationPath);
         if (foundIdx !== -1) {
           foundHtml = html;
@@ -322,19 +372,28 @@ export class UtageService {
     }
 
     if (foundIdx === -1) {
-      throw new Error(`UTAGE: 作成した登録経路(${registrationPath})が一覧に見つかりません`);
+      throw new Error(
+        `UTAGE: 作成した登録経路(${registrationPath})が一覧に見つかりません`,
+      );
     }
 
     // URL抽出
-    const context = foundHtml.substring(Math.max(0, foundIdx - 500), foundIdx + 3000);
-    const urlPattern = new RegExp(`https://school\\.addness\\.co\\.jp/p/${config.stepId}\\?ftid=[a-zA-Z0-9]+`);
+    const context = foundHtml.substring(
+      Math.max(0, foundIdx - 500),
+      foundIdx + 3000,
+    );
+    const urlPattern = new RegExp(
+      `https://school\\.addness\\.co\\.jp/p/${config.stepId}\\?ftid=[a-zA-Z0-9]+`,
+    );
     const urlMatch = context.match(urlPattern);
     if (!urlMatch) {
       throw new Error(`UTAGE: 遷移先URLの取得に失敗 (${registrationPath})`);
     }
 
     const destinationUrl = urlMatch[0];
-    this.logger.log(`UTAGE: 登録経路作成完了 ${registrationPath} -> ${destinationUrl}`);
+    this.logger.log(
+      `UTAGE: 登録経路作成完了 ${registrationPath} -> ${destinationUrl}`,
+    );
 
     return { registrationPath, destinationUrl, crNumber };
   }

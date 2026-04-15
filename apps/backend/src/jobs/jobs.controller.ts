@@ -33,7 +33,9 @@ export class JobsController {
         },
       });
 
-      this.logger.log(`Updated expiresAt for ${result.count} tokens to ${futureDate.toISOString()}`);
+      this.logger.log(
+        `Updated expiresAt for ${result.count} tokens to ${futureDate.toISOString()}`,
+      );
 
       return {
         success: true,
@@ -144,7 +146,9 @@ export class JobsController {
    */
   @Post('run-entity-sync')
   async runEntitySync() {
-    this.logger.log('Manual trigger: Running daily entity sync batch job (including Smart+ ads)');
+    this.logger.log(
+      'Manual trigger: Running daily entity sync batch job (including Smart+ ads)',
+    );
 
     try {
       await this.schedulerService.scheduleDailyEntitySync();
@@ -235,7 +239,8 @@ export class JobsController {
   @Get('test-report')
   async testReport(
     @Query('advertiserId') advertiserId?: string,
-    @Query('dataLevel') dataLevel?: 'AUCTION_CAMPAIGN' | 'AUCTION_ADGROUP' | 'AUCTION_AD',
+    @Query('dataLevel')
+    dataLevel?: 'AUCTION_CAMPAIGN' | 'AUCTION_ADGROUP' | 'AUCTION_AD',
   ) {
     try {
       // 指定されたAdvertiserIDまたは最初の有効なトークンを取得
@@ -268,7 +273,9 @@ export class JobsController {
       // デフォルトはAUCTION_ADレベル
       const level = dataLevel || 'AUCTION_AD';
 
-      this.logger.log(`Testing report API for advertiser: ${token.advertiserId}, level: ${level}`);
+      this.logger.log(
+        `Testing report API for advertiser: ${token.advertiserId}, level: ${level}`,
+      );
 
       // 過去7日間のレポートデータを取得（JST基準で正しく計算）
       const now = new Date();
@@ -348,7 +355,9 @@ export class JobsController {
         };
       }
 
-      this.logger.log(`Checking entities for advertiser: ${token.advertiserId}`);
+      this.logger.log(
+        `Checking entities for advertiser: ${token.advertiserId}`,
+      );
 
       // Campaign一覧を取得
       const campaignsResult = await this.tiktokService.getCampaigns(
@@ -431,7 +440,9 @@ export class JobsController {
       const results: any[] = [];
 
       for (const token of tokens) {
-        this.logger.log(`Syncing entities for advertiser: ${token.advertiserId}`);
+        this.logger.log(
+          `Syncing entities for advertiser: ${token.advertiserId}`,
+        );
 
         try {
           // まずAdvertiserレコードを確実に存在させる
@@ -461,7 +472,9 @@ export class JobsController {
                 objectiveType: campaign.objective_type,
                 budgetMode: campaign.budget_mode,
                 budget: campaign.budget || null,
-                budgetOptimizeOn: campaign.budget_optimize_on === true || campaign.budget_optimize_on === 'ON',
+                budgetOptimizeOn:
+                  campaign.budget_optimize_on === true ||
+                  campaign.budget_optimize_on === 'ON',
                 initialBudget: campaign.budget || null,
                 status: campaign.operation_status,
               },
@@ -470,7 +483,9 @@ export class JobsController {
                 objectiveType: campaign.objective_type,
                 budgetMode: campaign.budget_mode,
                 budget: campaign.budget || null,
-                budgetOptimizeOn: campaign.budget_optimize_on === true || campaign.budget_optimize_on === 'ON',
+                budgetOptimizeOn:
+                  campaign.budget_optimize_on === true ||
+                  campaign.budget_optimize_on === 'ON',
                 status: campaign.operation_status,
               },
             });
@@ -491,7 +506,9 @@ export class JobsController {
             });
 
             if (!campaign) {
-              this.logger.warn(`Campaign ${adgroup.campaign_id} not found, skipping adgroup ${adgroup.adgroup_id}`);
+              this.logger.warn(
+                `Campaign ${adgroup.campaign_id} not found, skipping adgroup ${adgroup.adgroup_id}`,
+              );
               continue;
             }
 
@@ -507,7 +524,7 @@ export class JobsController {
                 initialBudget: adgroup.budget, // 入稿時の初期予算を記録（0時リセット時にこの値に戻す）
                 bidType: adgroup.bid_type,
                 bidPrice: adgroup.bid_price,
-                targeting: adgroup as any, // 全データを保存
+                targeting: adgroup, // 全データを保存
                 schedule: {
                   startTime: adgroup.schedule_start_time,
                   endTime: adgroup.schedule_end_time,
@@ -521,7 +538,7 @@ export class JobsController {
                 budget: adgroup.budget,
                 bidType: adgroup.bid_type,
                 bidPrice: adgroup.bid_price,
-                targeting: adgroup as any,
+                targeting: adgroup,
                 schedule: {
                   startTime: adgroup.schedule_start_time,
                   endTime: adgroup.schedule_end_time,
@@ -543,18 +560,26 @@ export class JobsController {
           // ad/get APIが返すsmart_plus_ad_idをキーに、正しい広告名を取得
           const smartPlusAdNameMap = new Map<string, string>();
           try {
-            const smartPlusAdsForNames = await this.tiktokService.getAllSmartPlusAds(
-              token.advertiserId,
-              token.accessToken,
-            );
+            const smartPlusAdsForNames =
+              await this.tiktokService.getAllSmartPlusAds(
+                token.advertiserId,
+                token.accessToken,
+              );
             for (const spAd of smartPlusAdsForNames) {
               if (spAd.smart_plus_ad_id && spAd.ad_name) {
-                smartPlusAdNameMap.set(String(spAd.smart_plus_ad_id), spAd.ad_name);
+                smartPlusAdNameMap.set(
+                  String(spAd.smart_plus_ad_id),
+                  spAd.ad_name,
+                );
               }
             }
-            this.logger.log(`Built Smart+ ad name map with ${smartPlusAdNameMap.size} entries`);
+            this.logger.log(
+              `Built Smart+ ad name map with ${smartPlusAdNameMap.size} entries`,
+            );
           } catch (error) {
-            this.logger.warn(`Failed to fetch Smart+ ads for name mapping: ${error.message}`);
+            this.logger.warn(
+              `Failed to fetch Smart+ ads for name mapping: ${error.message}`,
+            );
           }
 
           for (const ad of ads) {
@@ -564,7 +589,9 @@ export class JobsController {
             });
 
             if (!adgroup) {
-              this.logger.warn(`AdGroup ${ad.adgroup_id} not found, skipping ad ${ad.ad_id}`);
+              this.logger.warn(
+                `AdGroup ${ad.adgroup_id} not found, skipping ad ${ad.ad_id}`,
+              );
               continue;
             }
 
@@ -615,20 +642,27 @@ export class JobsController {
             }
 
             if (!creativeId) {
-              this.logger.warn(`No creative found for ad ${ad.ad_id}, skipping`);
+              this.logger.warn(
+                `No creative found for ad ${ad.ad_id}, skipping`,
+              );
               continue;
             }
 
             // Smart+ 広告の場合: smart_plus_ad_idをtiktokIdとして使用し、手動設定名を使用
             // これにより、予算最適化で正しい広告名（日付/制作者/CR名/LP名）が使われる
             const isSmartPlusAd = !!ad.smart_plus_ad_id;
-            const tiktokIdToUse = isSmartPlusAd ? String(ad.smart_plus_ad_id) : String(ad.ad_id);
+            const tiktokIdToUse = isSmartPlusAd
+              ? String(ad.smart_plus_ad_id)
+              : String(ad.ad_id);
             const adNameToUse = isSmartPlusAd
-              ? (smartPlusAdNameMap.get(String(ad.smart_plus_ad_id)) || ad.ad_name)
+              ? smartPlusAdNameMap.get(String(ad.smart_plus_ad_id)) ||
+                ad.ad_name
               : ad.ad_name;
 
             if (isSmartPlusAd) {
-              this.logger.debug(`Smart+ ad detected: ad_id=${ad.ad_id}, smart_plus_ad_id=${ad.smart_plus_ad_id}, name=${adNameToUse}`);
+              this.logger.debug(
+                `Smart+ ad detected: ad_id=${ad.ad_id}, smart_plus_ad_id=${ad.smart_plus_ad_id}, name=${adNameToUse}`,
+              );
             }
 
             await this.prisma.ad.upsert({
@@ -670,7 +704,10 @@ export class JobsController {
             `Synced for ${token.advertiserId}: ${campaignsSynced} campaigns, ${adgroupsSynced} adgroups, ${adsSynced} ads`,
           );
         } catch (error) {
-          this.logger.error(`Failed to sync entities for ${token.advertiserId}`, error);
+          this.logger.error(
+            `Failed to sync entities for ${token.advertiserId}`,
+            error,
+          );
           results.push({
             advertiserId: token.advertiserId,
             success: false,
@@ -709,16 +746,27 @@ export class JobsController {
   ) {
     const isDryRun = dryRun === 'true';
     const excludedList = excludedAdvertisers
-      ? excludedAdvertisers.split(',').map(id => id.trim()).filter(id => id)
+      ? excludedAdvertisers
+          .split(',')
+          .map((id) => id.trim())
+          .filter((id) => id)
       : undefined;
 
-    this.logger.log(`Manual trigger: Running intraday CPA check${isDryRun ? ' (DRY RUN)' : ''}${excludedList ? ` (excluding: ${excludedList.join(', ')})` : ''}`);
+    this.logger.log(
+      `Manual trigger: Running intraday CPA check${isDryRun ? ' (DRY RUN)' : ''}${excludedList ? ` (excluding: ${excludedList.join(', ')})` : ''}`,
+    );
 
     try {
-      const result = await this.intradayOptimizationService.executeIntradayCPACheck(isDryRun, excludedList);
+      const result =
+        await this.intradayOptimizationService.executeIntradayCPACheck(
+          isDryRun,
+          excludedList,
+        );
       return {
         success: true,
-        message: isDryRun ? 'Intraday CPA check dry run completed' : 'Intraday CPA check completed',
+        message: isDryRun
+          ? 'Intraday CPA check dry run completed'
+          : 'Intraday CPA check completed',
         data: result,
       };
     } catch (error) {
@@ -739,7 +787,8 @@ export class JobsController {
     this.logger.log('Manual trigger: Running intraday ad resume');
 
     try {
-      const result = await this.intradayOptimizationService.executeIntradayResume();
+      const result =
+        await this.intradayOptimizationService.executeIntradayResume();
       return {
         success: true,
         message: 'Intraday ad resume completed',
@@ -763,7 +812,8 @@ export class JobsController {
     this.logger.log('Manual trigger: Running intraday budget restore');
 
     try {
-      const result = await this.intradayOptimizationService.executeIntradayBudgetRestore();
+      const result =
+        await this.intradayOptimizationService.executeIntradayBudgetRestore();
       return {
         success: true,
         message: 'Intraday budget restore completed',
@@ -794,8 +844,11 @@ export class JobsController {
     );
 
     try {
-      const target = targetDate ? new Date(targetDate + 'T00:00:00Z') : undefined;
-      const result = await this.adCountRecordingService.recordDailyCounts(target);
+      const target = targetDate
+        ? new Date(targetDate + 'T00:00:00Z')
+        : undefined;
+      const result =
+        await this.adCountRecordingService.recordDailyCounts(target);
       return {
         success: true,
         message: 'Daily ad count recording completed',

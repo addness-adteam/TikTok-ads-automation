@@ -47,7 +47,9 @@ export class StreamlinedCreatorController {
    */
   @Post('create-single')
   async createSingle(@Body() input: CreateSingleInput) {
-    this.logger.log(`ワンストップ出稿: ${input.gigafileUrl} → ${input.advertiserId}`);
+    this.logger.log(
+      `ワンストップ出稿: ${input.gigafileUrl} → ${input.advertiserId}`,
+    );
     return this.service.createSingle(input);
   }
 

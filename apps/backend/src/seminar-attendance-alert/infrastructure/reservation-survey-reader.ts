@@ -23,10 +23,15 @@ export class SheetsReservationSurveyReader implements ReservationSurveyReader {
 
   async load(): Promise<ReservationRecord[]> {
     // 閲覧権限付与後、最初のタブ名を自動特定して読む
-    const meta = await (this.sheets as any).sheets.spreadsheets.get({ spreadsheetId: SURVEY_SHEET_ID });
+    const meta = await (this.sheets as any).sheets.spreadsheets.get({
+      spreadsheetId: SURVEY_SHEET_ID,
+    });
     const firstTab = meta.data.sheets?.[0]?.properties?.title;
     if (!firstTab) throw new Error('予約者アンケート: タブが見つからない');
-    const rows = await this.sheets.getValues(SURVEY_SHEET_ID, `${firstTab}!A1:Z`);
+    const rows = await this.sheets.getValues(
+      SURVEY_SHEET_ID,
+      `${firstTab}!A1:Z`,
+    );
     return this.parseRows(rows);
   }
 
@@ -53,8 +58,12 @@ export class SheetsReservationSurveyReader implements ReservationSurveyReader {
     const s = String(v).trim();
     // Google Form の日時は "2026/04/05 12:34:56" や "2026-04-05T12:34:56" 形式
     const normalized = s.replace(/\//g, '-').replace(' ', 'T');
-    const tzAware = normalized.length > 10 && !normalized.endsWith('Z') && !/[\+\-]\d{2}:?\d{2}$/.test(normalized)
-      ? normalized + '+09:00' : normalized;
+    const tzAware =
+      normalized.length > 10 &&
+      !normalized.endsWith('Z') &&
+      !/[\+\-]\d{2}:?\d{2}$/.test(normalized)
+        ? normalized + '+09:00'
+        : normalized;
     const d = new Date(tzAware);
     return isNaN(d.getTime()) ? null : d;
   }

@@ -38,7 +38,9 @@ export class AdBudgetCapService {
     startDate?: Date;
     endDate?: Date;
   }): Promise<any> {
-    const internalAdvertiserId = await this.resolveAdvertiserId(data.advertiserId);
+    const internalAdvertiserId = await this.resolveAdvertiserId(
+      data.advertiserId,
+    );
 
     return this.prisma.adBudgetCap.upsert({
       where: { adId: data.adId },
@@ -150,16 +152,10 @@ export class AdBudgetCapService {
           adgroupId,
         },
         enabled: true,
-        OR: [
-          { startDate: null },
-          { startDate: { lte: today } },
-        ],
+        OR: [{ startDate: null }, { startDate: { lte: today } }],
         AND: [
           {
-            OR: [
-              { endDate: null },
-              { endDate: { gte: today } },
-            ],
+            OR: [{ endDate: null }, { endDate: { gte: today } }],
           },
         ],
       },
@@ -208,16 +204,10 @@ export class AdBudgetCapService {
           },
         },
         enabled: true,
-        OR: [
-          { startDate: null },
-          { startDate: { lte: today } },
-        ],
+        OR: [{ startDate: null }, { startDate: { lte: today } }],
         AND: [
           {
-            OR: [
-              { endDate: null },
-              { endDate: { gte: today } },
-            ],
+            OR: [{ endDate: null }, { endDate: { gte: today } }],
           },
         ],
       },

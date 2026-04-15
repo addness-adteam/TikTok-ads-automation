@@ -1,6 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { GoogleSheetsService } from '../../google-sheets/google-sheets.service';
-import { AllowableSeminarSeatCpo, YearMonth } from '../domain/value-objects/allowable-seminar-seat-cpo';
+import {
+  AllowableSeminarSeatCpo,
+  YearMonth,
+} from '../domain/value-objects/allowable-seminar-seat-cpo';
 import { JPY } from '../domain/value-objects/jpy';
 
 /** 数値管理シートから月次許容セミナー着座CPOを取得する */
@@ -19,16 +22,24 @@ export class SheetsAllowableCpoResolver implements AllowableCpoResolver {
   constructor(private readonly sheets: GoogleSheetsService) {}
 
   async resolve(month: YearMonth): Promise<AllowableSeminarSeatCpo | null> {
-    const rows = await this.sheets.getValues(KPI_SHEET_ID, `${KPI_TAB}!A1:AZ500`);
+    const rows = await this.sheets.getValues(
+      KPI_SHEET_ID,
+      `${KPI_TAB}!A1:AZ500`,
+    );
     return this.extractFromRows(rows, month);
   }
 
   /**
    * 純粋関数として切り出してテスト可能にする
    */
-  extractFromRows(rows: string[][], month: YearMonth): AllowableSeminarSeatCpo | null {
+  extractFromRows(
+    rows: string[][],
+    month: YearMonth,
+  ): AllowableSeminarSeatCpo | null {
     // 1) 月ブロック開始行を探す: A列が "YYYY/M/1" の行
-    const monthStartPattern = new RegExp(`^${month.year}[\\/\\-]${month.month}[\\/\\-]1$`);
+    const monthStartPattern = new RegExp(
+      `^${month.year}[\\/\\-]${month.month}[\\/\\-]1$`,
+    );
     let startRow = -1;
     for (let i = 0; i < rows.length; i++) {
       const a = String(rows[i]?.[0] ?? '').trim();
@@ -55,7 +66,9 @@ export class SheetsAllowableCpoResolver implements AllowableCpoResolver {
           const valueCell = row[c + 1];
           const parsed = this.parseAmount(valueCell);
           if (parsed != null) {
-            this.logger.log(`[許容セミナー着座CPO] ${month.toString()} = ¥${parsed} (row ${i}, col ${c + 1})`);
+            this.logger.log(
+              `[許容セミナー着座CPO] ${month.toString()} = ¥${parsed} (row ${i}, col ${c + 1})`,
+            );
             return AllowableSeminarSeatCpo.of(month, JPY.of(parsed));
           }
         }
@@ -70,13 +83,17 @@ export class SheetsAllowableCpoResolver implements AllowableCpoResolver {
           const valueCell = row[c + 1];
           const parsed = this.parseAmount(valueCell);
           if (parsed != null) {
-            this.logger.log(`[セミナー着座CPO(許容)] ${month.toString()} = ¥${parsed} (row ${i}, col ${c + 1})`);
+            this.logger.log(
+              `[セミナー着座CPO(許容)] ${month.toString()} = ¥${parsed} (row ${i}, col ${c + 1})`,
+            );
             return AllowableSeminarSeatCpo.of(month, JPY.of(parsed));
           }
         }
       }
     }
-    this.logger.warn(`許容セミナー着座CPO セルが見つからない: ${month.toString()}`);
+    this.logger.warn(
+      `許容セミナー着座CPO セルが見つからない: ${month.toString()}`,
+    );
     return null;
   }
 

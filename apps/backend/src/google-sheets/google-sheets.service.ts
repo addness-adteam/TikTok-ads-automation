@@ -27,8 +27,22 @@ interface SheetCacheEntry {
  * date: 登録日時列
  */
 const EXPECTED_COLUMNS = {
-  registrationPath: ['登録経路', '流入経路', 'registration_path', 'path', 'ファネル登録経路'],
-  date: ['登録日時', '登録日', 'date', 'created_at', 'timestamp', 'アクション実行日時', '実行日時'],
+  registrationPath: [
+    '登録経路',
+    '流入経路',
+    'registration_path',
+    'path',
+    'ファネル登録経路',
+  ],
+  date: [
+    '登録日時',
+    '登録日',
+    'date',
+    'created_at',
+    'timestamp',
+    'アクション実行日時',
+    '実行日時',
+  ],
 };
 
 @Injectable()
@@ -43,7 +57,8 @@ export class GoogleSheetsService {
   constructor(private configService: ConfigService) {
     // サービスアカウント認証
     const credentials = JSON.parse(
-      this.configService.get<string>('GOOGLE_SERVICE_ACCOUNT_CREDENTIALS') || '{}',
+      this.configService.get<string>('GOOGLE_SERVICE_ACCOUNT_CREDENTIALS') ||
+        '{}',
     );
 
     this.auth = new google.auth.GoogleAuth({
@@ -78,16 +93,19 @@ export class GoogleSheetsService {
     }
 
     // キャッシュがない、または期限切れの場合は新規取得（リトライ付き）
-    this.logger.log(`Fetching fresh data from spreadsheet: ${spreadsheetId}, sheet: ${sheetName}`);
+    this.logger.log(
+      `Fetching fresh data from spreadsheet: ${spreadsheetId}, sheet: ${sheetName}`,
+    );
 
     const fullRange = `${sheetName}!${range}`;
 
     try {
       const response = await withRetry<any>(
-        () => this.sheets.spreadsheets.values.get({
-          spreadsheetId,
-          range: fullRange,
-        }),
+        () =>
+          this.sheets.spreadsheets.values.get({
+            spreadsheetId,
+            range: fullRange,
+          }),
         {
           maxRetries: 3,
           initialDelayMs: 1000,
@@ -95,7 +113,11 @@ export class GoogleSheetsService {
           retryableErrors: isGoogleSheetsErrorRetryable,
           onRetry: (error, attempt, delayMs) => {
             const errorInfo = classifyGoogleSheetsError(error);
-            logGoogleSheetsError(this.logger, errorInfo, `getSheetData(${sheetName})`);
+            logGoogleSheetsError(
+              this.logger,
+              errorInfo,
+              `getSheetData(${sheetName})`,
+            );
             this.logger.warn(
               `[getSheetData] Attempt ${attempt}/3 failed. Retrying in ${delayMs}ms...`,
             );
@@ -118,7 +140,11 @@ export class GoogleSheetsService {
       return data;
     } catch (error) {
       const errorInfo = classifyGoogleSheetsError(error);
-      logGoogleSheetsError(this.logger, errorInfo, `getSheetData(${sheetName})`);
+      logGoogleSheetsError(
+        this.logger,
+        errorInfo,
+        `getSheetData(${sheetName})`,
+      );
       throw error;
     }
   }
@@ -143,8 +169,14 @@ export class GoogleSheetsService {
 
     // キャッシュをチェック（列位置情報も含む）
     const cached = this.sheetCache.get(fullRangeCacheKey);
-    if (cached && now - cached.timestamp < this.CACHE_TTL_MS && cached.columnPositions) {
-      this.logger.log(`Using cached data with column positions for ${spreadsheetId}/${sheetName}`);
+    if (
+      cached &&
+      now - cached.timestamp < this.CACHE_TTL_MS &&
+      cached.columnPositions
+    ) {
+      this.logger.log(
+        `Using cached data with column positions for ${spreadsheetId}/${sheetName}`,
+      );
       return {
         data: cached.data,
         columnPositions: cached.columnPositions,
@@ -153,7 +185,11 @@ export class GoogleSheetsService {
     }
 
     // データ取得
-    const data = await this.getSheetDataWithCache(spreadsheetId, sheetName, 'A:Z');
+    const data = await this.getSheetDataWithCache(
+      spreadsheetId,
+      sheetName,
+      'A:Z',
+    );
 
     if (!data || data.length === 0) {
       return {
@@ -217,7 +253,9 @@ export class GoogleSheetsService {
           backoffMultiplier: 2,
           retryableErrors: isGoogleSheetsErrorRetryable,
           onRetry: (error, attempt, delayMs) => {
-            this.logger.warn(`[getValues] Attempt ${attempt}/3 failed. Retrying in ${delayMs}ms...`);
+            this.logger.warn(
+              `[getValues] Attempt ${attempt}/3 failed. Retrying in ${delayMs}ms...`,
+            );
           },
         },
         this.logger,
@@ -243,19 +281,22 @@ export class GoogleSheetsService {
   ): Promise<void> {
     try {
       await withRetry<any>(
-        () => this.sheets.spreadsheets.values.update({
-          spreadsheetId,
-          range,
-          valueInputOption: 'USER_ENTERED',
-          requestBody: { values },
-        }),
+        () =>
+          this.sheets.spreadsheets.values.update({
+            spreadsheetId,
+            range,
+            valueInputOption: 'USER_ENTERED',
+            requestBody: { values },
+          }),
         {
           maxRetries: 3,
           initialDelayMs: 1000,
           backoffMultiplier: 2,
           retryableErrors: isGoogleSheetsErrorRetryable,
           onRetry: (error, attempt, delayMs) => {
-            this.logger.warn(`[updateValues] Attempt ${attempt}/3 failed. Retrying in ${delayMs}ms...`);
+            this.logger.warn(
+              `[updateValues] Attempt ${attempt}/3 failed. Retrying in ${delayMs}ms...`,
+            );
           },
         },
         this.logger,
@@ -281,20 +322,23 @@ export class GoogleSheetsService {
   ): Promise<void> {
     try {
       await withRetry<any>(
-        () => this.sheets.spreadsheets.values.append({
-          spreadsheetId,
-          range,
-          valueInputOption: 'USER_ENTERED',
-          insertDataOption: 'INSERT_ROWS',
-          requestBody: { values },
-        }),
+        () =>
+          this.sheets.spreadsheets.values.append({
+            spreadsheetId,
+            range,
+            valueInputOption: 'USER_ENTERED',
+            insertDataOption: 'INSERT_ROWS',
+            requestBody: { values },
+          }),
         {
           maxRetries: 3,
           initialDelayMs: 1000,
           backoffMultiplier: 2,
           retryableErrors: isGoogleSheetsErrorRetryable,
           onRetry: (error, attempt, delayMs) => {
-            this.logger.warn(`[appendValues] Attempt ${attempt}/3 failed. Retrying in ${delayMs}ms...`);
+            this.logger.warn(
+              `[appendValues] Attempt ${attempt}/3 failed. Retrying in ${delayMs}ms...`,
+            );
           },
         },
         this.logger,
@@ -334,7 +378,9 @@ export class GoogleSheetsService {
 
       if (oldestKey) {
         this.sheetCache.delete(oldestKey);
-        this.logger.log(`[M-03] キャッシュ上限到達: 最古のエントリを削除 (${oldestKey})`);
+        this.logger.log(
+          `[M-03] キャッシュ上限到達: 最古のエントリを削除 (${oldestKey})`,
+        );
       }
     }
   }
@@ -365,8 +411,11 @@ export class GoogleSheetsService {
       );
 
       // シート全体のデータを取得（G-06: 鮮度チェック、G-07: 列位置自動検出）
-      const { data: rows, columnPositions, freshnessWarning } =
-        await this.getSheetDataWithColumnDetection(spreadsheetId, sheetName);
+      const {
+        data: rows,
+        columnPositions,
+        freshnessWarning,
+      } = await this.getSheetDataWithColumnDetection(spreadsheetId, sheetName);
 
       // 鮮度警告がある場合はログに出力（処理は継続）
       if (freshnessWarning) {
@@ -420,7 +469,11 @@ export class GoogleSheetsService {
     } catch (error) {
       // エラーを分類してログ出力
       const errorInfo = classifyGoogleSheetsError(error);
-      logGoogleSheetsError(this.logger, errorInfo, `countRegistrationPath(${sheetName})`);
+      logGoogleSheetsError(
+        this.logger,
+        errorInfo,
+        `countRegistrationPath(${sheetName})`,
+      );
       throw error;
     }
   }
@@ -455,7 +508,8 @@ export class GoogleSheetsService {
         const pathValue = row[columnPositions.registrationPath];
         const dateValue = row[columnPositions.date];
 
-        if (!pathValue || !dateValue || pathValue !== registrationPath) continue;
+        if (!pathValue || !dateValue || pathValue !== registrationPath)
+          continue;
 
         const rowDate = this.parseDate(dateValue);
         if (!rowDate || rowDate < startDate || rowDate > endDate) continue;
@@ -471,7 +525,9 @@ export class GoogleSheetsService {
 
       return maxCount;
     } catch (error) {
-      this.logger.warn(`getMaxDailyCVCount failed for ${registrationPath}: ${error.message}`);
+      this.logger.warn(
+        `getMaxDailyCVCount failed for ${registrationPath}: ${error.message}`,
+      );
       return 0;
     }
   }
@@ -492,7 +548,13 @@ export class GoogleSheetsService {
     endDate: Date,
   ): Promise<number> {
     const sheetName = 'TT_オプト';
-    return this.countRegistrationPath(cvSpreadsheetUrl, sheetName, registrationPath, startDate, endDate);
+    return this.countRegistrationPath(
+      cvSpreadsheetUrl,
+      sheetName,
+      registrationPath,
+      startDate,
+      endDate,
+    );
   }
 
   /**
@@ -550,7 +612,11 @@ export class GoogleSheetsService {
 
     if (!validation.isValid) {
       if (validation.error) {
-        logGoogleSheetsError(this.logger, validation.error, 'extractSpreadsheetId');
+        logGoogleSheetsError(
+          this.logger,
+          validation.error,
+          'extractSpreadsheetId',
+        );
       }
       throw new Error(`[G-08] Invalid spreadsheet URL: ${url}`);
     }
@@ -580,8 +646,15 @@ export class GoogleSheetsService {
     startDate: Date,
     endDate: Date,
   ): Promise<number> {
-    const config: Record<string, { sheetName: string; dateColumnIndex: number; pathColumnIndex: number }> = {
-      SEMINAR: { sheetName: 'スキルプラス（オートウェビナー用）', dateColumnIndex: 0, pathColumnIndex: 34 },
+    const config: Record<
+      string,
+      { sheetName: string; dateColumnIndex: number; pathColumnIndex: number }
+    > = {
+      SEMINAR: {
+        sheetName: 'スキルプラス（オートウェビナー用）',
+        dateColumnIndex: 0,
+        pathColumnIndex: 34,
+      },
       AI: { sheetName: 'AI', dateColumnIndex: 0, pathColumnIndex: 46 },
       SNS: { sheetName: 'SNS', dateColumnIndex: 0, pathColumnIndex: 46 },
     };
@@ -594,7 +667,11 @@ export class GoogleSheetsService {
 
     try {
       // AU列(46)まで取得するために A:AZ の範囲を指定
-      const rows = await this.getSheetDataWithCache(spreadsheetId, sheetName, 'A:AZ');
+      const rows = await this.getSheetDataWithCache(
+        spreadsheetId,
+        sheetName,
+        'A:AZ',
+      );
 
       if (!rows || rows.length === 0) {
         this.logger.warn(`[個別予約] No data found in sheet: ${sheetName}`);
@@ -634,7 +711,11 @@ export class GoogleSheetsService {
       return count;
     } catch (error) {
       const errorInfo = classifyGoogleSheetsError(error);
-      logGoogleSheetsError(this.logger, errorInfo, `getIndividualReservationCount(${sheetName})`);
+      logGoogleSheetsError(
+        this.logger,
+        errorInfo,
+        `getIndividualReservationCount(${sheetName})`,
+      );
       throw error;
     }
   }

@@ -16,14 +16,16 @@ describe('SheetsReservationSurveyReader.parseRows', () => {
     expect(result[0].reservedAt.toISOString()).toBe('2026-04-05T03:34:56.000Z'); // JST→UTC
   });
   it('メアド空行/日付空行はskip', () => {
-    const rows = [['header'],
+    const rows = [
+      ['header'],
       ['', '', '', '', '', '', '', 'only-email@x.com'],
       ['', '2026/04/06', '', '', '', '', '', ''],
     ];
     expect(reader.parseRows(rows).length).toBe(0);
   });
   it('@を含まない値は除外', () => {
-    const rows = [['header'],
+    const rows = [
+      ['header'],
       ['', '2026/04/06 10:00:00', '', '', '', '', '', 'invalid-email'],
     ];
     expect(reader.parseRows(rows).length).toBe(0);

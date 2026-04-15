@@ -1,7 +1,15 @@
 /**
  * 横展開コントローラー
  */
-import { Controller, Get, Post, Body, Param, Query, Logger } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Param,
+  Query,
+  Logger,
+} from '@nestjs/common';
 import { CrossDeployService } from './cross-deploy.service';
 import { CrossDeployInput } from './types';
 
@@ -30,7 +38,9 @@ export class CrossDeployController {
    */
   @Post('deploy')
   async deploy(@Body() input: CrossDeployInput) {
-    this.logger.log(`Deploy request: ${input.sourceAdId} → ${input.targetAdvertiserIds.join(', ')}`);
+    this.logger.log(
+      `Deploy request: ${input.sourceAdId} → ${input.targetAdvertiserIds.join(', ')}`,
+    );
     return this.crossDeployService.crossDeploy({ ...input, dryRun: false });
   }
 
@@ -40,7 +50,9 @@ export class CrossDeployController {
    */
   @Post('dry-run')
   async dryRun(@Body() input: CrossDeployInput) {
-    this.logger.log(`Dry-run request: ${input.sourceAdId} → ${input.targetAdvertiserIds.join(', ')}`);
+    this.logger.log(
+      `Dry-run request: ${input.sourceAdId} → ${input.targetAdvertiserIds.join(', ')}`,
+    );
     return this.crossDeployService.crossDeploy({ ...input, dryRun: true });
   }
 

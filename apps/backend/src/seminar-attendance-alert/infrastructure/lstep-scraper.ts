@@ -40,7 +40,9 @@ export class PlaywrightLstepScraper implements AttendanceCsvFetcher {
     // 動的importでplaywright依存を必要時のみロード（CI環境以外で壊れない）
     const { chromium } = await import('playwright');
 
-    this.logger.log('Lステップスクレイピング開始 (storageStateでログインスキップ)');
+    this.logger.log(
+      'Lステップスクレイピング開始 (storageStateでログインスキップ)',
+    );
     const browser = await chromium.launch({
       headless: true,
       args: [
@@ -51,7 +53,8 @@ export class PlaywrightLstepScraper implements AttendanceCsvFetcher {
     const context = await browser.newContext({
       acceptDownloads: true,
       viewport: { width: 1400, height: 900 },
-      userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+      userAgent:
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
       storageState,
     });
     await context.addInitScript(() => {
@@ -69,15 +72,31 @@ export class PlaywrightLstepScraper implements AttendanceCsvFetcher {
         this.logger.warn(`[DIAG:${stage}] title=${await page.title()}`);
         // input要素を列挙
         const inputs = await page.$$eval('input', (els) =>
-          els.map((e: any) => ({ type: e.type, name: e.name, id: e.id, placeholder: e.placeholder, class: e.className })),
+          els.map((e: any) => ({
+            type: e.type,
+            name: e.name,
+            id: e.id,
+            placeholder: e.placeholder,
+            class: e.className,
+          })),
         );
-        this.logger.warn(`[DIAG:${stage}] inputs=${JSON.stringify(inputs).slice(0, 2000)}`);
+        this.logger.warn(
+          `[DIAG:${stage}] inputs=${JSON.stringify(inputs).slice(0, 2000)}`,
+        );
         // フォーム要素
         const forms = await page.$$eval('form', (els) =>
-          els.map((e: any) => ({ id: e.id, action: e.action, method: e.method })),
+          els.map((e: any) => ({
+            id: e.id,
+            action: e.action,
+            method: e.method,
+          })),
         );
-        this.logger.warn(`[DIAG:${stage}] forms=${JSON.stringify(forms).slice(0, 1000)}`);
-        this.logger.warn(`[DIAG:${stage}] HTML先頭2KB:\n${html.slice(0, 2000)}`);
+        this.logger.warn(
+          `[DIAG:${stage}] forms=${JSON.stringify(forms).slice(0, 1000)}`,
+        );
+        this.logger.warn(
+          `[DIAG:${stage}] HTML先頭2KB:\n${html.slice(0, 2000)}`,
+        );
       } catch (e: any) {
         this.logger.warn(`[DIAG] 診断失敗: ${e.message}`);
       }
@@ -85,19 +104,24 @@ export class PlaywrightLstepScraper implements AttendanceCsvFetcher {
 
     try {
       // 1) セッション有効性チェック: ダッシュボードへ直接アクセス
-      await page.goto('https://manager.linestep.net/', { waitUntil: 'domcontentloaded', timeout: 60000 });
+      await page.goto('https://manager.linestep.net/', {
+        waitUntil: 'domcontentloaded',
+        timeout: 60000,
+      });
       await page.waitForTimeout(2000);
       if (page.url().includes('/account/login')) {
         await dumpOnError('session-expired');
         throw new Error(
           'Lステップセッションが期限切れ。ローカルで scripts/capture-lstep-session.ts を再実行し、' +
-          'GitHub Secrets LSTEP_STORAGE_STATE_B64 を更新してください',
+            'GitHub Secrets LSTEP_STORAGE_STATE_B64 を更新してください',
         );
       }
       this.logger.log(`セッション有効: ${page.url()}`);
 
       // 2) 友だちリスト直接遷移（URLで）
-      await page.goto('https://manager.linestep.net/line/show', { waitUntil: 'domcontentloaded' });
+      await page.goto('https://manager.linestep.net/line/show', {
+        waitUntil: 'domcontentloaded',
+      });
       await page.waitForTimeout(2000);
 
       // 3) CSV操作 → CSVエクスポート
@@ -106,20 +130,35 @@ export class PlaywrightLstepScraper implements AttendanceCsvFetcher {
       try {
         await page.getByText('CSV操作', { exact: false }).first().click();
         await page.waitForTimeout(1000);
-        await page.getByText('CSVエクスポート', { exact: false }).first().click();
+        await page
+          .getByText('CSVエクスポート', { exact: false })
+          .first()
+          .click();
         await page.waitForLoadState('domcontentloaded');
-        await page.waitForURL(/\/line\/exporter\/.*\/register/, { timeout: 15000 });
+        await page.waitForURL(/\/line\/exporter\/.*\/register/, {
+          timeout: 15000,
+        });
       } catch (e: any) {
         await dumpOnError('csv-export-nav');
         throw new Error(`CSVエクスポート画面への遷移失敗: ${e.message}`);
       }
 
       // 4) 条件設定: LINE登録名にチェック + タグ選択
-      await page.getByLabel(/LINE登録名/).check().catch(() => {});
-      await page.getByText('ウェビナー①_着座', { exact: false }).first().click().catch(() => {});
+      await page
+        .getByLabel(/LINE登録名/)
+        .check()
+        .catch(() => {});
+      await page
+        .getByText('ウェビナー①_着座', { exact: false })
+        .first()
+        .click()
+        .catch(() => {});
 
       // 5) ダウンロードボタン押下 → 非同期ジョブ実行 → /list へリダイレクト
-      await page.getByText('この条件でダウンロード', { exact: false }).first().click();
+      await page
+        .getByText('この条件でダウンロード', { exact: false })
+        .first()
+        .click();
       await page.waitForURL(/\/line\/exporter\/.*\/list/, { timeout: 30000 });
       this.logger.log(`ジョブ実行中: ${page.url()}`);
 
@@ -138,7 +177,9 @@ export class PlaywrightLstepScraper implements AttendanceCsvFetcher {
           this.logger.log('ダウンロード可能');
           break;
         }
-        this.logger.log(`ジョブ待機中... ${Math.round((Date.now() - startedAt) / 1000)}s`);
+        this.logger.log(
+          `ジョブ待機中... ${Math.round((Date.now() - startedAt) / 1000)}s`,
+        );
         await page.waitForTimeout(pollInterval);
       }
       if (!downloadLink) {

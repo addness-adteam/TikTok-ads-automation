@@ -11,7 +11,8 @@ describe('hypothesis-tracker', () => {
     it('仮説を作成するとPENDING状態になる', () => {
       const h = createHypothesis({
         channelType: 'AI',
-        hypothesis: 'CR01065をAI_2に横展開。AI_3で個別予約CPO ¥22,615なのでAI_2でも同等の成績が出るはず',
+        hypothesis:
+          'CR01065をAI_2に横展開。AI_3で個別予約CPO ¥22,615なのでAI_2でも同等の成績が出るはず',
       });
       expect(h.status).toBe('PENDING');
       expect(h.hypothesis).toContain('CR01065');
@@ -21,7 +22,10 @@ describe('hypothesis-tracker', () => {
 
   describe('startTracking', () => {
     it('広告IDを紐付けるとRUNNING状態になる', () => {
-      const h = createHypothesis({ channelType: 'AI', hypothesis: 'テスト仮説' });
+      const h = createHypothesis({
+        channelType: 'AI',
+        hypothesis: 'テスト仮説',
+      });
       const running = startTracking(h, {
         adId: '1860419942288418',
         adName: '260323/鈴木織大/尻込み_ちえみさん/LP1-CR01094',
@@ -76,7 +80,10 @@ describe('hypothesis-tracker', () => {
   describe('evaluateHypothesis', () => {
     it('仮説が検証され成功の場合、EVALUATED + SUCCESSになる', () => {
       const h = startTracking(
-        createHypothesis({ channelType: 'AI', hypothesis: '横展開でも成績が出る' }),
+        createHypothesis({
+          channelType: 'AI',
+          hypothesis: '横展開でも成績が出る',
+        }),
         { adId: '123', adName: 'test/ad', account: 'AI_2' },
       );
 

@@ -12,11 +12,18 @@ export class DashboardService {
     private configService: ConfigService,
     private tiktokService: TiktokService,
   ) {
-    this.accessToken = this.configService.get<string>('TIKTOK_ACCESS_TOKEN') || '';
-    const idsString = this.configService.get<string>('TIKTOK_ADVERTISER_IDS') || '';
-    this.advertiserIds = idsString.split(',').map(id => id.trim()).filter(id => id);
+    this.accessToken =
+      this.configService.get<string>('TIKTOK_ACCESS_TOKEN') || '';
+    const idsString =
+      this.configService.get<string>('TIKTOK_ADVERTISER_IDS') || '';
+    this.advertiserIds = idsString
+      .split(',')
+      .map((id) => id.trim())
+      .filter((id) => id);
 
-    this.logger.log(`Initialized with ${this.advertiserIds.length} advertiser IDs`);
+    this.logger.log(
+      `Initialized with ${this.advertiserIds.length} advertiser IDs`,
+    );
   }
 
   /**
@@ -24,7 +31,9 @@ export class DashboardService {
    */
   async getAggregatedDashboardData() {
     const endDate = new Date().toISOString().split('T')[0];
-    const startDate = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+    const startDate = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
+      .toISOString()
+      .split('T')[0];
 
     this.logger.log(`Fetching data for period: ${startDate} to ${endDate}`);
 
@@ -80,7 +89,9 @@ export class DashboardService {
               name: c.campaign_name,
               objectiveType: c.objective_type,
               budgetMode: c.budget_mode || adGroupBudgetMode,
-              budget: c.budget || (totalAdGroupBudget > 0 ? totalAdGroupBudget : null),
+              budget:
+                c.budget ||
+                (totalAdGroupBudget > 0 ? totalAdGroupBudget : null),
               adGroupCount: adGroups.length,
               status: c.operation_status,
               createdAt: c.create_time,
@@ -105,7 +116,9 @@ export class DashboardService {
           allReportData.push(...reportResponse.data.list);
         }
       } catch (error) {
-        this.logger.error(`Failed to fetch data for advertiser ${advertiserId}`);
+        this.logger.error(
+          `Failed to fetch data for advertiser ${advertiserId}`,
+        );
         this.logger.error(`Error message: ${error.message}`);
         this.logger.error(`Error stack: ${error.stack}`);
         // エラーがあっても他のAdvertiserのデータは取得を続ける
@@ -141,13 +154,20 @@ export class DashboardService {
         }
 
         chartDataMap[date].spend += parseFloat(metrics.spend || '0');
-        chartDataMap[date].impressions += parseInt(metrics.impressions || '0', 10);
+        chartDataMap[date].impressions += parseInt(
+          metrics.impressions || '0',
+          10,
+        );
         chartDataMap[date].clicks += parseInt(metrics.clicks || '0', 10);
-        chartDataMap[date].conversions += parseInt(metrics.conversions || '0', 10);
+        chartDataMap[date].conversions += parseInt(
+          metrics.conversions || '0',
+          10,
+        );
       }
     });
 
-    const avgCtr = totalImpressions > 0 ? (totalClicks / totalImpressions) * 100 : 0;
+    const avgCtr =
+      totalImpressions > 0 ? (totalClicks / totalImpressions) * 100 : 0;
     const avgCpa = totalConversions > 0 ? totalSpend / totalConversions : 0;
 
     const kpiData = {
@@ -163,7 +183,9 @@ export class DashboardService {
       a.date.localeCompare(b.date),
     );
 
-    this.logger.log(`Aggregated data: ${allCampaigns.length} campaigns, ${allReportData.length} report records`);
+    this.logger.log(
+      `Aggregated data: ${allCampaigns.length} campaigns, ${allReportData.length} report records`,
+    );
 
     return {
       campaigns: allCampaigns,

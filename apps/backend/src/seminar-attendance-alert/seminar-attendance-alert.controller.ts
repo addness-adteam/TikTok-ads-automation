@@ -19,15 +19,24 @@ export class SeminarAttendanceAlertController {
    */
   @Post()
   async run(@Query('dryRun') dryRun?: string, @Body() body?: RunBody) {
-    this.logger.log(`seminar-attendance-alert 実行 (dryRun=${dryRun}, 着座メアド=${body?.attendedEmails?.length ?? 0}件)`);
+    this.logger.log(
+      `seminar-attendance-alert 実行 (dryRun=${dryRun}, 着座メアド=${body?.attendedEmails?.length ?? 0}件)`,
+    );
     try {
-      const attendedEmails = new Set((body?.attendedEmails ?? []).map((e) => e.trim().toLowerCase()));
+      const attendedEmails = new Set(
+        (body?.attendedEmails ?? []).map((e) => e.trim().toLowerCase()),
+      );
       if (attendedEmails.size === 0) {
-        return { success: false, error: '着座メアド未提供 (attendedEmails必須)' };
+        return {
+          success: false,
+          error: '着座メアド未提供 (attendedEmails必須)',
+        };
       }
       const result = await this.useCase.run({
         dryRun: dryRun === 'true',
-        attendanceCsvFetcher: { fetchAttendedEmails: async () => attendedEmails },
+        attendanceCsvFetcher: {
+          fetchAttendedEmails: async () => attendedEmails,
+        },
       });
       return { success: true, result };
     } catch (e: any) {

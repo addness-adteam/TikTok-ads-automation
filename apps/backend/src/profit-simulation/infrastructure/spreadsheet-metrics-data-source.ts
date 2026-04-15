@@ -12,7 +12,11 @@ import {
   KPITargets,
   DailyMetrics,
 } from '../domain/types';
-import { parseKpiPercentage, parseKpiAmount, parseKpiValue } from './kpi-value-parser';
+import {
+  parseKpiPercentage,
+  parseKpiAmount,
+  parseKpiValue,
+} from './kpi-value-parser';
 
 const SPREADSHEET_ID = '1MsJRbZGrLOkgd7lRApr1ciFQ1GOZaIjmrXQSIe3_nCA';
 
@@ -25,53 +29,70 @@ const SHEET_NAMES: Record<ChannelType, string> = {
 
 // AI/SNSのカラムマッピング（index）
 const AI_SNS_COLUMNS = {
-  impressions: 2,    // C
-  clicks: 5,         // F
-  optins: 11,        // L
-  listIns: 13,       // N
-  cpc: 17,           // R
+  impressions: 2, // C
+  clicks: 5, // F
+  optins: 11, // L
+  listIns: 13, // N
+  cpc: 17, // R
   frontPurchase: 21, // V
-  secretRoom: 24,    // Y
-  成約数: 27,         // AB
-  revenue: 34,       // AI (④単月売上)
-  optinLTV: 36,      // AK
+  secretRoom: 24, // Y
+  成約数: 27, // AB
+  revenue: 34, // AI (④単月売上)
+  optinLTV: 36, // AK
   individualRes: 38, // AM
-  adSpend: 44,       // AS (コスト税別)
+  adSpend: 44, // AS (コスト税別)
 } as const;
 
 // スキルプラスのカラムマッピング（index）
 const SP_COLUMNS = {
-  impressions: 2,    // C
-  clicks: 5,         // F
-  optins: 7,         // H
-  listIns: 9,        // J
-  cpc: 12,           // M
-  seminarRes: 14,    // O
+  impressions: 2, // C
+  clicks: 5, // F
+  optins: 7, // H
+  listIns: 9, // J
+  cpc: 12, // M
+  seminarRes: 14, // O
   seminarAttend: 17, // R
   individualRes: 23, // X
-  成約数: 25,         // Z
-  revenue: 26,       // AA (着金売上)
-  optinLTV: 28,      // AC
-  adSpend: 32,       // AG (コスト税抜)
+  成約数: 25, // Z
+  revenue: 26, // AA (着金売上)
+  optinLTV: 28, // AC
+  adSpend: 32, // AG (コスト税抜)
 } as const;
 
 // KPIカラム位置
-const KPI_COLUMNS: Record<ChannelType, { itemCol: number; allowCol: number; targetCol: number }> = {
-  AI: { itemCol: 47, allowCol: 48, targetCol: 49 },       // AV, AW, AX
-  SNS: { itemCol: 47, allowCol: 48, targetCol: 49 },      // AV, AW, AX
+const KPI_COLUMNS: Record<
+  ChannelType,
+  { itemCol: number; allowCol: number; targetCol: number }
+> = {
+  AI: { itemCol: 47, allowCol: 48, targetCol: 49 }, // AV, AW, AX
+  SNS: { itemCol: 47, allowCol: 48, targetCol: 49 }, // AV, AW, AX
   SKILL_PLUS: { itemCol: 36, allowCol: 37, targetCol: 38 }, // AK, AL, AM
 };
 
 // KPI項目名のパース種別
 const KPI_PERCENTAGE_ITEMS = [
-  'ROAS', 'オプト→フロント率', 'フロント→個別率', '個別→着座率', '着座→成約率',
-  'オプト→メイン', 'メイン→企画', '企画→セミナー予約率',
-  'セミナー予約→セミナー着座率', 'セミナー着座→個別予約率',
-  '個別予約→個別着座率', '個別着座→成約率',
+  'ROAS',
+  'オプト→フロント率',
+  'フロント→個別率',
+  '個別→着座率',
+  '着座→成約率',
+  'オプト→メイン',
+  'メイン→企画',
+  '企画→セミナー予約率',
+  'セミナー予約→セミナー着座率',
+  'セミナー着座→個別予約率',
+  '個別予約→個別着座率',
+  '個別着座→成約率',
 ];
 
 const KPI_AMOUNT_ITEMS = [
-  '商品単価', 'バックCPO', '個別CPO', 'フロントCPO', 'セミナー着座CPO', 'CPA', '目標粗利額',
+  '商品単価',
+  'バックCPO',
+  '個別CPO',
+  'フロントCPO',
+  'セミナー着座CPO',
+  'CPA',
+  '目標粗利額',
 ];
 
 @Injectable()
@@ -89,9 +110,8 @@ export class SpreadsheetMetricsDataSource implements MetricsDataSource {
     const cols = channelType === 'SKILL_PLUS' ? SP_COLUMNS : AI_SNS_COLUMNS;
 
     // シート全体のA列を読んで月ブロックの位置を特定
-    const { summaryRow, dailyStartRow, dailyEndRow } = await this.findMonthBlock(
-      sheetName, year, month,
-    );
+    const { summaryRow, dailyStartRow, dailyEndRow } =
+      await this.findMonthBlock(sheetName, year, month);
 
     // 月集計行を取得
     const summaryData = await this.sheetsService.getValues(
@@ -102,7 +122,10 @@ export class SpreadsheetMetricsDataSource implements MetricsDataSource {
 
     // 日別データを取得
     const dailyRange = `'${sheetName}'!A${dailyStartRow}:AX${dailyEndRow}`;
-    const dailyRows = await this.sheetsService.getValues(SPREADSHEET_ID, dailyRange);
+    const dailyRows = await this.sheetsService.getValues(
+      SPREADSHEET_ID,
+      dailyRange,
+    );
 
     const dailyData: DailyMetrics[] = [];
     for (const row of dailyRows) {
@@ -120,11 +143,21 @@ export class SpreadsheetMetricsDataSource implements MetricsDataSource {
         stageValues['成約数'] = this.parseNum(row[spCols['成約数']]);
       } else {
         stageValues['オプトイン'] = this.parseNum(row[cols.optins]);
-        stageValues['LINE登録'] = this.parseNum(row[(cols as typeof AI_SNS_COLUMNS).listIns]);
-        stageValues['フロント購入'] = this.parseNum(row[(cols as typeof AI_SNS_COLUMNS).frontPurchase]);
-        stageValues['秘密の部屋購入'] = this.parseNum(row[(cols as typeof AI_SNS_COLUMNS).secretRoom]);
-        stageValues['個別予約'] = this.parseNum(row[(cols as typeof AI_SNS_COLUMNS).individualRes]);
-        stageValues['成約数'] = this.parseNum(row[(cols as typeof AI_SNS_COLUMNS)['成約数']]);
+        stageValues['LINE登録'] = this.parseNum(
+          row[(cols as typeof AI_SNS_COLUMNS).listIns],
+        );
+        stageValues['フロント購入'] = this.parseNum(
+          row[(cols as typeof AI_SNS_COLUMNS).frontPurchase],
+        );
+        stageValues['秘密の部屋購入'] = this.parseNum(
+          row[(cols as typeof AI_SNS_COLUMNS).secretRoom],
+        );
+        stageValues['個別予約'] = this.parseNum(
+          row[(cols as typeof AI_SNS_COLUMNS).individualRes],
+        );
+        stageValues['成約数'] = this.parseNum(
+          row[(cols as typeof AI_SNS_COLUMNS)['成約数']],
+        );
       }
 
       dailyData.push({
@@ -141,24 +174,44 @@ export class SpreadsheetMetricsDataSource implements MetricsDataSource {
 
     // 月集計行からステージ別実績を取得
     const stageMetrics: Record<string, number> = {};
-    stageMetrics['インプレッション'] = this.parseNum(summaryRowData[cols.impressions]);
+    stageMetrics['インプレッション'] = this.parseNum(
+      summaryRowData[cols.impressions],
+    );
     stageMetrics['クリック'] = this.parseNum(summaryRowData[cols.clicks]);
 
     if (channelType === 'SKILL_PLUS') {
       const spCols = cols as typeof SP_COLUMNS;
       stageMetrics['オプトイン'] = this.parseNum(summaryRowData[spCols.optins]);
       stageMetrics['LINE登録'] = this.parseNum(summaryRowData[spCols.listIns]);
-      stageMetrics['セミナー予約'] = this.parseNum(summaryRowData[spCols.seminarRes]);
-      stageMetrics['セミナー着座'] = this.parseNum(summaryRowData[spCols.seminarAttend]);
-      stageMetrics['個別予約'] = this.parseNum(summaryRowData[spCols.individualRes]);
-      stageMetrics['バックエンド購入'] = this.parseNum(summaryRowData[spCols['成約数']]);
+      stageMetrics['セミナー予約'] = this.parseNum(
+        summaryRowData[spCols.seminarRes],
+      );
+      stageMetrics['セミナー着座'] = this.parseNum(
+        summaryRowData[spCols.seminarAttend],
+      );
+      stageMetrics['個別予約'] = this.parseNum(
+        summaryRowData[spCols.individualRes],
+      );
+      stageMetrics['バックエンド購入'] = this.parseNum(
+        summaryRowData[spCols['成約数']],
+      );
     } else {
       stageMetrics['オプトイン'] = this.parseNum(summaryRowData[cols.optins]);
-      stageMetrics['フロント購入'] = this.parseNum(summaryRowData[(cols as typeof AI_SNS_COLUMNS).frontPurchase]);
-      stageMetrics['秘密の部屋購入'] = this.parseNum(summaryRowData[(cols as typeof AI_SNS_COLUMNS).secretRoom]);
-      stageMetrics['LINE登録'] = this.parseNum(summaryRowData[(cols as typeof AI_SNS_COLUMNS).listIns]);
-      stageMetrics['個別予約'] = this.parseNum(summaryRowData[(cols as typeof AI_SNS_COLUMNS).individualRes]);
-      stageMetrics['バックエンド購入'] = this.parseNum(summaryRowData[(cols as typeof AI_SNS_COLUMNS)['成約数']]);
+      stageMetrics['フロント購入'] = this.parseNum(
+        summaryRowData[(cols as typeof AI_SNS_COLUMNS).frontPurchase],
+      );
+      stageMetrics['秘密の部屋購入'] = this.parseNum(
+        summaryRowData[(cols as typeof AI_SNS_COLUMNS).secretRoom],
+      );
+      stageMetrics['LINE登録'] = this.parseNum(
+        summaryRowData[(cols as typeof AI_SNS_COLUMNS).listIns],
+      );
+      stageMetrics['個別予約'] = this.parseNum(
+        summaryRowData[(cols as typeof AI_SNS_COLUMNS).individualRes],
+      );
+      stageMetrics['バックエンド購入'] = this.parseNum(
+        summaryRowData[(cols as typeof AI_SNS_COLUMNS)['成約数']],
+      );
     }
 
     const adSpend = this.parseNum(summaryRowData[cols.adSpend]);
@@ -168,7 +221,10 @@ export class SpreadsheetMetricsDataSource implements MetricsDataSource {
     const impressions = stageMetrics['インプレッション'] || 0;
 
     // optinLTV
-    const optinLTVCol = channelType === 'SKILL_PLUS' ? SP_COLUMNS.optinLTV : AI_SNS_COLUMNS.optinLTV;
+    const optinLTVCol =
+      channelType === 'SKILL_PLUS'
+        ? SP_COLUMNS.optinLTV
+        : AI_SNS_COLUMNS.optinLTV;
     const optinLTV = this.parseNum(summaryRowData[optinLTVCol]);
 
     return {
@@ -194,10 +250,16 @@ export class SpreadsheetMetricsDataSource implements MetricsDataSource {
     const sheetName = SHEET_NAMES[channelType];
     const kpiCols = KPI_COLUMNS[channelType];
 
-    const { dailyStartRow, dailyEndRow } = await this.findMonthBlock(sheetName, year, month);
+    const { dailyStartRow, dailyEndRow } = await this.findMonthBlock(
+      sheetName,
+      year,
+      month,
+    );
 
     // 日別データ範囲の右側列を全部読む（KPIが埋め込まれている）
-    const maxCol = this.indexToCol(Math.max(kpiCols.itemCol, kpiCols.targetCol) + 1);
+    const maxCol = this.indexToCol(
+      Math.max(kpiCols.itemCol, kpiCols.targetCol) + 1,
+    );
     const itemCol = this.indexToCol(kpiCols.itemCol);
     const range = `'${sheetName}'!${itemCol}${dailyStartRow}:${maxCol}${dailyEndRow}`;
     const rows = await this.sheetsService.getValues(SPREADSHEET_ID, range);
@@ -211,7 +273,10 @@ export class SpreadsheetMetricsDataSource implements MetricsDataSource {
     // AI/SNSは「許容」「目標」ヘッダー行があるが、スキルプラスにはない
     // → ヘッダーがなくてもKPI項目名（ROAS等）を直接検出して読み取る
     const KPI_ITEM_NAMES = [
-      'ROAS', '商品単価', 'CPA', '目標粗利額',
+      'ROAS',
+      '商品単価',
+      'CPA',
+      '目標粗利額',
       ...KPI_PERCENTAGE_ITEMS,
       ...KPI_AMOUNT_ITEMS,
     ];
@@ -220,7 +285,9 @@ export class SpreadsheetMetricsDataSource implements MetricsDataSource {
     for (const row of rows) {
       const itemName = (row[0] || '').trim();
       const allowValue = (row[kpiCols.allowCol - kpiCols.itemCol] || '').trim();
-      const targetValue = (row[kpiCols.targetCol - kpiCols.itemCol] || '').trim();
+      const targetValue = (
+        row[kpiCols.targetCol - kpiCols.itemCol] || ''
+      ).trim();
 
       if (!itemName) continue;
 
@@ -231,7 +298,10 @@ export class SpreadsheetMetricsDataSource implements MetricsDataSource {
       }
 
       // ヘッダーがなくても、KPI項目名に一致すれば読み取り開始
-      if (!kpiStarted && KPI_ITEM_NAMES.some(k => itemName === k || itemName.includes(k))) {
+      if (
+        !kpiStarted &&
+        KPI_ITEM_NAMES.some((k) => itemName === k || itemName.includes(k))
+      ) {
         kpiStarted = true;
       }
 
@@ -247,9 +317,9 @@ export class SpreadsheetMetricsDataSource implements MetricsDataSource {
       } else if (itemName === '目標粗利額') {
         // 目標粗利額はgetTargetProfitで取得
         continue;
-      } else if (KPI_PERCENTAGE_ITEMS.some(k => itemName.includes(k))) {
+      } else if (KPI_PERCENTAGE_ITEMS.some((k) => itemName.includes(k))) {
         conversionRates[itemName] = parseKpiPercentage(allowValue);
-      } else if (KPI_AMOUNT_ITEMS.some(k => itemName.includes(k))) {
+      } else if (KPI_AMOUNT_ITEMS.some((k) => itemName.includes(k))) {
         // CPO系は金額だがボトルネック比較には転換率を使うのでスキップ
       }
     }
@@ -272,7 +342,11 @@ export class SpreadsheetMetricsDataSource implements MetricsDataSource {
     );
 
     // 対象月のブロック範囲
-    const { dailyStartRow, dailyEndRow } = await this.findMonthBlock(sheetName, year, month);
+    const { dailyStartRow, dailyEndRow } = await this.findMonthBlock(
+      sheetName,
+      year,
+      month,
+    );
 
     // 対象月ブロック内＋前後のブロックでKPI列を検索
     const searchStart = Math.max(1, dailyStartRow - 35);
@@ -292,7 +366,9 @@ export class SpreadsheetMetricsDataSource implements MetricsDataSource {
       }
     }
 
-    this.logger.warn(`目標粗利額が見つかりません: ${sheetName} ${year}年${month}月`);
+    this.logger.warn(
+      `目標粗利額が見つかりません: ${sheetName} ${year}年${month}月`,
+    );
     return 0;
   }
 
@@ -305,7 +381,11 @@ export class SpreadsheetMetricsDataSource implements MetricsDataSource {
     sheetName: string,
     year: number,
     month: number,
-  ): Promise<{ summaryRow: number; dailyStartRow: number; dailyEndRow: number }> {
+  ): Promise<{
+    summaryRow: number;
+    dailyStartRow: number;
+    dailyEndRow: number;
+  }> {
     const allA = await this.sheetsService.getValues(
       SPREADSHEET_ID,
       `'${sheetName}'!A1:A600`,
@@ -329,7 +409,10 @@ export class SpreadsheetMetricsDataSource implements MetricsDataSource {
       const nextRow = summaryRow + 1;
       if (nextRow <= allA.length) {
         const nextVal = (allA[nextRow - 1]?.[0] || '').trim();
-        if (nextVal.startsWith(targetDatePrefix) || nextVal.startsWith(targetDatePrefix2)) {
+        if (
+          nextVal.startsWith(targetDatePrefix) ||
+          nextVal.startsWith(targetDatePrefix2)
+        ) {
           // 日別データの終了行を探す（次の月ラベル or 返金行の手前）
           let dailyEndRow = summaryRow + 1;
           for (let i = summaryRow; i < allA.length; i++) {
@@ -350,12 +433,17 @@ export class SpreadsheetMetricsDataSource implements MetricsDataSource {
       }
     }
 
-    throw new Error(`月ブロックが見つかりません: ${sheetName} ${year}年${month}月`);
+    throw new Error(
+      `月ブロックが見つかりません: ${sheetName} ${year}年${month}月`,
+    );
   }
 
   private parseNum(value: string | undefined): number {
     if (!value) return 0;
-    const cleaned = String(value).replace(/[¥,%％]/g, '').replace(/,/g, '').trim();
+    const cleaned = String(value)
+      .replace(/[¥,%％]/g, '')
+      .replace(/,/g, '')
+      .trim();
     const num = parseFloat(cleaned);
     return isNaN(num) ? 0 : num;
   }

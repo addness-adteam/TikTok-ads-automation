@@ -30,7 +30,11 @@ async function bootstrap() {
 
       // Vercelのプレビューデプロイメントも許可
       const isVercelDeploy = origin && origin.includes('.vercel.app');
-      const isAllowed = !origin || allowedOrigins.includes(origin) || productionDomains.includes(origin) || isVercelDeploy;
+      const isAllowed =
+        !origin ||
+        allowedOrigins.includes(origin) ||
+        productionDomains.includes(origin) ||
+        isVercelDeploy;
 
       if (isAllowed) {
         callback(null, true);
@@ -52,12 +56,16 @@ async function bootstrap() {
   // シグナルハンドラーを設定（グレースフルシャットダウン）
   const gracefulShutdown = async (signal: string) => {
     if (isShuttingDown) {
-      logger.warn(`[Graceful Shutdown] Already shutting down, ignoring ${signal}`);
+      logger.warn(
+        `[Graceful Shutdown] Already shutting down, ignoring ${signal}`,
+      );
       return;
     }
     isShuttingDown = true;
 
-    logger.log(`[Graceful Shutdown] Received ${signal}, starting graceful shutdown...`);
+    logger.log(
+      `[Graceful Shutdown] Received ${signal}, starting graceful shutdown...`,
+    );
 
     // シャットダウンタイムアウト（30秒）
     const shutdownTimeout = setTimeout(() => {
@@ -72,7 +80,9 @@ async function bootstrap() {
       clearTimeout(shutdownTimeout);
       process.exit(0);
     } catch (error) {
-      logger.error(`[Graceful Shutdown] Error during shutdown: ${error.message}`);
+      logger.error(
+        `[Graceful Shutdown] Error during shutdown: ${error.message}`,
+      );
       clearTimeout(shutdownTimeout);
       process.exit(1);
     }

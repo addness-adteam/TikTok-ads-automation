@@ -11,7 +11,9 @@ import {
 } from './types';
 
 /** KPI項目名→ファネルステージマッピングを取得 */
-function getKpiStageMap(channelType: ChannelType): Record<string, [string, string]> {
+function getKpiStageMap(
+  channelType: ChannelType,
+): Record<string, [string, string]> {
   return channelType === 'SKILL_PLUS'
     ? SKILL_PLUS_KPI_STAGE_MAP
     : AI_SNS_KPI_STAGE_MAP;
@@ -30,7 +32,9 @@ export function detectBottlenecks(
   const kpiStageMap = getKpiStageMap(channelType);
   const bottlenecks: BottleneckResult[] = [];
 
-  for (const [kpiName, targetRate] of Object.entries(kpiTargets.conversionRates)) {
+  for (const [kpiName, targetRate] of Object.entries(
+    kpiTargets.conversionRates,
+  )) {
     const stageMapping = kpiStageMap[kpiName];
     if (!stageMapping) continue;
 
@@ -133,12 +137,22 @@ function calculateDownstreamRate(
 function getStageOrder(channelType: ChannelType): string[] {
   if (channelType === 'SKILL_PLUS') {
     return [
-      'オプトイン', 'LINE登録', 'セミナー予約',
-      'セミナー着座', '個別予約', '個別着座', 'バックエンド購入',
+      'オプトイン',
+      'LINE登録',
+      'セミナー予約',
+      'セミナー着座',
+      '個別予約',
+      '個別着座',
+      'バックエンド購入',
     ];
   }
   return [
-    'オプトイン', 'フロント購入', '秘密の部屋購入',
-    'LINE登録', '個別予約', '個別着座', 'バックエンド購入',
+    'オプトイン',
+    'フロント購入',
+    '秘密の部屋購入',
+    'LINE登録',
+    '個別予約',
+    '個別着座',
+    'バックエンド購入',
   ];
 }

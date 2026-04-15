@@ -2,7 +2,10 @@ import { JPY } from './jpy';
 
 /** YYYY-MM 形式の年月 */
 export class YearMonth {
-  private constructor(readonly year: number, readonly month: number) {}
+  private constructor(
+    readonly year: number,
+    readonly month: number,
+  ) {}
 
   static of(year: number, month: number): YearMonth {
     if (!Number.isInteger(year) || year < 2000 || year > 2100) {
@@ -30,7 +33,10 @@ export class YearMonth {
 
 /** 月次の許容セミナー着座CPO */
 export class AllowableSeminarSeatCpo {
-  private constructor(readonly month: YearMonth, readonly amount: JPY) {}
+  private constructor(
+    readonly month: YearMonth,
+    readonly amount: JPY,
+  ) {}
 
   static of(month: YearMonth, amount: JPY): AllowableSeminarSeatCpo {
     return new AllowableSeminarSeatCpo(month, amount);

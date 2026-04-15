@@ -29,21 +29,21 @@ export interface KPIThresholds {
 
 /** 判定結果 */
 export type EvaluationVerdict =
-  | 'SUCCESS'           // KPI以内 → 横展開/予算増候補
-  | 'PARTIAL_SUCCESS'   // CPAは良いが下流KPI未達
-  | 'FAILURE'           // KPI超過 → 改善or廃止
+  | 'SUCCESS' // KPI以内 → 横展開/予算増候補
+  | 'PARTIAL_SUCCESS' // CPAは良いが下流KPI未達
+  | 'FAILURE' // KPI超過 → 改善or廃止
   | 'INSUFFICIENT_DATA' // データ不足（配信日数/消化額が少ない）
-  | 'MONITORING';       // 配信継続中
+  | 'MONITORING'; // 配信継続中
 
 /** 次アクションの種別 */
 export type NextActionType =
-  | 'CROSS_DEPLOY'     // 別アカウントに横展開
-  | 'REDEPLOY'         // 同一アカウントで再出稿（予算増含む）
-  | 'CHANGE_LP'        // LP変更して再テスト
-  | 'CHANGE_HOOK'      // 動画フック差し替え
-  | 'ABANDON'          // 廃止（このCRは使わない）
-  | 'INVESTIGATE'      // ピクセル/LP等の調査が必要
-  | 'CONTINUE';        // 配信継続、経過観察
+  | 'CROSS_DEPLOY' // 別アカウントに横展開
+  | 'REDEPLOY' // 同一アカウントで再出稿（予算増含む）
+  | 'CHANGE_LP' // LP変更して再テスト
+  | 'CHANGE_HOOK' // 動画フック差し替え
+  | 'ABANDON' // 廃止（このCRは使わない）
+  | 'INVESTIGATE' // ピクセル/LP等の調査が必要
+  | 'CONTINUE'; // 配信継続、経過観察
 
 /** 次アクション */
 export interface NextAction {
@@ -117,7 +117,7 @@ export interface EvaluationResult {
     indResCPO: number | null;
   };
   kpiComparison: {
-    cpaRatio: number | null;       // 実績CPA / 許容CPA（1.0以下=達成）
+    cpaRatio: number | null; // 実績CPA / 許容CPA（1.0以下=達成）
     frontCPORatio: number | null;
     indResCPORatio: number | null;
   };

@@ -2,7 +2,7 @@ import { AdUnderEvaluation } from '../entities/ad-under-evaluation';
 import { AllowableSeminarSeatCpo } from '../value-objects/allowable-seminar-seat-cpo';
 
 export type AlertReason =
-  | 'CPO_EXCEEDED'          // 着座あり + 実CPO > 許容CPO
+  | 'CPO_EXCEEDED' // 着座あり + 実CPO > 許容CPO
   | 'ZERO_ATTENDANCE_WITH_SPEND'; // 着座0件 + spend ≥ 許容CPO
 
 export interface AlertDecision {
@@ -13,7 +13,7 @@ export interface AlertDecision {
     elapsedDays: number;
     actualCpoAmount: number | null; // 着座0件時はnull
     allowableCpoAmount: number;
-    overageRate: number | null;     // 着座0件時はnull
+    overageRate: number | null; // 着座0件時はnull
     spendAmount: number;
     alreadyAlerted: boolean;
   };
@@ -56,13 +56,21 @@ export class AlertRuleEvaluator {
     if (ad.hasAnyAttendance) {
       // 着座>0: 実CPO > 許容CPO
       if (actualCpo && actualCpo.gt(allowable.amount)) {
-        return { shouldAlert: true, reason: 'CPO_EXCEEDED', detail: detailBase };
+        return {
+          shouldAlert: true,
+          reason: 'CPO_EXCEEDED',
+          detail: detailBase,
+        };
       }
       return { shouldAlert: false, reason: null, detail: detailBase };
     } else {
       // 着座=0: spend >= 許容CPO
       if (ad.totalSpend.gte(allowable.amount)) {
-        return { shouldAlert: true, reason: 'ZERO_ATTENDANCE_WITH_SPEND', detail: detailBase };
+        return {
+          shouldAlert: true,
+          reason: 'ZERO_ATTENDANCE_WITH_SPEND',
+          detail: detailBase,
+        };
       }
       return { shouldAlert: false, reason: null, detail: detailBase };
     }

@@ -1,6 +1,18 @@
-import { Controller, Get, Post, Put, Delete, Body, Param, Logger } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Put,
+  Delete,
+  Body,
+  Param,
+  Logger,
+} from '@nestjs/common';
 import { AdTextTemplateService } from './ad-text-template.service';
-import type { CreateAdTextTemplateDto, UpdateAdTextTemplateDto } from './ad-text-template.service';
+import type {
+  CreateAdTextTemplateDto,
+  UpdateAdTextTemplateDto,
+} from './ad-text-template.service';
 
 @Controller('api')
 export class AdTextTemplateController {
@@ -15,7 +27,8 @@ export class AdTextTemplateController {
   @Get('appeals/:appealId/ad-text-templates')
   async getTemplatesByAppeal(@Param('appealId') appealId: string) {
     try {
-      const templates = await this.adTextTemplateService.findByAppealId(appealId);
+      const templates =
+        await this.adTextTemplateService.findByAppealId(appealId);
       return {
         success: true,
         data: templates,

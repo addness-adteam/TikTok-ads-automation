@@ -14,7 +14,10 @@ import {
   REPORT_OUTPUT,
 } from './domain/ports';
 import { SpreadsheetMetricsDataSource } from './infrastructure/spreadsheet-metrics-data-source';
-import { PrismaTodoRepository, PrismaFeedbackRepository } from './infrastructure/prisma-todo-repository';
+import {
+  PrismaTodoRepository,
+  PrismaFeedbackRepository,
+} from './infrastructure/prisma-todo-repository';
 import { FileRuleStore } from './infrastructure/file-rule-store';
 import { DatabaseWinningCreativeSource } from './infrastructure/database-winning-creative-source';
 import { MarkdownReportOutput } from './infrastructure/markdown-report-output';
@@ -29,7 +32,10 @@ import { GoogleSheetsModule } from '../google-sheets/google-sheets.module';
     { provide: TODO_REPOSITORY, useClass: PrismaTodoRepository },
     { provide: FEEDBACK_REPOSITORY, useClass: PrismaFeedbackRepository },
     { provide: RULE_STORE, useClass: FileRuleStore },
-    { provide: WINNING_CREATIVE_SOURCE, useClass: DatabaseWinningCreativeSource },
+    {
+      provide: WINNING_CREATIVE_SOURCE,
+      useClass: DatabaseWinningCreativeSource,
+    },
     { provide: REPORT_OUTPUT, useClass: MarkdownReportOutput },
   ],
   exports: [ProfitSimulationService],

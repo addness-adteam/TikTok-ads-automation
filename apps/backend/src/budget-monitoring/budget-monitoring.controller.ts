@@ -1,4 +1,11 @@
-import { Controller, Post, Body, Logger, HttpException, HttpStatus } from '@nestjs/common';
+import {
+  Controller,
+  Post,
+  Body,
+  Logger,
+  HttpException,
+  HttpStatus,
+} from '@nestjs/common';
 import { BudgetMonitoringService } from './budget-monitoring.service';
 import { ConfigService } from '@nestjs/config';
 
@@ -17,12 +24,17 @@ export class BudgetMonitoringController {
    */
   @Post('check')
   async checkBudgets(@Body() body: { dryRun?: boolean }) {
-    this.logger.log(`[BudgetMonitor] Check requested (dryRun: ${body?.dryRun})`);
+    this.logger.log(
+      `[BudgetMonitor] Check requested (dryRun: ${body?.dryRun})`,
+    );
     try {
       const accessToken =
         this.configService.get<string>('TIKTOK_ACCESS_TOKEN') ||
         '2092744b8976b4b9392e0c8e8bdf2bf09570bb82';
-      const result = await this.service.monitorAllBudgets(accessToken, body?.dryRun);
+      const result = await this.service.monitorAllBudgets(
+        accessToken,
+        body?.dryRun,
+      );
       return { success: true, data: result };
     } catch (error) {
       this.logger.error('[BudgetMonitor] Check failed:', error);

@@ -1,4 +1,7 @@
-import { AllowableSeminarSeatCpo, YearMonth } from './allowable-seminar-seat-cpo';
+import {
+  AllowableSeminarSeatCpo,
+  YearMonth,
+} from './allowable-seminar-seat-cpo';
 import { JPY } from './jpy';
 
 describe('YearMonth', () => {

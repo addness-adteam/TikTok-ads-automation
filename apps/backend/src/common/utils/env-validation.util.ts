@@ -49,14 +49,23 @@ const ENV_FORMAT_VALIDATORS: {
   [key: string]: (value: string) => { valid: boolean; reason?: string };
 } = {
   DATABASE_URL: (value) => {
-    if (!value.startsWith('postgresql://') && !value.startsWith('postgres://')) {
-      return { valid: false, reason: 'DATABASE_URLはpostgresql://で始まる必要があります' };
+    if (
+      !value.startsWith('postgresql://') &&
+      !value.startsWith('postgres://')
+    ) {
+      return {
+        valid: false,
+        reason: 'DATABASE_URLはpostgresql://で始まる必要があります',
+      };
     }
     return { valid: true };
   },
   TIKTOK_API_BASE_URL: (value) => {
     if (!value.startsWith('https://')) {
-      return { valid: false, reason: 'TIKTOK_API_BASE_URLはhttps://で始まる必要があります' };
+      return {
+        valid: false,
+        reason: 'TIKTOK_API_BASE_URLはhttps://で始まる必要があります',
+      };
     }
     return { valid: true };
   },
@@ -66,12 +75,17 @@ const ENV_FORMAT_VALIDATORS: {
       if (!parsed.client_email || !parsed.private_key) {
         return {
           valid: false,
-          reason: 'GOOGLE_SERVICE_ACCOUNT_CREDENTIALSにclient_emailとprivate_keyが必要です',
+          reason:
+            'GOOGLE_SERVICE_ACCOUNT_CREDENTIALSにclient_emailとprivate_keyが必要です',
         };
       }
       return { valid: true };
     } catch (e) {
-      return { valid: false, reason: 'GOOGLE_SERVICE_ACCOUNT_CREDENTIALSは有効なJSONである必要があります' };
+      return {
+        valid: false,
+        reason:
+          'GOOGLE_SERVICE_ACCOUNT_CREDENTIALSは有効なJSONである必要があります',
+      };
     }
   },
 };
@@ -79,7 +93,9 @@ const ENV_FORMAT_VALIDATORS: {
 /**
  * 環境変数をバリデート（E-01対応）
  */
-export function validateEnvironmentVariables(logger?: Logger): EnvValidationResult {
+export function validateEnvironmentVariables(
+  logger?: Logger,
+): EnvValidationResult {
   const result: EnvValidationResult = {
     isValid: true,
     missingVars: [],
@@ -104,11 +120,16 @@ export function validateEnvironmentVariables(logger?: Logger): EnvValidationResu
       if (validator) {
         const validation = validator(value);
         if (!validation.valid) {
-          result.invalidVars.push({ name: varName, reason: validation.reason || 'Invalid format' });
+          result.invalidVars.push({
+            name: varName,
+            reason: validation.reason || 'Invalid format',
+          });
           result.isValid = false;
 
           if (logger) {
-            logger.error(`[E-01] 環境変数形式不正: ${varName} - ${validation.reason}`);
+            logger.error(
+              `[E-01] 環境変数形式不正: ${varName} - ${validation.reason}`,
+            );
           }
         }
       }
@@ -134,7 +155,9 @@ export function validateEnvironmentVariables(logger?: Logger): EnvValidationResu
           result.warnings.push(`${varName}: ${validation.reason}`);
 
           if (logger) {
-            logger.warn(`[E-01] 環境変数形式警告: ${varName} - ${validation.reason}`);
+            logger.warn(
+              `[E-01] 環境変数形式警告: ${varName} - ${validation.reason}`,
+            );
           }
         }
       }
@@ -197,7 +220,9 @@ export function getEnvOrDefault(varName: string, defaultValue: string): string {
 export function getRequiredEnv(varName: string): string {
   const value = process.env[varName];
   if (!value || value.trim() === '') {
-    throw new Error(`[E-01] Required environment variable ${varName} is not set`);
+    throw new Error(
+      `[E-01] Required environment variable ${varName} is not set`,
+    );
   }
   return value;
 }

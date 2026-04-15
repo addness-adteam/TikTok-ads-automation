@@ -24,11 +24,17 @@ describe('AdUnderEvaluation', () => {
     expect(ad.hasAnyAttendance).toBe(true);
   });
   it('attendance > reservation はエラー', () => {
-    expect(() => AdUnderEvaluation.create({ ...baseParams, attendanceCount: 11 })).toThrow();
+    expect(() =>
+      AdUnderEvaluation.create({ ...baseParams, attendanceCount: 11 }),
+    ).toThrow();
   });
   it('負値はエラー', () => {
-    expect(() => AdUnderEvaluation.create({ ...baseParams, reservationCount: -1 })).toThrow();
-    expect(() => AdUnderEvaluation.create({ ...baseParams, attendanceCount: -1 })).toThrow();
+    expect(() =>
+      AdUnderEvaluation.create({ ...baseParams, reservationCount: -1 }),
+    ).toThrow();
+    expect(() =>
+      AdUnderEvaluation.create({ ...baseParams, attendanceCount: -1 }),
+    ).toThrow();
   });
   it('着座0件ならseminarSeatCpoはnull', () => {
     const ad = AdUnderEvaluation.create({ ...baseParams, attendanceCount: 0 });

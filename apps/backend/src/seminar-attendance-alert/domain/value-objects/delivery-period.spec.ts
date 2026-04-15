@@ -7,7 +7,10 @@ describe('DeliveryPeriod', () => {
 
   describe('elapsedDays', () => {
     it('同日は0日', () => {
-      const p = DeliveryPeriod.between(jst(2026, 4, 1, 12), jst(2026, 4, 1, 18));
+      const p = DeliveryPeriod.between(
+        jst(2026, 4, 1, 12),
+        jst(2026, 4, 1, 18),
+      );
       expect(p.elapsedDays).toBe(0);
     });
     it('翌日は1日', () => {
@@ -37,7 +40,9 @@ describe('DeliveryPeriod', () => {
 
   describe('入力検証', () => {
     it('不正Dateはエラー', () => {
-      expect(() => DeliveryPeriod.between(new Date('invalid'), new Date())).toThrow();
+      expect(() =>
+        DeliveryPeriod.between(new Date('invalid'), new Date()),
+      ).toThrow();
     });
   });
 });

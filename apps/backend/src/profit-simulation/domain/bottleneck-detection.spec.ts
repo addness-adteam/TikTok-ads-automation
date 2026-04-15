@@ -5,13 +5,13 @@ describe('BottleneckDetection', () => {
   describe('detectBottlenecks', () => {
     it('スキルプラスのリアルデータでボトルネックを特定する', () => {
       const stageMetrics: Record<string, number> = {
-        'オプトイン': 191,
-        'LINE登録': 101,
-        'セミナー予約': 64,
-        'セミナー着座': 37,
-        '個別予約': 25,
-        '個別着座': 15,
-        'バックエンド購入': 11,
+        オプトイン: 191,
+        LINE登録: 101,
+        セミナー予約: 64,
+        セミナー着座: 37,
+        個別予約: 25,
+        個別着座: 15,
+        バックエンド購入: 11,
       };
 
       const kpiTargets: KPITargets = {
@@ -35,7 +35,7 @@ describe('BottleneckDetection', () => {
       expect(results[0].rank).toBe(1);
 
       // オプト→リストイン率が最大のボトルネック（52.9% vs KPI 76.13%）
-      const listInBottleneck = results.find(r => r.stage === 'オプト→メイン');
+      const listInBottleneck = results.find((r) => r.stage === 'オプト→メイン');
       expect(listInBottleneck).toBeDefined();
       expect(listInBottleneck!.currentRate).toBeCloseTo(0.529, 2);
       expect(listInBottleneck!.targetRate).toBe(0.7613);
@@ -44,9 +44,9 @@ describe('BottleneckDetection', () => {
 
     it('KPI許容値を上回っているステージはボトルネックにならない', () => {
       const stageMetrics: Record<string, number> = {
-        'オプトイン': 100,
-        'LINE登録': 80,   // 80% > KPI 76.13%
-        'セミナー予約': 60, // 75% > KPI 62.95%
+        オプトイン: 100,
+        LINE登録: 80, // 80% > KPI 76.13%
+        セミナー予約: 60, // 75% > KPI 62.95%
       };
 
       const kpiTargets: KPITargets = {
@@ -67,11 +67,11 @@ describe('BottleneckDetection', () => {
 
     it('AI/SNS導線のKPIマッピングでボトルネック検出', () => {
       const stageMetrics: Record<string, number> = {
-        'オプトイン': 797,
-        'フロント購入': 60,
-        '個別予約': 57,
-        '個別着座': 30,
-        'バックエンド購入': 10,
+        オプトイン: 797,
+        フロント購入: 60,
+        個別予約: 57,
+        個別着座: 30,
+        バックエンド購入: 10,
       };
 
       const kpiTargets: KPITargets = {
@@ -94,19 +94,21 @@ describe('BottleneckDetection', () => {
       // 着座→成約率: 10/30=0.333 < KPI 0.38 → ボトルネック
       expect(results.length).toBe(3);
 
-      const frontToIndividual = results.find(r => r.stage === 'フロント→個別率');
+      const frontToIndividual = results.find(
+        (r) => r.stage === 'フロント→個別率',
+      );
       expect(frontToIndividual).toBeDefined();
     });
 
     it('粗利インパクト順にランキングされる', () => {
       const stageMetrics: Record<string, number> = {
-        'オプトイン': 191,
-        'LINE登録': 101,
-        'セミナー予約': 30,   // 低い
-        'セミナー着座': 15,
-        '個別予約': 5,
-        '個別着座': 3,
-        'バックエンド購入': 1,
+        オプトイン: 191,
+        LINE登録: 101,
+        セミナー予約: 30, // 低い
+        セミナー着座: 15,
+        個別予約: 5,
+        個別着座: 3,
+        バックエンド購入: 1,
       };
 
       const kpiTargets: KPITargets = {
@@ -132,14 +134,16 @@ describe('BottleneckDetection', () => {
 
       // 粗利インパクトが降順
       for (let i = 1; i < results.length; i++) {
-        expect(results[i - 1].profitImpact).toBeGreaterThanOrEqual(results[i].profitImpact);
+        expect(results[i - 1].profitImpact).toBeGreaterThanOrEqual(
+          results[i].profitImpact,
+        );
       }
     });
 
     it('ステージ実績が0件の場合も正しく処理する', () => {
       const stageMetrics: Record<string, number> = {
-        'オプトイン': 0,
-        'LINE登録': 0,
+        オプトイン: 0,
+        LINE登録: 0,
       };
 
       const kpiTargets: KPITargets = {
@@ -163,9 +167,9 @@ describe('BottleneckDetection', () => {
     it('実績データがないステージ（undefined）はボトルネック対象から除外', () => {
       // AI/SNSの「個別着座」はスプシにカラムがないためundefined
       const stageMetrics: Record<string, number> = {
-        'オプトイン': 797,
-        'フロント購入': 60,
-        '個別予約': 57,
+        オプトイン: 797,
+        フロント購入: 60,
+        個別予約: 57,
         // '個別着座' は存在しない（undefined）
         // 'バックエンド購入' も存在しない
       };
@@ -185,7 +189,7 @@ describe('BottleneckDetection', () => {
       const results = detectBottlenecks('AI', stageMetrics, kpiTargets);
 
       // 個別→着座率、着座→成約率は実績データなしのため除外
-      const stageNames = results.map(r => r.stage);
+      const stageNames = results.map((r) => r.stage);
       expect(stageNames).not.toContain('個別→着座率');
       expect(stageNames).not.toContain('着座→成約率');
 
@@ -195,11 +199,11 @@ describe('BottleneckDetection', () => {
 
     it('粗利インパクトがKPIフォールバックで正しく算出される', () => {
       const stageMetrics: Record<string, number> = {
-        'オプトイン': 191,
-        'LINE登録': 101,
-        'セミナー予約': 64,
-        'セミナー着座': 37,
-        '個別予約': 25,
+        オプトイン: 191,
+        LINE登録: 101,
+        セミナー予約: 64,
+        セミナー着座: 37,
+        個別予約: 25,
         // 個別着座・バックエンド購入のデータなし
       };
 
@@ -220,7 +224,7 @@ describe('BottleneckDetection', () => {
       const results = detectBottlenecks('SKILL_PLUS', stageMetrics, kpiTargets);
 
       // オプト→メインが最大ボトルネック
-      const listIn = results.find(r => r.stage === 'オプト→メイン');
+      const listIn = results.find((r) => r.stage === 'オプト→メイン');
       expect(listIn).toBeDefined();
       // 粗利インパクトが0ではなく、KPIフォールバックで計算されている
       expect(listIn!.profitImpact).toBeGreaterThan(0);

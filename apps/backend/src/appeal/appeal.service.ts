@@ -46,21 +46,36 @@ export class AppealService {
 
     // 訴求名に応じてスプレッドシートIDを取得
     if (normalizedName.includes('SNS')) {
-      cvSpreadsheetId = this.configService.get<string>('APPEAL_SNS_CV_SPREADSHEET_ID');
-      frontSpreadsheetId = this.configService.get<string>('APPEAL_SNS_FRONT_SPREADSHEET_ID');
+      cvSpreadsheetId = this.configService.get<string>(
+        'APPEAL_SNS_CV_SPREADSHEET_ID',
+      );
+      frontSpreadsheetId = this.configService.get<string>(
+        'APPEAL_SNS_FRONT_SPREADSHEET_ID',
+      );
     } else if (normalizedName.includes('AI')) {
-      cvSpreadsheetId = this.configService.get<string>('APPEAL_AI_CV_SPREADSHEET_ID');
-      frontSpreadsheetId = this.configService.get<string>('APPEAL_AI_FRONT_SPREADSHEET_ID');
-    } else if (normalizedName.includes('デザジュク') || normalizedName.includes('DESAJUKU')) {
-      cvSpreadsheetId = this.configService.get<string>('APPEAL_DESAJUKU_CV_SPREADSHEET_ID');
-      frontSpreadsheetId = this.configService.get<string>('APPEAL_DESAJUKU_FRONT_SPREADSHEET_ID');
+      cvSpreadsheetId = this.configService.get<string>(
+        'APPEAL_AI_CV_SPREADSHEET_ID',
+      );
+      frontSpreadsheetId = this.configService.get<string>(
+        'APPEAL_AI_FRONT_SPREADSHEET_ID',
+      );
+    } else if (
+      normalizedName.includes('デザジュク') ||
+      normalizedName.includes('DESAJUKU')
+    ) {
+      cvSpreadsheetId = this.configService.get<string>(
+        'APPEAL_DESAJUKU_CV_SPREADSHEET_ID',
+      );
+      frontSpreadsheetId = this.configService.get<string>(
+        'APPEAL_DESAJUKU_FRONT_SPREADSHEET_ID',
+      );
     }
 
     // スプレッドシートIDが見つからない場合はエラー
     if (!cvSpreadsheetId || !frontSpreadsheetId) {
       throw new Error(
         `Spreadsheet configuration not found for appeal: ${appealName}. ` +
-        `Please check your environment variables.`
+          `Please check your environment variables.`,
       );
     }
 
@@ -68,7 +83,9 @@ export class AppealService {
     const cvSpreadsheetUrl = `https://docs.google.com/spreadsheets/d/${cvSpreadsheetId}/edit`;
     const frontSpreadsheetUrl = `https://docs.google.com/spreadsheets/d/${frontSpreadsheetId}/edit`;
 
-    this.logger.log(`Generated spreadsheet URLs for ${appealName}: CV=${cvSpreadsheetUrl}, Front=${frontSpreadsheetUrl}`);
+    this.logger.log(
+      `Generated spreadsheet URLs for ${appealName}: CV=${cvSpreadsheetUrl}, Front=${frontSpreadsheetUrl}`,
+    );
 
     return {
       cvSpreadsheetUrl,
@@ -167,7 +184,8 @@ export class AppealService {
     if (!cvSpreadsheetUrl || !frontSpreadsheetUrl) {
       const generated = this.getSpreadsheetUrlsForAppeal(data.name);
       cvSpreadsheetUrl = cvSpreadsheetUrl || generated.cvSpreadsheetUrl;
-      frontSpreadsheetUrl = frontSpreadsheetUrl || generated.frontSpreadsheetUrl;
+      frontSpreadsheetUrl =
+        frontSpreadsheetUrl || generated.frontSpreadsheetUrl;
     }
 
     return this.prisma.appeal.create({
@@ -177,7 +195,8 @@ export class AppealService {
         allowableCPA: data.allowableCPA,
         targetFrontCPO: data.targetFrontCPO,
         allowableFrontCPO: data.allowableFrontCPO,
-        allowableIndividualReservationCPO: data.allowableIndividualReservationCPO,
+        allowableIndividualReservationCPO:
+          data.allowableIndividualReservationCPO,
         cvSpreadsheetUrl,
         frontSpreadsheetUrl,
       },
@@ -201,7 +220,8 @@ export class AppealService {
         allowableCPA: data.allowableCPA,
         targetFrontCPO: data.targetFrontCPO,
         allowableFrontCPO: data.allowableFrontCPO,
-        allowableIndividualReservationCPO: data.allowableIndividualReservationCPO,
+        allowableIndividualReservationCPO:
+          data.allowableIndividualReservationCPO,
         cvSpreadsheetUrl: data.cvSpreadsheetUrl,
         frontSpreadsheetUrl: data.frontSpreadsheetUrl,
       },
@@ -226,7 +246,9 @@ export class AppealService {
    * Advertiserに訴求を紐付け
    */
   async assignToAdvertiser(appealId: string, advertiserId: string) {
-    this.logger.log(`Assigning appeal ${appealId} to advertiser ${advertiserId}`);
+    this.logger.log(
+      `Assigning appeal ${appealId} to advertiser ${advertiserId}`,
+    );
 
     // 訴求とAdvertiserの存在確認
     await this.findOne(appealId);
@@ -235,7 +257,9 @@ export class AppealService {
     });
 
     if (!advertiser) {
-      throw new NotFoundException(`Advertiser with ID ${advertiserId} not found`);
+      throw new NotFoundException(
+        `Advertiser with ID ${advertiserId} not found`,
+      );
     }
 
     return this.prisma.advertiser.update({

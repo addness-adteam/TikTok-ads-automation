@@ -1,4 +1,7 @@
-import { judgeDirection, calculateRequiredAcquisition } from './direction-judgment';
+import {
+  judgeDirection,
+  calculateRequiredAcquisition,
+} from './direction-judgment';
 
 describe('DirectionJudgment', () => {
   describe('calculateRequiredAcquisition', () => {

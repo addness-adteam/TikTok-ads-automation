@@ -10,10 +10,10 @@ const IMPRESSION_THRESHOLD = 100000;
 const SPEND_REVIEW_THRESHOLD = 100000;
 
 // CPA乖離閾値（20%）
-const CPA_DEVIATION_THRESHOLD = 0.20;
+const CPA_DEVIATION_THRESHOLD = 0.2;
 
 // CPA急激悪化閾値（50%）
-const CRITICAL_CPA_DEVIATION_THRESHOLD = 0.50;
+const CRITICAL_CPA_DEVIATION_THRESHOLD = 0.5;
 
 @Injectable()
 export class AdPerformanceService {
@@ -60,7 +60,9 @@ export class AdPerformanceService {
       const newAds = ads.filter((ad) => !existingAdIds.has(ad.id));
 
       if (newAds.length === 0) {
-        this.logger.log(`No new ads to initialize for advertiser ${advertiserId}`);
+        this.logger.log(
+          `No new ads to initialize for advertiser ${advertiserId}`,
+        );
         return;
       }
 
@@ -156,7 +158,9 @@ export class AdPerformanceService {
             totalClicks,
             totalConversions,
             impressionThresholdMet,
-            impressionThresholdMetAt: impressionThresholdMet ? new Date() : null,
+            impressionThresholdMetAt: impressionThresholdMet
+              ? new Date()
+              : null,
           },
           update: {
             totalSpend,
@@ -201,7 +205,9 @@ export class AdPerformanceService {
    */
   async checkDeviationsAndTriggers(advertiserId: string): Promise<void> {
     try {
-      this.logger.log(`Checking deviations and triggers for advertiser ${advertiserId}`);
+      this.logger.log(
+        `Checking deviations and triggers for advertiser ${advertiserId}`,
+      );
 
       // インプレッション閾値達成済みの広告を取得
       const performances = await this.prisma.adPerformance.findMany({
@@ -245,20 +251,23 @@ export class AdPerformanceService {
             // 広告名から登録経路を抽出（例: "TikTok広告-SNS-LP1-CR00572"）
             const registrationPath = this.extractRegistrationPath(ad.name);
             if (registrationPath) {
-              const cvCount = await this.googleSheetsService.countRegistrationPath(
-                appeal.cvSpreadsheetUrl,
-                'TT_オプト', // シート名は固定
-                registrationPath,
-                new Date(0), // 全期間
-                new Date(),
-              );
+              const cvCount =
+                await this.googleSheetsService.countRegistrationPath(
+                  appeal.cvSpreadsheetUrl,
+                  'TT_オプト', // シート名は固定
+                  registrationPath,
+                  new Date(0), // 全期間
+                  new Date(),
+                );
 
               if (cvCount > 0) {
                 currentCPA = performance.totalSpend / cvCount;
               }
             }
           } catch (error) {
-            this.logger.warn(`Failed to get CV count from Google Sheets for ad ${ad.id}: ${error.message}`);
+            this.logger.warn(
+              `Failed to get CV count from Google Sheets for ad ${ad.id}: ${error.message}`,
+            );
           }
         }
 
@@ -286,8 +295,12 @@ export class AdPerformanceService {
           }
 
           // CPA乖離チェック（過去最高CPAがある場合）
-          if (performance.bestCPA !== null && currentCPA > performance.bestCPA) {
-            const deviationRate = (currentCPA - performance.bestCPA) / performance.bestCPA;
+          if (
+            performance.bestCPA !== null &&
+            currentCPA > performance.bestCPA
+          ) {
+            const deviationRate =
+              (currentCPA - performance.bestCPA) / performance.bestCPA;
 
             if (deviationRate >= CPA_DEVIATION_THRESHOLD) {
               await this.notificationService.createCPADeviationNotification(
@@ -305,7 +318,8 @@ export class AdPerformanceService {
 
         // CTR計算と更新
         if (performance.totalImpressions > 0) {
-          const currentCTR = (performance.totalClicks / performance.totalImpressions) * 100;
+          const currentCTR =
+            (performance.totalClicks / performance.totalImpressions) * 100;
           const shouldUpdateBestCTR =
             performance.bestCTR === null || currentCTR > performance.bestCTR;
 
@@ -321,7 +335,8 @@ export class AdPerformanceService {
         }
 
         // 消化額トリガーチェック（10万円消化ごと）
-        const spendSinceLastReview = performance.totalSpend - performance.spendAtLastReview;
+        const spendSinceLastReview =
+          performance.totalSpend - performance.spendAtLastReview;
         if (spendSinceLastReview >= SPEND_REVIEW_THRESHOLD) {
           // 直近7日間のパフォーマンスを取得
           const recentMetrics = await this.getRecentMetrics(ad.id, 7);
@@ -335,9 +350,11 @@ export class AdPerformanceService {
             {
               bestCPA: performance.bestCPA ?? undefined,
               currentCPA: currentCPA ?? undefined,
-              cpaDeviationRate: performance.bestCPA && currentCPA
-                ? ((currentCPA - performance.bestCPA) / performance.bestCPA) * 100
-                : undefined,
+              cpaDeviationRate:
+                performance.bestCPA && currentCPA
+                  ? ((currentCPA - performance.bestCPA) / performance.bestCPA) *
+                    100
+                  : undefined,
               bestCTR: performance.bestCTR ?? undefined,
               currentCTR: recentMetrics.ctr,
             },
@@ -542,24 +559,30 @@ export class AdPerformanceService {
     const recentMetrics = await this.getRecentMetrics(adId, 7);
 
     // 現在のCPA
-    const currentCPA = performance.totalConversions > 0
-      ? performance.totalSpend / performance.totalConversions
-      : null;
+    const currentCPA =
+      performance.totalConversions > 0
+        ? performance.totalSpend / performance.totalConversions
+        : null;
 
     // 乖離ステータス
-    const cpaDeviation = performance.bestCPA !== null && currentCPA !== null
-      ? ((currentCPA - performance.bestCPA) / performance.bestCPA) * 100
-      : null;
+    const cpaDeviation =
+      performance.bestCPA !== null && currentCPA !== null
+        ? ((currentCPA - performance.bestCPA) / performance.bestCPA) * 100
+        : null;
 
-    const ctrDeviation = performance.bestCTR !== null && recentMetrics.ctr > 0
-      ? ((recentMetrics.ctr - performance.bestCTR) / performance.bestCTR) * 100
-      : null;
+    const ctrDeviation =
+      performance.bestCTR !== null && recentMetrics.ctr > 0
+        ? ((recentMetrics.ctr - performance.bestCTR) / performance.bestCTR) *
+          100
+        : null;
 
     // 見直しステータス
-    const spendSinceLastReview = performance.totalSpend - performance.spendAtLastReview;
+    const spendSinceLastReview =
+      performance.totalSpend - performance.spendAtLastReview;
     const daysSinceLastReview = performance.lastReviewDate
       ? Math.floor(
-          (Date.now() - performance.lastReviewDate.getTime()) / (1000 * 60 * 60 * 24),
+          (Date.now() - performance.lastReviewDate.getTime()) /
+            (1000 * 60 * 60 * 24),
         )
       : null;
 

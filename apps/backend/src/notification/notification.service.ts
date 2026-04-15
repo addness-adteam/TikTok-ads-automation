@@ -3,8 +3,8 @@ import { PrismaService } from '../prisma/prisma.service';
 
 // 通知タイプ
 export enum NotificationType {
-  CPA_DEVIATION = 'CPA_DEVIATION',           // CPA乖離アラート（20%以上）
-  AD_REVIEW = 'AD_REVIEW',                   // 広告定期見直し（10万円消化ごと）
+  CPA_DEVIATION = 'CPA_DEVIATION', // CPA乖離アラート（20%以上）
+  AD_REVIEW = 'AD_REVIEW', // 広告定期見直し（10万円消化ごと）
   BUDGET_CAP_APPLIED = 'BUDGET_CAP_APPLIED', // 上限日予算適用通知
   BUDGET_CAP_REACHED = 'BUDGET_CAP_REACHED', // 上限日予算到達通知（増額スキップ）
   PERFORMANCE_DEGRADATION = 'PERFORMANCE_DEGRADATION', // パフォーマンス急激悪化（50%以上乖離）
@@ -106,7 +106,10 @@ export class NotificationService {
         `Notification created: ${dto.type} - ${dto.title} (advertiserId: ${dto.advertiserId})`,
       );
     } catch (error) {
-      this.logger.error(`Failed to create notification: ${error.message}`, error);
+      this.logger.error(
+        `Failed to create notification: ${error.message}`,
+        error,
+      );
       // 通知作成失敗は既存処理に影響させない
     }
   }
@@ -123,13 +126,15 @@ export class NotificationService {
     totalSpend: number,
     totalImpressions: number,
   ): Promise<void> {
-    const deviationRate = ((currentCPA - bestCPA) / bestCPA * 100).toFixed(1);
-    const severity = parseFloat(deviationRate) >= 50
-      ? NotificationSeverity.CRITICAL
-      : NotificationSeverity.WARNING;
-    const type = parseFloat(deviationRate) >= 50
-      ? NotificationType.PERFORMANCE_DEGRADATION
-      : NotificationType.CPA_DEVIATION;
+    const deviationRate = (((currentCPA - bestCPA) / bestCPA) * 100).toFixed(1);
+    const severity =
+      parseFloat(deviationRate) >= 50
+        ? NotificationSeverity.CRITICAL
+        : NotificationSeverity.WARNING;
+    const type =
+      parseFloat(deviationRate) >= 50
+        ? NotificationType.PERFORMANCE_DEGRADATION
+        : NotificationType.CPA_DEVIATION;
 
     const message = `【CPA乖離アラート】
 広告名: ${adName}
@@ -311,7 +316,14 @@ ${performanceTable}
     total: number;
     unreadCount: number;
   }> {
-    const { advertiserId, status, type, severity, limit = 50, offset = 0 } = options;
+    const {
+      advertiserId,
+      status,
+      type,
+      severity,
+      limit = 50,
+      offset = 0,
+    } = options;
 
     const where: any = { advertiserId };
 
@@ -360,7 +372,10 @@ ${performanceTable}
   /**
    * 一括既読
    */
-  async markAllAsRead(advertiserId: string, notificationIds?: string[]): Promise<void> {
+  async markAllAsRead(
+    advertiserId: string,
+    notificationIds?: string[],
+  ): Promise<void> {
     const where: any = {
       advertiserId,
       status: NotificationStatus.UNREAD,

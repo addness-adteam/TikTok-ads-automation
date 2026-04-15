@@ -7,11 +7,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { TiktokService } from '../tiktok/tiktok.service';
 import { UtageService } from '../utage/utage.service';
 import { DEFAULT_DAILY_BUDGET, DEEP_FUNNEL_CONFIG } from '../utage/utage.types';
-import {
-  CrossDeployInput,
-  CrossDeployResult,
-  PreviewResult,
-} from './types';
+import { CrossDeployInput, CrossDeployResult, PreviewResult } from './types';
 
 @Injectable()
 export class CrossDeployService {
@@ -57,7 +53,9 @@ export class CrossDeployService {
    * メイン横展開実行
    */
   async crossDeploy(input: CrossDeployInput): Promise<CrossDeployResult[]> {
-    this.logger.log(`横展開開始: ${input.sourceAdId} → ${input.targetAdvertiserIds.join(', ')} (mode: ${input.mode})`);
+    this.logger.log(
+      `横展開開始: ${input.sourceAdId} → ${input.targetAdvertiserIds.join(', ')} (mode: ${input.mode})`,
+    );
 
     // 1. 元広告データ取得
     const sourceToken = await this.getAccessToken(input.sourceAdvertiserId);
@@ -75,7 +73,10 @@ export class CrossDeployService {
     }
 
     // 3. 元広告名からappeal/LP番号を抽出
-    const { appeal, lpNumber } = this.parseAdNameForAppeal(sourceDetail.adName, input.sourceAdvertiserId);
+    const { appeal, lpNumber } = this.parseAdNameForAppeal(
+      sourceDetail.adName,
+      input.sourceAdvertiserId,
+    );
 
     // 4. メディアをダウンロード（画像・動画それぞれ存在する分だけ）
     const imageBuffers: Map<string, Buffer> = new Map();
@@ -99,7 +100,7 @@ export class CrossDeployService {
         const resp = await fetch(imageUrl);
         const buffer = Buffer.from(await resp.arrayBuffer());
         imageBuffers.set(imageId, buffer);
-        await new Promise(r => setTimeout(r, 100));
+        await new Promise((r) => setTimeout(r, 100));
       }
     }
 
@@ -113,8 +114,12 @@ export class CrossDeployService {
         videoIndicesToUse = sourceDetail.videoIds.map((_, i) => i);
       }
 
-      videoIdsToUse = videoIndicesToUse.map(i => sourceDetail.videoIds[i]).filter(Boolean);
-      this.logger.log(`動画: ${videoIdsToUse.length}本 / ${sourceDetail.videoIds.length}本をダウンロード`);
+      videoIdsToUse = videoIndicesToUse
+        .map((i) => sourceDetail.videoIds[i])
+        .filter(Boolean);
+      this.logger.log(
+        `動画: ${videoIdsToUse.length}本 / ${sourceDetail.videoIds.length}本をダウンロード`,
+      );
 
       const videoInfos = await this.tiktokService.getVideoInfo(
         input.sourceAdvertiserId,
@@ -131,7 +136,7 @@ export class CrossDeployService {
 
         const buffer = await this.tiktokService.downloadVideo(downloadUrl);
         videoBuffers.set(videoId, buffer);
-        await new Promise(r => setTimeout(r, 100));
+        await new Promise((r) => setTimeout(r, 100));
       }
     }
 
@@ -141,15 +146,26 @@ export class CrossDeployService {
     for (const targetAdvertiserId of input.targetAdvertiserIds) {
       // 常にSmart+モードで出稿（通常広告は予算調整V2で認識されにくいため）
       if (input.mode === 'REGULAR') {
-        this.logger.warn(`[横展開] REGULARモード指定がありましたが、Smart+モードで出稿します`);
+        this.logger.warn(
+          `[横展開] REGULARモード指定がありましたが、Smart+モードで出稿します`,
+        );
       }
       const result = await this.deploySmartPlus(
-        input, targetAdvertiserId, sourceDetail, videoIdsToUse, videoBuffers, imageBuffers, appeal, lpNumber,
+        input,
+        targetAdvertiserId,
+        sourceDetail,
+        videoIdsToUse,
+        videoBuffers,
+        imageBuffers,
+        appeal,
+        lpNumber,
       );
       results.push(result);
     }
 
-    this.logger.log(`横展開完了: 成功=${results.filter(r => r.status === 'SUCCESS').length}, 失敗=${results.filter(r => r.status === 'FAILED').length}`);
+    this.logger.log(
+      `横展開完了: 成功=${results.filter((r) => r.status === 'SUCCESS').length}, 失敗=${results.filter((r) => r.status === 'FAILED').length}`,
+    );
     return results;
   }
 
@@ -159,7 +175,9 @@ export class CrossDeployService {
   private async deploySmartPlus(
     input: CrossDeployInput,
     targetAdvertiserId: string,
-    sourceDetail: Awaited<ReturnType<TiktokService['getSmartPlusAdFullDetail']>>,
+    sourceDetail: Awaited<
+      ReturnType<TiktokService['getSmartPlusAdFullDetail']>
+    >,
     videoIdsToUse: string[],
     videoBuffers: Map<string, Buffer>,
     imageBuffers: Map<string, Buffer>,
@@ -185,7 +203,9 @@ export class CrossDeployService {
       });
 
       if (!targetAdvertiser) {
-        throw new Error(`ターゲットアカウント ${targetAdvertiserId} がDBに見つかりません`);
+        throw new Error(
+          `ターゲットアカウント ${targetAdvertiserId} がDBに見つかりません`,
+        );
       }
 
       // i. 動画をターゲットにアップロード
@@ -199,8 +219,12 @@ export class CrossDeployService {
           `cross_deploy_${videoId}.mp4`,
         );
         videoMapping[videoId] = newVideoId;
-        await this.tiktokService.waitForVideoReady(targetAdvertiserId, targetToken, newVideoId);
-        await new Promise(r => setTimeout(r, 100));
+        await this.tiktokService.waitForVideoReady(
+          targetAdvertiserId,
+          targetToken,
+          newVideoId,
+        );
+        await new Promise((r) => setTimeout(r, 100));
       }
 
       // ii. 画像をターゲットにアップロード
@@ -213,7 +237,7 @@ export class CrossDeployService {
           `cross_deploy_${imageId.split('/').pop()}.jpg`,
         );
         imageMapping[imageId] = newImageId;
-        await new Promise(r => setTimeout(r, 100));
+        await new Promise((r) => setTimeout(r, 100));
       }
 
       const allMediaMapping = { ...videoMapping, ...imageMapping };
@@ -233,7 +257,11 @@ export class CrossDeployService {
       }
 
       // iii. UTAGE登録経路を1つ作成
-      const utageResult = await this.utageService.createRegistrationPathAndGetUrl(appeal, lpNumber);
+      const utageResult =
+        await this.utageService.createRegistrationPathAndGetUrl(
+          appeal,
+          lpNumber,
+        );
       await this.updateLog(log.id, {
         status: 'UTAGE_CREATED',
         utagePath: utageResult.registrationPath,
@@ -242,8 +270,14 @@ export class CrossDeployService {
       });
 
       // 広告名生成
-      const adName = this.generateAdName(input, sourceDetail.adName, utageResult.crNumber, lpNumber);
-      const dailyBudget = input.dailyBudget || DEFAULT_DAILY_BUDGET[appeal] || 3000;
+      const adName = this.generateAdName(
+        input,
+        sourceDetail.adName,
+        utageResult.crNumber,
+        lpNumber,
+      );
+      const dailyBudget =
+        input.dailyBudget || DEFAULT_DAILY_BUDGET[appeal] || 3000;
 
       // iv. キャンペーン作成
       const campaignId = await this.tiktokService.createSmartPlusCampaign(
@@ -271,7 +305,13 @@ export class CrossDeployService {
 
       // vi. creative_list構築（動画 + 画像を混合）
       const bcId = targetAdvertiser.identityAuthorizedBcId || undefined;
-      const creativeList: Array<{ videoId?: string; imageId?: string; identityId: string; identityType: string; identityAuthorizedBcId?: string }> = [];
+      const creativeList: Array<{
+        videoId?: string;
+        imageId?: string;
+        identityId: string;
+        identityType: string;
+        identityAuthorizedBcId?: string;
+      }> = [];
 
       // 動画クリエイティブ
       for (const newVideoId of Object.values(videoMapping)) {
@@ -293,7 +333,9 @@ export class CrossDeployService {
         });
       }
 
-      const landingPageUrl = this.buildLandingPageUrl(utageResult.destinationUrl);
+      const landingPageUrl = this.buildLandingPageUrl(
+        utageResult.destinationUrl,
+      );
       const adId = await this.tiktokService.createSmartPlusAd(
         targetAdvertiserId,
         targetToken,
@@ -301,7 +343,10 @@ export class CrossDeployService {
           adgroupId,
           adName,
           creativeList,
-          adTextList: sourceDetail.adTexts.length > 0 ? sourceDetail.adTexts : [this.getDefaultAdText(appeal)],
+          adTextList:
+            sourceDetail.adTexts.length > 0
+              ? sourceDetail.adTexts
+              : [this.getDefaultAdText(appeal)],
           landingPageUrls: [landingPageUrl],
         },
       );
@@ -354,7 +399,9 @@ export class CrossDeployService {
   private async deployRegular(
     input: CrossDeployInput,
     targetAdvertiserId: string,
-    sourceDetail: Awaited<ReturnType<TiktokService['getSmartPlusAdFullDetail']>>,
+    sourceDetail: Awaited<
+      ReturnType<TiktokService['getSmartPlusAdFullDetail']>
+    >,
     videoId: string,
     videoBuffers: Map<string, Buffer>,
     appeal: string,
@@ -379,7 +426,9 @@ export class CrossDeployService {
       });
 
       if (!targetAdvertiser) {
-        throw new Error(`ターゲットアカウント ${targetAdvertiserId} がDBに見つかりません`);
+        throw new Error(
+          `ターゲットアカウント ${targetAdvertiserId} がDBに見つかりません`,
+        );
       }
 
       // i. 動画をアップロード
@@ -391,7 +440,11 @@ export class CrossDeployService {
         `cross_deploy_${videoId}.mp4`,
       );
       const videoMapping = { [videoId]: newVideoId };
-      await this.tiktokService.waitForVideoReady(targetAdvertiserId, targetToken, newVideoId);
+      await this.tiktokService.waitForVideoReady(
+        targetAdvertiserId,
+        targetToken,
+        newVideoId,
+      );
 
       await this.updateLog(log.id, { status: 'VIDEOS_UPLOADED', videoMapping });
 
@@ -406,7 +459,11 @@ export class CrossDeployService {
       }
 
       // ii. UTAGE登録経路を1つ作成（動画ごとにCR番号が連番）
-      const utageResult = await this.utageService.createRegistrationPathAndGetUrl(appeal, lpNumber);
+      const utageResult =
+        await this.utageService.createRegistrationPathAndGetUrl(
+          appeal,
+          lpNumber,
+        );
       await this.updateLog(log.id, {
         status: 'UTAGE_CREATED',
         utagePath: utageResult.registrationPath,
@@ -414,8 +471,14 @@ export class CrossDeployService {
         crNumber: utageResult.crNumber,
       });
 
-      const adName = this.generateAdName(input, sourceDetail.adName, utageResult.crNumber, lpNumber);
-      const dailyBudget = input.dailyBudget || DEFAULT_DAILY_BUDGET[appeal] || 3000;
+      const adName = this.generateAdName(
+        input,
+        sourceDetail.adName,
+        utageResult.crNumber,
+        lpNumber,
+      );
+      const dailyBudget =
+        input.dailyBudget || DEFAULT_DAILY_BUDGET[appeal] || 3000;
 
       // iii. キャンペーン作成（通常配信）
       const advertiserUuid = targetAdvertiser.id;
@@ -468,7 +531,8 @@ export class CrossDeployService {
             age_groups: ['AGE_25_34', 'AGE_35_44', 'AGE_45_54'],
             gender: 'GENDER_UNLIMITED',
             languages: ['ja'],
-            excluded_custom_audiences: excludedAudiences.length > 0 ? excludedAudiences : undefined,
+            excluded_custom_audiences:
+              excludedAudiences.length > 0 ? excludedAudiences : undefined,
           },
         },
         targetToken,
@@ -484,7 +548,9 @@ export class CrossDeployService {
       );
 
       // vi. 広告作成（通常配信 1-1-1）
-      const landingPageUrl = this.buildLandingPageUrl(utageResult.destinationUrl);
+      const landingPageUrl = this.buildLandingPageUrl(
+        utageResult.destinationUrl,
+      );
       const adResp = await this.tiktokService.createAd(
         targetAdvertiserId,
         adgroupId,
@@ -492,7 +558,8 @@ export class CrossDeployService {
         {
           identity: targetAdvertiser.identityId!,
           identityType: 'BC_AUTH_TT',
-          identityAuthorizedBcId: targetAdvertiser.identityAuthorizedBcId || undefined,
+          identityAuthorizedBcId:
+            targetAdvertiser.identityAuthorizedBcId || undefined,
           videoId: newVideoId,
           imageIds: [thumbnailImageId],
           adText: sourceDetail.adTexts[0] || this.getDefaultAdText(appeal),
@@ -546,16 +613,19 @@ export class CrossDeployService {
    * 途中失敗からの再開
    */
   async resumeFailedDeploy(logId: string): Promise<CrossDeployResult> {
-    const log = await this.prisma.crossDeployLog.findUnique({ where: { id: logId } });
+    const log = await this.prisma.crossDeployLog.findUnique({
+      where: { id: logId },
+    });
     if (!log) throw new Error(`CrossDeployLog not found: ${logId}`);
-    if (log.status !== 'FAILED') throw new Error(`ログのステータスがFAILEDではありません: ${log.status}`);
+    if (log.status !== 'FAILED')
+      throw new Error(`ログのステータスがFAILEDではありません: ${log.status}`);
 
     // 失敗したステップに応じて再開ポイントを決定
     const input: CrossDeployInput = {
       sourceAdvertiserId: log.sourceAdvertiserId,
       sourceAdId: log.sourceAdId,
       targetAdvertiserIds: [log.targetAdvertiserId],
-      mode: log.mode as any,
+      mode: log.mode,
     };
 
     // 簡易実装: 最初から再実行
@@ -569,7 +639,8 @@ export class CrossDeployService {
     const token = await this.prisma.oAuthToken.findUnique({
       where: { advertiserId },
     });
-    if (!token) throw new Error(`アクセストークンが見つかりません: ${advertiserId}`);
+    if (!token)
+      throw new Error(`アクセストークンが見つかりません: ${advertiserId}`);
     return token.accessToken;
   }
 
@@ -582,11 +653,11 @@ export class CrossDeployService {
 
   private getCurrentStep(log: any): string {
     const statusToStep: Record<string, string> = {
-      'PENDING': 'VIDEO_UPLOAD',
-      'VIDEOS_UPLOADED': 'UTAGE_CREATE',
-      'UTAGE_CREATED': 'CAMPAIGN_CREATE',
-      'CAMPAIGN_CREATED': 'ADGROUP_CREATE',
-      'ADGROUP_CREATED': 'AD_CREATE',
+      PENDING: 'VIDEO_UPLOAD',
+      VIDEOS_UPLOADED: 'UTAGE_CREATE',
+      UTAGE_CREATED: 'CAMPAIGN_CREATE',
+      CAMPAIGN_CREATED: 'ADGROUP_CREATE',
+      ADGROUP_CREATED: 'AD_CREATE',
     };
     return statusToStep[log.status] || 'UNKNOWN';
   }
@@ -605,9 +676,22 @@ export class CrossDeployService {
 
     // appealはアカウントのappealから取得
     // 同期的に取得できないのでAdvertiserテーブルから推測
-    const aiAccounts = ['7468288053866561553', '7523128243466551303', '7543540647266074641', '7580666710525493255'];
-    const snsAccounts = ['7247073333517238273', '7543540100849156112', '7543540381615800337'];
-    const spAccounts = ['7474920444831875080', '7592868952431362066', '7616545514662051858'];
+    const aiAccounts = [
+      '7468288053866561553',
+      '7523128243466551303',
+      '7543540647266074641',
+      '7580666710525493255',
+    ];
+    const snsAccounts = [
+      '7247073333517238273',
+      '7543540100849156112',
+      '7543540381615800337',
+    ];
+    const spAccounts = [
+      '7474920444831875080',
+      '7592868952431362066',
+      '7616545514662051858',
+    ];
 
     let appeal = 'AI';
     if (snsAccounts.includes(sourceAdvertiserId)) appeal = 'SNS';
@@ -615,7 +699,8 @@ export class CrossDeployService {
 
     // 広告名にも手がかりがある場合
     if (adName.includes('SNS') || adName.includes('sns')) appeal = 'SNS';
-    else if (adName.includes('スキル') || adName.includes('セミナー')) appeal = 'スキルプラス';
+    else if (adName.includes('スキル') || adName.includes('セミナー'))
+      appeal = 'スキルプラス';
 
     return { appeal, lpNumber };
   }

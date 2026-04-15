@@ -23,7 +23,9 @@ export class AdTextTemplateService {
    * 広告文テンプレート作成
    */
   async create(dto: CreateAdTextTemplateDto) {
-    this.logger.log(`Creating ad text template: ${dto.name} for appeal: ${dto.appealId}`);
+    this.logger.log(
+      `Creating ad text template: ${dto.name} for appeal: ${dto.appealId}`,
+    );
 
     const template = await this.prisma.adTextTemplate.create({
       data: {

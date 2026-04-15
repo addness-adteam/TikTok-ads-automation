@@ -43,9 +43,10 @@ export function identifyVariables(
     return [];
   }
 
-  const roasVars = channelType === 'SKILL_PLUS'
-    ? ROAS_VARIABLES_SKILL_PLUS
-    : ROAS_VARIABLES_AI_SNS;
+  const roasVars =
+    channelType === 'SKILL_PLUS'
+      ? ROAS_VARIABLES_SKILL_PLUS
+      : ROAS_VARIABLES_AI_SNS;
 
   switch (direction) {
     case 'IMPROVE_ROAS':

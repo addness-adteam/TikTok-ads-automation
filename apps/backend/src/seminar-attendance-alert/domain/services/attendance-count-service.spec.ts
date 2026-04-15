@@ -16,7 +16,10 @@ describe('AttendanceCountService.countByLpCr', () => {
     ];
     const attended = new Set(['a@x.com', 'b@x.com']);
     const result = svc.countByLpCr(optMap, reservations, attended);
-    expect(result.get('LP2-CR00500')).toEqual({ reservationCount: 3, attendanceCount: 2 });
+    expect(result.get('LP2-CR00500')).toEqual({
+      reservationCount: 3,
+      attendanceCount: 2,
+    });
   });
 
   it('複数LP-CRに分散', () => {
@@ -57,7 +60,10 @@ describe('AttendanceCountService.countByLpCr', () => {
     const reservations = [{ email: 'FOO@X.COM', reservedAt: new Date() }];
     const attended = new Set(['Foo@X.Com']);
     const result = svc.countByLpCr(optMap, reservations, attended);
-    expect(result.get('LP2-CR00500')).toEqual({ reservationCount: 1, attendanceCount: 1 });
+    expect(result.get('LP2-CR00500')).toEqual({
+      reservationCount: 1,
+      attendanceCount: 1,
+    });
   });
 
   it('空入力でも空Mapを返す', () => {

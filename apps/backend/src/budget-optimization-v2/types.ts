@@ -14,9 +14,9 @@ export const BUDGET_TIER = {
 
 /** 予算帯ごとの増額に必要な最低オプト数 */
 export const BUDGET_TIER_MIN_OPTS = {
-  LOW: 1,    // 8,000円未満: CV1以上で増額
-  MID: 2,    // 8,000〜20,000円: オプト2以上で増額
-  HIGH: 3,   // 20,000〜40,000円: オプト3以上で増額
+  LOW: 1, // 8,000円未満: CV1以上で増額
+  MID: 2, // 8,000〜20,000円: オプト2以上で増額
+  HIGH: 3, // 20,000〜40,000円: オプト3以上で増額
 } as const;
 
 /**
@@ -25,21 +25,21 @@ export const BUDGET_TIER_MIN_OPTS = {
  *          セミナー: 7日間CPA ≤ 目標CPA
  */
 export const WINNING_CR_BUDGET_TIER = {
-  TIER1_MAX: 80_000,    // 40,000〜80,000円
-  TIER2_MAX: 150_000,   // 80,000〜150,000円
-  TIER3_MAX: 300_000,   // 150,000〜300,000円（グローバル上限）
+  TIER1_MAX: 80_000, // 40,000〜80,000円
+  TIER2_MAX: 150_000, // 80,000〜150,000円
+  TIER3_MAX: 300_000, // 150,000〜300,000円（グローバル上限）
 } as const;
 
 export const WINNING_CR_BUDGET_TIER_MIN_OPTS = {
-  TIER1: 4,   // 40,000〜80,000円: 4CV以上
-  TIER2: 5,   // 80,000〜150,000円: 5CV以上
-  TIER3: 6,   // 150,000円超: 6CV以上
+  TIER1: 4, // 40,000〜80,000円: 4CV以上
+  TIER2: 5, // 80,000〜150,000円: 5CV以上
+  TIER3: 6, // 150,000円超: 6CV以上
 } as const;
 
 /** 運用時間帯（JST） */
 export const OPERATION_HOURS = {
-  FIRST_ROUND_HOUR: 0,  // 00:30 JST（GitHub Actionsの0:30実行で第1回）
-  LAST_HOUR: 23,         // 23:30 JST（24時間予算増加対応）
+  FIRST_ROUND_HOUR: 0, // 00:30 JST（GitHub Actionsの0:30実行で第1回）
+  LAST_HOUR: 23, // 23:30 JST（24時間予算増加対応）
 } as const;
 
 /** 新規CR保護: 停止判定に必要な最低インプレッション */
@@ -65,30 +65,32 @@ export const DEFAULT_DAILY_BUDGET: Record<ChannelType, number> = {
 } as const;
 
 /** 日次レポート書き出し先スプレッドシートID */
-export const DAILY_REPORT_SPREADSHEET_ID = '17PWEALugoIY2aKtjpITuyEAwJRz7o03q5iLeR5_5FwM';
+export const DAILY_REPORT_SPREADSHEET_ID =
+  '17PWEALugoIY2aKtjpITuyEAwJRz7o03q5iLeR5_5FwM';
 
 /** 日次レポートシート名 */
 export const DAILY_REPORT_SHEET_NAME = 'シート1';
 
 /** 個別予約スプレッドシートID（全導線共通） */
-export const INDIVIDUAL_RESERVATION_SPREADSHEET_ID = '1MsJRbZGrLOkgd7lRApr1ciFQ1GOZaIjmrXQSIe3_nCA';
+export const INDIVIDUAL_RESERVATION_SPREADSHEET_ID =
+  '1MsJRbZGrLOkgd7lRApr1ciFQ1GOZaIjmrXQSIe3_nCA';
 
 /** 個別予約 導線別タブ・列設定 */
 export const INDIVIDUAL_RESERVATION_CONFIG = {
   SEMINAR: {
     sheetName: 'スキルプラス（オートウェビナー用）',
-    dateColumnIndex: 0,        // A列
-    pathColumnIndex: 34,       // AI列
+    dateColumnIndex: 0, // A列
+    pathColumnIndex: 34, // AI列
   },
   AI: {
     sheetName: 'AI',
-    dateColumnIndex: 0,        // A列
-    pathColumnIndex: 46,       // AU列
+    dateColumnIndex: 0, // A列
+    pathColumnIndex: 46, // AU列
   },
   SNS: {
     sheetName: 'SNS',
-    dateColumnIndex: 0,        // A列
-    pathColumnIndex: 46,       // AU列
+    dateColumnIndex: 0, // A列
+    pathColumnIndex: 46, // AU列
   },
 } as const;
 
@@ -182,7 +184,11 @@ export interface BudgetIncreaseDecision {
 // 停止判定
 // ----------------------------------------------------------------------------
 
-export type PauseAction = 'PAUSE' | 'CONTINUE' | 'SKIP_NEW_CR' | 'BUDGET_DECREASE_20PCT';
+export type PauseAction =
+  | 'PAUSE'
+  | 'CONTINUE'
+  | 'SKIP_NEW_CR'
+  | 'BUDGET_DECREASE_20PCT';
 
 export interface PauseDecision {
   adId: string;

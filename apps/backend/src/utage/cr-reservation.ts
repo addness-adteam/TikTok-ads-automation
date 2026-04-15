@@ -18,7 +18,10 @@ export async function getUtageCrMax(
   lpNumber: number,
 ): Promise<number> {
   const trackingUrl = `${utageBaseUrl}/funnel/${funnelId}/tracking`;
-  const pattern = new RegExp(`TikTok広告-${appeal}-LP${lpNumber}-CR(0\\d{4})`, 'g');
+  const pattern = new RegExp(
+    `TikTok広告-${appeal}-LP${lpNumber}-CR(0\\d{4})`,
+    'g',
+  );
   const allNumbers: number[] = [];
   const MAX_PAGES = 30;
 
@@ -27,7 +30,7 @@ export async function getUtageCrMax(
     const result = await authedGet(url);
     const html = typeof result === 'string' ? result : result.html;
     const matches = [...html.matchAll(pattern)];
-    allNumbers.push(...matches.map(m => parseInt(m[1])));
+    allNumbers.push(...matches.map((m) => parseInt(m[1])));
     if (!html.includes(`page=${page + 1}`)) break;
   }
 
@@ -56,7 +59,9 @@ export async function reserveNextCrNumber(
       await prisma.crNumberReservation.create({
         data: { appeal, lpNumber, crNumber: candidate },
       });
-      console.log(`[CR予約] ${appeal} LP${lpNumber} CR${String(candidate).padStart(5, '0')} (utageMax=${utageMax}, dbMax=${dbMax})`);
+      console.log(
+        `[CR予約] ${appeal} LP${lpNumber} CR${String(candidate).padStart(5, '0')} (utageMax=${utageMax}, dbMax=${dbMax})`,
+      );
       return candidate;
     } catch (e: any) {
       if (e?.code === 'P2002') {

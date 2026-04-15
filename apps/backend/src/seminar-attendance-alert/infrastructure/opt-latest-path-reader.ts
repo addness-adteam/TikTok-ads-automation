@@ -21,12 +21,17 @@ export class SheetsOptLatestPathReader implements OptLatestPathReader {
   constructor(private readonly sheets: GoogleSheetsService) {}
 
   async load(): Promise<Map<string, { lpCr: string; timestamp: Date }>> {
-    const rows = await this.sheets.getValues(SP_OPT_SHEET_ID, `${SP_OPT_TAB}!A:F`);
+    const rows = await this.sheets.getValues(
+      SP_OPT_SHEET_ID,
+      `${SP_OPT_TAB}!A:F`,
+    );
     return this.buildLatestMap(rows);
   }
 
   /** テスト可能な純粋関数 */
-  buildLatestMap(rows: string[][]): Map<string, { lpCr: string; timestamp: Date }> {
+  buildLatestMap(
+    rows: string[][],
+  ): Map<string, { lpCr: string; timestamp: Date }> {
     const result = new Map<string, { lpCr: string; timestamp: Date }>();
     for (let i = 1; i < rows.length; i++) {
       const row = rows[i] ?? [];
@@ -47,7 +52,9 @@ export class SheetsOptLatestPathReader implements OptLatestPathReader {
   }
 
   private normalizeEmail(v: any): string {
-    return String(v ?? '').trim().toLowerCase();
+    return String(v ?? '')
+      .trim()
+      .toLowerCase();
   }
 
   /** ファネル登録経路を優先、なければURLから推定 */
@@ -66,8 +73,12 @@ export class SheetsOptLatestPathReader implements OptLatestPathReader {
     // "2025-09-20 14:41:28" 形式をDate化
     const normalized = s.replace(' ', 'T');
     // JST想定。Zなしだとローカルtimezone扱いになるので +09:00 付与
-    const tzAware = normalized.length > 10 && !normalized.endsWith('Z') && !/[\+\-]\d{2}:?\d{2}$/.test(normalized)
-      ? normalized + '+09:00' : normalized;
+    const tzAware =
+      normalized.length > 10 &&
+      !normalized.endsWith('Z') &&
+      !/[\+\-]\d{2}:?\d{2}$/.test(normalized)
+        ? normalized + '+09:00'
+        : normalized;
     const d = new Date(tzAware);
     return isNaN(d.getTime()) ? null : d;
   }

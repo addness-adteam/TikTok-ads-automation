@@ -1,5 +1,8 @@
 import { Controller, Post, Body, Logger } from '@nestjs/common';
-import { CampaignBuilderService, CampaignBuilderInput } from './campaign-builder.service';
+import {
+  CampaignBuilderService,
+  CampaignBuilderInput,
+} from './campaign-builder.service';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 
@@ -36,10 +39,14 @@ export class CampaignBuilderController {
    */
   @Post('create')
   async createCampaign(@Body() frontendInput: FrontendCampaignInput) {
-    this.logger.log(`Campaign creation requested: ${frontendInput.campaignName}, pattern: ${frontendInput.pattern}`);
+    this.logger.log(
+      `Campaign creation requested: ${frontendInput.campaignName}, pattern: ${frontendInput.pattern}`,
+    );
 
     try {
-      const token = frontendInput.accessToken || this.configService.get<string>('TIKTOK_ACCESS_TOKEN');
+      const token =
+        frontendInput.accessToken ||
+        this.configService.get<string>('TIKTOK_ACCESS_TOKEN');
 
       if (!token) {
         return {
@@ -64,8 +71,11 @@ export class CampaignBuilderController {
       // 2. フロントエンドのデータをバックエンド形式に変換
       const ads = frontendInput.adTexts.map((adText, index) => {
         // 各広告文とCreativeを組み合わせて広告を作成
-        const creativeId = frontendInput.creativeIds[index % frontendInput.creativeIds.length];
-        const adName = frontendInput.adNames?.[index] || `${frontendInput.lpName}_${index + 1}`;
+        const creativeId =
+          frontendInput.creativeIds[index % frontendInput.creativeIds.length];
+        const adName =
+          frontendInput.adNames?.[index] ||
+          `${frontendInput.lpName}_${index + 1}`;
 
         return {
           adName,
@@ -84,10 +94,15 @@ export class CampaignBuilderController {
         ads,
       };
 
-      this.logger.log(`Converted backend input: ${JSON.stringify(backendInput, null, 2)}`);
+      this.logger.log(
+        `Converted backend input: ${JSON.stringify(backendInput, null, 2)}`,
+      );
 
       // 3. キャンペーンを作成
-      const result = await this.campaignBuilderService.buildCampaign(backendInput, token);
+      const result = await this.campaignBuilderService.buildCampaign(
+        backendInput,
+        token,
+      );
 
       return {
         success: true,

@@ -36,7 +36,9 @@ export class CreativeController {
       const blobToken = this.configService.get<string>('BLOB_READ_WRITE_TOKEN');
 
       if (!blobToken) {
-        throw new BadRequestException('BLOB_READ_WRITE_TOKEN is not configured');
+        throw new BadRequestException(
+          'BLOB_READ_WRITE_TOKEN is not configured',
+        );
       }
 
       return {
@@ -118,11 +120,15 @@ export class CreativeController {
     @Body('filename') filename: string,
     @Body('fileSize') fileSize: number,
   ) {
-    this.logger.log(`Uploading creative from Blob for advertiser: ${advertiserId}`);
+    this.logger.log(
+      `Uploading creative from Blob for advertiser: ${advertiserId}`,
+    );
 
     try {
       if (!advertiserId || !name || !blobUrl || !filename) {
-        throw new BadRequestException('advertiserId, name, blobUrl, and filename are required');
+        throw new BadRequestException(
+          'advertiserId, name, blobUrl, and filename are required',
+        );
       }
 
       const creative = await this.creativeService.uploadFromBlob(
@@ -178,13 +184,19 @@ export class CreativeController {
     }
 
     try {
-      const token = accessToken || this.configService.get<string>('TIKTOK_ACCESS_TOKEN');
+      const token =
+        accessToken || this.configService.get<string>('TIKTOK_ACCESS_TOKEN');
 
       if (!token) {
         throw new BadRequestException('Access token is required');
       }
 
-      const creative = await this.creativeService.uploadCreative(advertiserId, name, file, token);
+      const creative = await this.creativeService.uploadCreative(
+        advertiserId,
+        name,
+        file,
+        token,
+      );
 
       return {
         success: true,

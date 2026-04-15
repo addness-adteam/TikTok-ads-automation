@@ -1,9 +1,4 @@
-import {
-  Controller,
-  Get,
-  Query,
-  Logger,
-} from '@nestjs/common';
+import { Controller, Get, Query, Logger } from '@nestjs/common';
 import { TiktokService } from '../tiktok/tiktok.service';
 import { PrismaService } from '../prisma/prisma.service';
 

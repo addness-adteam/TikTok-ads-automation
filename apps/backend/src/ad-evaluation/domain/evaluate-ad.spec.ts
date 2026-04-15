@@ -35,7 +35,10 @@ describe('evaluateAd', () => {
   describe('SUCCESS判定', () => {
     it('個別予約CPOがKPI以内 → SUCCESS + 横展開提案', () => {
       const ad = makeAd({
-        spend: 40000, optins: 12, frontPurchases: 2, individualReservations: 1,
+        spend: 40000,
+        optins: 12,
+        frontPurchases: 2,
+        individualReservations: 1,
       });
       // 個別予約CPO = 40000/1 = ¥40,000 < KPI ¥53,795
       const result = evaluateAd(ad, AI_KPI);
@@ -46,7 +49,10 @@ describe('evaluateAd', () => {
 
     it('CPA/フロントCPO/個別予約CPO全てKPI以内 → SUCCESS', () => {
       const ad = makeAd({
-        spend: 20000, optins: 8, frontPurchases: 1, individualReservations: 1,
+        spend: 20000,
+        optins: 8,
+        frontPurchases: 1,
+        individualReservations: 1,
       });
       // CPA=2500, フロントCPO=20000, 個別予約CPO=20000 全てKPI以内
       const result = evaluateAd(ad, AI_KPI);
@@ -58,7 +64,10 @@ describe('evaluateAd', () => {
   describe('PARTIAL_SUCCESS判定', () => {
     it('CPAは良いがフロント売れない → PARTIAL + 訴求問題', () => {
       const ad = makeAd({
-        spend: 30000, optins: 10, frontPurchases: 0, individualReservations: 0,
+        spend: 30000,
+        optins: 10,
+        frontPurchases: 0,
+        individualReservations: 0,
       });
       // CPA=3000 < KPI, だがフロント0
       const result = evaluateAd(ad, AI_KPI);
@@ -68,7 +77,10 @@ describe('evaluateAd', () => {
 
     it('CVは出るが個別予約0 → PARTIAL + 調査必要', () => {
       const ad = makeAd({
-        spend: 50000, optins: 15, frontPurchases: 3, individualReservations: 0,
+        spend: 50000,
+        optins: 15,
+        frontPurchases: 3,
+        individualReservations: 0,
       });
       // CPA=3333 OK, フロントCPO=16667 OK, だが個別予約0
       const result = evaluateAd(ad, AI_KPI);
@@ -80,7 +92,10 @@ describe('evaluateAd', () => {
   describe('FAILURE判定', () => {
     it('CPA KPI超過 → FAILURE', () => {
       const ad = makeAd({
-        spend: 50000, optins: 5, frontPurchases: 0, individualReservations: 0,
+        spend: 50000,
+        optins: 5,
+        frontPurchases: 0,
+        individualReservations: 0,
       });
       // CPA=10000 > KPI 4032
       const result = evaluateAd(ad, AI_KPI);
@@ -89,7 +104,10 @@ describe('evaluateAd', () => {
 
     it('個別予約CPO KPI大幅超過 → FAILURE + 廃止提案', () => {
       const ad = makeAd({
-        spend: 200000, optins: 50, frontPurchases: 5, individualReservations: 1,
+        spend: 200000,
+        optins: 50,
+        frontPurchases: 5,
+        individualReservations: 1,
       });
       // 個別予約CPO=200000 > KPI 53795 (3.7倍超過)
       const result = evaluateAd(ad, AI_KPI);
@@ -99,7 +117,10 @@ describe('evaluateAd', () => {
 
     it('個別予約CPO KPI僅かに超過 → FAILURE + フック差し替え提案', () => {
       const ad = makeAd({
-        spend: 70000, optins: 20, frontPurchases: 2, individualReservations: 1,
+        spend: 70000,
+        optins: 20,
+        frontPurchases: 2,
+        individualReservations: 1,
       });
       // 個別予約CPO=70000 > KPI 53795 (1.3倍) → まだ改善余地あり
       const result = evaluateAd(ad, AI_KPI);
@@ -137,12 +158,15 @@ describe('evaluateAd', () => {
   describe('メトリクス算出', () => {
     it('CPA/フロントCPO/個別予約CPOが正しく算出される', () => {
       const ad = makeAd({
-        spend: 60000, optins: 20, frontPurchases: 3, individualReservations: 2,
+        spend: 60000,
+        optins: 20,
+        frontPurchases: 3,
+        individualReservations: 2,
       });
       const result = evaluateAd(ad, AI_KPI);
-      expect(result.metrics.cpa).toBe(3000);         // 60000/20
-      expect(result.metrics.frontCPO).toBe(20000);    // 60000/3
-      expect(result.metrics.indResCPO).toBe(30000);   // 60000/2
+      expect(result.metrics.cpa).toBe(3000); // 60000/20
+      expect(result.metrics.frontCPO).toBe(20000); // 60000/3
+      expect(result.metrics.indResCPO).toBe(30000); // 60000/2
     });
 
     it('オプト0の場合CPAはnull', () => {
@@ -153,7 +177,10 @@ describe('evaluateAd', () => {
 
     it('KPI比率が正しく算出される', () => {
       const ad = makeAd({
-        spend: 40000, optins: 10, frontPurchases: 1, individualReservations: 1,
+        spend: 40000,
+        optins: 10,
+        frontPurchases: 1,
+        individualReservations: 1,
       });
       const result = evaluateAd(ad, AI_KPI);
       // CPA=4000, 比率=4000/4032=0.99

@@ -8,7 +8,7 @@ import * as crypto from 'crypto';
 
 // ファイルサイズ制限（TikTok API制限に基づく）
 const MAX_VIDEO_SIZE = 500 * 1024 * 1024; // 500MB
-const MAX_IMAGE_SIZE = 20 * 1024 * 1024;  // 20MB
+const MAX_IMAGE_SIZE = 20 * 1024 * 1024; // 20MB
 
 @Injectable()
 export class CreativeService {
@@ -19,7 +19,8 @@ export class CreativeService {
     private prisma: PrismaService,
     private configService: ConfigService,
   ) {
-    this.tiktokApiBaseUrl = this.configService.get<string>('TIKTOK_API_BASE_URL') || '';
+    this.tiktokApiBaseUrl =
+      this.configService.get<string>('TIKTOK_API_BASE_URL') || '';
   }
 
   /**
@@ -50,7 +51,9 @@ export class CreativeService {
       const isImage = file.mimetype.startsWith('image/');
 
       if (!isVideo && !isImage) {
-        throw new BadRequestException('Only video and image files are supported');
+        throw new BadRequestException(
+          'Only video and image files are supported',
+        );
       }
 
       // C-04: ファイルサイズチェック
@@ -58,14 +61,14 @@ export class CreativeService {
         const sizeMB = (file.size / (1024 * 1024)).toFixed(1);
         const maxMB = (MAX_VIDEO_SIZE / (1024 * 1024)).toFixed(0);
         throw new BadRequestException(
-          `動画ファイルサイズが大きすぎます（${sizeMB}MB）。最大${maxMB}MBまでアップロード可能です。`
+          `動画ファイルサイズが大きすぎます（${sizeMB}MB）。最大${maxMB}MBまでアップロード可能です。`,
         );
       }
       if (isImage && file.size > MAX_IMAGE_SIZE) {
         const sizeMB = (file.size / (1024 * 1024)).toFixed(1);
         const maxMB = (MAX_IMAGE_SIZE / (1024 * 1024)).toFixed(0);
         throw new BadRequestException(
-          `画像ファイルサイズが大きすぎます（${sizeMB}MB）。最大${maxMB}MBまでアップロード可能です。`
+          `画像ファイルサイズが大きすぎます（${sizeMB}MB）。最大${maxMB}MBまでアップロード可能です。`,
         );
       }
 
@@ -85,22 +88,32 @@ export class CreativeService {
 
       if (isVideo) {
         // 動画アップロード
-        const videoResult = await this.uploadVideoToTikTok(tiktokAdvertiserId, file, accessToken);
+        const videoResult = await this.uploadVideoToTikTok(
+          tiktokAdvertiserId,
+          file,
+          accessToken,
+        );
         tiktokVideoId = videoResult.videoId;
 
         // 動画のカバー画像を取得してサムネイル用の画像IDを作成
         if (videoResult.videoCoverUrl) {
-          this.logger.log(`Uploading video thumbnail from cover URL: ${videoResult.videoCoverUrl}`);
+          this.logger.log(
+            `Uploading video thumbnail from cover URL: ${videoResult.videoCoverUrl}`,
+          );
           thumbnailImageId = await this.uploadImageToTikTok(
             tiktokAdvertiserId,
             videoResult.videoCoverUrl,
-            accessToken
+            accessToken,
           );
           this.logger.log(`Thumbnail image uploaded: ${thumbnailImageId}`);
         }
       } else {
         // 画像アップロード
-        tiktokImageId = await this.uploadImageToTikTok(tiktokAdvertiserId, blob.url, accessToken);
+        tiktokImageId = await this.uploadImageToTikTok(
+          tiktokAdvertiserId,
+          blob.url,
+          accessToken,
+        );
       }
 
       // DBに保存
@@ -138,11 +151,16 @@ export class CreativeService {
     file: Express.Multer.File,
     accessToken: string,
   ): Promise<{ videoId: string; videoCoverUrl?: string }> {
-    this.logger.log(`Uploading video to TikTok: ${file.originalname} (${file.size} bytes)`);
+    this.logger.log(
+      `Uploading video to TikTok: ${file.originalname} (${file.size} bytes)`,
+    );
 
     try {
       // Calculate MD5 hash of the video file
-      const md5Hash = crypto.createHash('md5').update(file.buffer).digest('hex');
+      const md5Hash = crypto
+        .createHash('md5')
+        .update(file.buffer)
+        .digest('hex');
       this.logger.log(`Video MD5 signature: ${md5Hash}`);
 
       // 日本語ファイル名の文字化けを防ぐため、英数字のファイル名を生成
@@ -179,7 +197,9 @@ export class CreativeService {
         : response.data.data;
 
       if (!videoData?.video_id) {
-        this.logger.error(`Response data structure: ${JSON.stringify(response.data)}`);
+        this.logger.error(
+          `Response data structure: ${JSON.stringify(response.data)}`,
+        );
         throw new Error('Failed to get video_id from TikTok API');
       }
 
@@ -196,8 +216,10 @@ export class CreativeService {
         for (let attempt = 1; attempt <= maxRetries; attempt++) {
           // 指数バックオフで待機時間を増やす
           const delayMs = initialDelay * Math.pow(1.5, attempt - 1);
-          this.logger.log(`Waiting ${delayMs}ms before querying video info (attempt ${attempt}/${maxRetries})...`);
-          await new Promise(resolve => setTimeout(resolve, delayMs));
+          this.logger.log(
+            `Waiting ${delayMs}ms before querying video info (attempt ${attempt}/${maxRetries})...`,
+          );
+          await new Promise((resolve) => setTimeout(resolve, delayMs));
 
           const videoInfoResponse = await axios.get(
             `${this.tiktokApiBaseUrl}/v1.3/file/video/ad/info/`,
@@ -212,27 +234,46 @@ export class CreativeService {
             },
           );
 
-          this.logger.log(`Video info API response (attempt ${attempt}): ${JSON.stringify(videoInfoResponse.data)}`);
+          this.logger.log(
+            `Video info API response (attempt ${attempt}): ${JSON.stringify(videoInfoResponse.data)}`,
+          );
 
           // TikTokが動画を処理完了している場合、listは空ではない
-          if (videoInfoResponse.data.data?.list && videoInfoResponse.data.data.list.length > 0) {
+          if (
+            videoInfoResponse.data.data?.list &&
+            videoInfoResponse.data.data.list.length > 0
+          ) {
             videoInfo = videoInfoResponse.data.data.list[0];
-            this.logger.log(`Video info retrieved successfully on attempt ${attempt}: ${JSON.stringify(videoInfo)}`);
+            this.logger.log(
+              `Video info retrieved successfully on attempt ${attempt}: ${JSON.stringify(videoInfo)}`,
+            );
             break;
           } else {
-            this.logger.log(`Video not ready yet (attempt ${attempt}/${maxRetries}), list is empty`);
+            this.logger.log(
+              `Video not ready yet (attempt ${attempt}/${maxRetries}), list is empty`,
+            );
           }
         }
 
         if (videoInfo) {
           // TikTok APIは poster_url または cover_image_uri を返す
-          videoCoverUrl = videoInfo.poster_url || videoInfo.cover_image_uri || videoInfo.video_cover_url;
-          this.logger.log(`Video cover URL retrieved: ${videoCoverUrl || 'Not available'}`);
+          videoCoverUrl =
+            videoInfo.poster_url ||
+            videoInfo.cover_image_uri ||
+            videoInfo.video_cover_url;
+          this.logger.log(
+            `Video cover URL retrieved: ${videoCoverUrl || 'Not available'}`,
+          );
         } else {
-          this.logger.warn(`Video info not available after ${maxRetries} retries, will proceed without thumbnail`);
+          this.logger.warn(
+            `Video info not available after ${maxRetries} retries, will proceed without thumbnail`,
+          );
         }
       } catch (infoError) {
-        this.logger.warn('Failed to get video cover URL, will proceed without thumbnail', infoError.message);
+        this.logger.warn(
+          'Failed to get video cover URL, will proceed without thumbnail',
+          infoError.message,
+        );
       }
 
       return {
@@ -240,7 +281,10 @@ export class CreativeService {
         videoCoverUrl,
       };
     } catch (error) {
-      this.logger.error('Failed to upload video to TikTok', error.response?.data || error.message);
+      this.logger.error(
+        'Failed to upload video to TikTok',
+        error.response?.data || error.message,
+      );
       throw error;
     }
   }
@@ -275,14 +319,19 @@ export class CreativeService {
 
       const imageId = response.data.data?.image_id;
       if (!imageId) {
-        this.logger.error(`Response data structure: ${JSON.stringify(response.data)}`);
+        this.logger.error(
+          `Response data structure: ${JSON.stringify(response.data)}`,
+        );
         throw new Error('Failed to get image_id from TikTok API');
       }
 
       this.logger.log(`Image uploaded to TikTok: ${imageId}`);
       return imageId;
     } catch (error) {
-      this.logger.error('Failed to upload image to TikTok', error.response?.data || error.message);
+      this.logger.error(
+        'Failed to upload image to TikTok',
+        error.response?.data || error.message,
+      );
       throw error;
     }
   }
@@ -400,7 +449,9 @@ export class CreativeService {
       // Access Tokenを取得
       const accessToken = await this.getAccessToken(tiktokAdvertiserId);
       if (!accessToken) {
-        throw new BadRequestException('Access token not found for this advertiser');
+        throw new BadRequestException(
+          'Access token not found for this advertiser',
+        );
       }
 
       // Vercel Blobからファイルをダウンロード
@@ -410,16 +461,21 @@ export class CreativeService {
       });
 
       const fileBuffer = Buffer.from(response.data);
-      const contentType = response.headers['content-type'] || 'application/octet-stream';
+      const contentType =
+        response.headers['content-type'] || 'application/octet-stream';
 
-      this.logger.log(`Downloaded file: ${fileBuffer.length} bytes, type: ${contentType}`);
+      this.logger.log(
+        `Downloaded file: ${fileBuffer.length} bytes, type: ${contentType}`,
+      );
 
       // ファイルタイプを判定
       const isVideo = contentType.startsWith('video/');
       const isImage = contentType.startsWith('image/');
 
       if (!isVideo && !isImage) {
-        throw new BadRequestException('Only video and image files are supported');
+        throw new BadRequestException(
+          'Only video and image files are supported',
+        );
       }
 
       // C-04: ファイルサイズチェック
@@ -427,14 +483,14 @@ export class CreativeService {
         const sizeMB = (fileBuffer.length / (1024 * 1024)).toFixed(1);
         const maxMB = (MAX_VIDEO_SIZE / (1024 * 1024)).toFixed(0);
         throw new BadRequestException(
-          `動画ファイルサイズが大きすぎます（${sizeMB}MB）。最大${maxMB}MBまでアップロード可能です。`
+          `動画ファイルサイズが大きすぎます（${sizeMB}MB）。最大${maxMB}MBまでアップロード可能です。`,
         );
       }
       if (isImage && fileBuffer.length > MAX_IMAGE_SIZE) {
         const sizeMB = (fileBuffer.length / (1024 * 1024)).toFixed(1);
         const maxMB = (MAX_IMAGE_SIZE / (1024 * 1024)).toFixed(0);
         throw new BadRequestException(
-          `画像ファイルサイズが大きすぎます（${sizeMB}MB）。最大${maxMB}MBまでアップロード可能です。`
+          `画像ファイルサイズが大きすぎます（${sizeMB}MB）。最大${maxMB}MBまでアップロード可能です。`,
         );
       }
 
@@ -456,7 +512,9 @@ export class CreativeService {
 
         // 動画のカバー画像を取得してサムネイル用の画像IDを作成
         if (videoResult.videoCoverUrl) {
-          this.logger.log(`Uploading video thumbnail from cover URL: ${videoResult.videoCoverUrl}`);
+          this.logger.log(
+            `Uploading video thumbnail from cover URL: ${videoResult.videoCoverUrl}`,
+          );
           thumbnailImageId = await this.uploadImageToTikTok(
             tiktokAdvertiserId,
             videoResult.videoCoverUrl,
@@ -466,7 +524,11 @@ export class CreativeService {
         }
       } else {
         // 画像アップロード
-        tiktokImageId = await this.uploadImageToTikTok(tiktokAdvertiserId, blobUrl, accessToken);
+        tiktokImageId = await this.uploadImageToTikTok(
+          tiktokAdvertiserId,
+          blobUrl,
+          accessToken,
+        );
       }
 
       // DBに保存
@@ -506,7 +568,9 @@ export class CreativeService {
     contentType: string,
     accessToken: string,
   ): Promise<{ videoId: string; videoCoverUrl?: string }> {
-    this.logger.log(`Uploading video to TikTok: ${filename} (${fileBuffer.length} bytes)`);
+    this.logger.log(
+      `Uploading video to TikTok: ${filename} (${fileBuffer.length} bytes)`,
+    );
 
     try {
       // Calculate MD5 hash of the video file
@@ -547,7 +611,9 @@ export class CreativeService {
         : response.data.data;
 
       if (!videoData?.video_id) {
-        this.logger.error(`Response data structure: ${JSON.stringify(response.data)}`);
+        this.logger.error(
+          `Response data structure: ${JSON.stringify(response.data)}`,
+        );
         throw new Error('Failed to get video_id from TikTok API');
       }
 
@@ -564,8 +630,10 @@ export class CreativeService {
         for (let attempt = 1; attempt <= maxRetries; attempt++) {
           // 指数バックオフで待機時間を増やす
           const delayMs = initialDelay * Math.pow(1.5, attempt - 1);
-          this.logger.log(`Waiting ${delayMs}ms before querying video info (attempt ${attempt}/${maxRetries})...`);
-          await new Promise(resolve => setTimeout(resolve, delayMs));
+          this.logger.log(
+            `Waiting ${delayMs}ms before querying video info (attempt ${attempt}/${maxRetries})...`,
+          );
+          await new Promise((resolve) => setTimeout(resolve, delayMs));
 
           const videoInfoResponse = await axios.get(
             `${this.tiktokApiBaseUrl}/v1.3/file/video/ad/info/`,
@@ -580,27 +648,46 @@ export class CreativeService {
             },
           );
 
-          this.logger.log(`Video info API response (attempt ${attempt}): ${JSON.stringify(videoInfoResponse.data)}`);
+          this.logger.log(
+            `Video info API response (attempt ${attempt}): ${JSON.stringify(videoInfoResponse.data)}`,
+          );
 
           // TikTokが動画を処理完了している場合、listは空ではない
-          if (videoInfoResponse.data.data?.list && videoInfoResponse.data.data.list.length > 0) {
+          if (
+            videoInfoResponse.data.data?.list &&
+            videoInfoResponse.data.data.list.length > 0
+          ) {
             videoInfo = videoInfoResponse.data.data.list[0];
-            this.logger.log(`Video info retrieved successfully on attempt ${attempt}: ${JSON.stringify(videoInfo)}`);
+            this.logger.log(
+              `Video info retrieved successfully on attempt ${attempt}: ${JSON.stringify(videoInfo)}`,
+            );
             break;
           } else {
-            this.logger.log(`Video not ready yet (attempt ${attempt}/${maxRetries}), list is empty`);
+            this.logger.log(
+              `Video not ready yet (attempt ${attempt}/${maxRetries}), list is empty`,
+            );
           }
         }
 
         if (videoInfo) {
           // TikTok APIは poster_url または cover_image_uri を返す
-          videoCoverUrl = videoInfo.poster_url || videoInfo.cover_image_uri || videoInfo.video_cover_url;
-          this.logger.log(`Video cover URL retrieved: ${videoCoverUrl || 'Not available'}`);
+          videoCoverUrl =
+            videoInfo.poster_url ||
+            videoInfo.cover_image_uri ||
+            videoInfo.video_cover_url;
+          this.logger.log(
+            `Video cover URL retrieved: ${videoCoverUrl || 'Not available'}`,
+          );
         } else {
-          this.logger.warn(`Video info not available after ${maxRetries} retries, will proceed without thumbnail`);
+          this.logger.warn(
+            `Video info not available after ${maxRetries} retries, will proceed without thumbnail`,
+          );
         }
       } catch (infoError) {
-        this.logger.warn('Failed to get video cover URL, will proceed without thumbnail', infoError.message);
+        this.logger.warn(
+          'Failed to get video cover URL, will proceed without thumbnail',
+          infoError.message,
+        );
       }
 
       return {
@@ -608,7 +695,10 @@ export class CreativeService {
         videoCoverUrl,
       };
     } catch (error) {
-      this.logger.error('Failed to upload video to TikTok', error.response?.data || error.message);
+      this.logger.error(
+        'Failed to upload video to TikTok',
+        error.response?.data || error.message,
+      );
       throw error;
     }
   }

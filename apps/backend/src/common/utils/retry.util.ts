@@ -9,7 +9,9 @@ export interface RetryOptions {
   onRetry?: (error: any, attempt: number, delayMs: number) => void;
 }
 
-const DEFAULT_OPTIONS: Required<Omit<RetryOptions, 'retryableErrors' | 'onRetry'>> = {
+const DEFAULT_OPTIONS: Required<
+  Omit<RetryOptions, 'retryableErrors' | 'onRetry'>
+> = {
   maxRetries: 3,
   initialDelayMs: 1000,
   maxDelayMs: 10000,
@@ -46,7 +48,9 @@ export async function withRetry<T>(
 
       // リトライ可能なエラーかチェック
       if (opts.retryableErrors && !opts.retryableErrors(error)) {
-        logger?.warn(`Non-retryable error encountered, not retrying: ${error.message}`);
+        logger?.warn(
+          `Non-retryable error encountered, not retrying: ${error.message}`,
+        );
         break;
       }
 
@@ -95,7 +99,11 @@ export function isRetryableHttpStatus(status: number): boolean {
  */
 export function isRetryableAxiosError(error: any): boolean {
   // ネットワークエラー（接続失敗、タイムアウトなど）
-  if (error.code === 'ECONNABORTED' || error.code === 'ETIMEDOUT' || error.code === 'ENOTFOUND') {
+  if (
+    error.code === 'ECONNABORTED' ||
+    error.code === 'ETIMEDOUT' ||
+    error.code === 'ENOTFOUND'
+  ) {
     return true;
   }
 

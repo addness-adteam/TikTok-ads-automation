@@ -141,19 +141,29 @@ export function logDatabaseError(
 
   switch (errorInfo.type) {
     case DatabaseErrorType.DUPLICATE_KEY:
-      logger.warn(`${prefix}[D-01] 重複キー違反${tableStr}: ${errorInfo.message}`);
+      logger.warn(
+        `${prefix}[D-01] 重複キー違反${tableStr}: ${errorInfo.message}`,
+      );
       break;
     case DatabaseErrorType.FOREIGN_KEY_VIOLATION:
-      logger.error(`${prefix}[D-02] 外部キー制約違反${tableStr}: ${errorInfo.message}`);
+      logger.error(
+        `${prefix}[D-02] 外部キー制約違反${tableStr}: ${errorInfo.message}`,
+      );
       break;
     case DatabaseErrorType.CONNECTION_TIMEOUT:
-      logger.error(`${prefix}[D-03] 接続タイムアウト${tableStr}: ${errorInfo.message}`);
+      logger.error(
+        `${prefix}[D-03] 接続タイムアウト${tableStr}: ${errorInfo.message}`,
+      );
       break;
     case DatabaseErrorType.PARENT_NOT_FOUND:
-      logger.warn(`${prefix}[D-04] レコード未検出${tableStr}: ${errorInfo.message}`);
+      logger.warn(
+        `${prefix}[D-04] レコード未検出${tableStr}: ${errorInfo.message}`,
+      );
       break;
     case DatabaseErrorType.METRICS_DUPLICATE:
-      logger.warn(`${prefix}[D-05] メトリクス重複${tableStr}: ${errorInfo.message}`);
+      logger.warn(
+        `${prefix}[D-05] メトリクス重複${tableStr}: ${errorInfo.message}`,
+      );
       break;
     default:
       logger.error(`${prefix}不明なDBエラー${tableStr}: ${errorInfo.message}`);

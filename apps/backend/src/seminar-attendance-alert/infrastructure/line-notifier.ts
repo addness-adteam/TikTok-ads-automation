@@ -26,7 +26,9 @@ export class AiSecretaryLineNotifier implements LineNotifier {
     const token = process.env.LINE_CHANNEL_ACCESS_TOKEN;
     const userId = process.env.LINE_USER_ID;
     if (!token || !userId) {
-      this.logger.warn('LINE_CHANNEL_ACCESS_TOKEN or LINE_USER_ID 未設定 → 通知スキップ');
+      this.logger.warn(
+        'LINE_CHANNEL_ACCESS_TOKEN or LINE_USER_ID 未設定 → 通知スキップ',
+      );
       return;
     }
 
@@ -45,7 +47,9 @@ export class AiSecretaryLineNotifier implements LineNotifier {
       });
       if (!response.ok) {
         const body = await response.text();
-        this.logger.warn(`LINE push 失敗: HTTP ${response.status}: ${body.slice(0, 200)}`);
+        this.logger.warn(
+          `LINE push 失敗: HTTP ${response.status}: ${body.slice(0, 200)}`,
+        );
       }
     } catch (e: any) {
       this.logger.warn(`LINE push 例外: ${e.message}`);
@@ -62,14 +66,18 @@ export class AiSecretaryLineNotifier implements LineNotifier {
     lines.push('');
     lines.push(`📢 広告: ${p.adName}`);
     lines.push(`🏢 アカウント: ${p.advertiserName}`);
-    lines.push(`📅 配信期間: ${mmdd(p.deliveryStartDate)}開始 (${p.deliveryDays}日経過)`);
+    lines.push(
+      `📅 配信期間: ${mmdd(p.deliveryStartDate)}開始 (${p.deliveryDays}日経過)`,
+    );
     lines.push(`💰 広告費: ¥${p.totalSpend.toLocaleString()}`);
     lines.push(`👥 予約: ${p.reservationCount}件`);
     lines.push(`🪑 着座: ${p.attendanceCount}件`);
     if (p.reason === 'CPO_EXCEEDED' && p.actualCpo != null) {
       const rate = Math.round((p.actualCpo / p.allowableCpo) * 1000) / 10;
       lines.push(`📊 実CPO: ¥${p.actualCpo.toLocaleString()}`);
-      lines.push(`🎯 当月許容CPO: ¥${p.allowableCpo.toLocaleString()} (超過率 ${rate}%)`);
+      lines.push(
+        `🎯 当月許容CPO: ¥${p.allowableCpo.toLocaleString()} (超過率 ${rate}%)`,
+      );
     } else {
       lines.push(`📊 実CPO: 着座0件（算出不能）`);
       lines.push(`🎯 当月許容CPO: ¥${p.allowableCpo.toLocaleString()}`);

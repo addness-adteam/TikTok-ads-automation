@@ -11,8 +11,8 @@ import { Injectable, Logger } from '@nestjs/common';
 import axios from 'axios';
 
 interface GigafileInfo {
-  server: string;     // メインサーバー（DL用）: e.g. "116.gigafile.nu"
-  dlServer: string;   // AJAXサーバー: e.g. "116x.gigafile.nu"
+  server: string; // メインサーバー（DL用）: e.g. "116.gigafile.nu"
+  dlServer: string; // AJAXサーバー: e.g. "116x.gigafile.nu"
   fileKey: string;
   files: { file: string; size: number }[];
   isMultiFile: boolean;
@@ -35,7 +35,9 @@ export class GigafileService {
   /**
    * ギガファイル便URLから動画をダウンロード（1ファイル）
    */
-  async downloadVideo(gigafileUrl: string): Promise<{ buffer: Buffer; filename: string }> {
+  async downloadVideo(
+    gigafileUrl: string,
+  ): Promise<{ buffer: Buffer; filename: string }> {
     this.logger.log(`ギガファイル便からダウンロード開始: ${gigafileUrl}`);
 
     const html = await this.fetchPage(gigafileUrl);
@@ -43,8 +45,12 @@ export class GigafileService {
     const filename = this.extractFilename(html);
 
     if (info) {
-      const targetFileKey = info.isMultiFile ? info.files[0].file : info.fileKey;
-      this.logger.log(`DL対象: server=${info.server}, file=${targetFileKey}${info.isMultiFile ? ` (${info.files.length}ファイル中の1番目)` : ''}`);
+      const targetFileKey = info.isMultiFile
+        ? info.files[0].file
+        : info.fileKey;
+      this.logger.log(
+        `DL対象: server=${info.server}, file=${targetFileKey}${info.isMultiFile ? ` (${info.files.length}ファイル中の1番目)` : ''}`,
+      );
       return this.downloadFileWithSession(info.server, targetFileKey);
     }
 
@@ -58,8 +64,12 @@ export class GigafileService {
   /**
    * ギガファイル便URLから全動画をダウンロード（複数ファイル対応）
    */
-  async downloadAllVideos(gigafileUrl: string): Promise<{ buffer: Buffer; filename: string }[]> {
-    this.logger.log(`ギガファイル便から全ファイルダウンロード開始: ${gigafileUrl}`);
+  async downloadAllVideos(
+    gigafileUrl: string,
+  ): Promise<{ buffer: Buffer; filename: string }[]> {
+    this.logger.log(
+      `ギガファイル便から全ファイルダウンロード開始: ${gigafileUrl}`,
+    );
 
     const html = await this.fetchPage(gigafileUrl);
     const info = this.parsePageInfo(html);
@@ -72,8 +82,13 @@ export class GigafileService {
     const results: { buffer: Buffer; filename: string }[] = [];
     for (let i = 0; i < info.files.length; i++) {
       const fileEntry = info.files[i];
-      this.logger.log(`[${i + 1}/${info.files.length}] DL中: ${fileEntry.file} (${(fileEntry.size / 1024 / 1024).toFixed(1)}MB)`);
-      const result = await this.downloadFileWithSession(info.server, fileEntry.file);
+      this.logger.log(
+        `[${i + 1}/${info.files.length}] DL中: ${fileEntry.file} (${(fileEntry.size / 1024 / 1024).toFixed(1)}MB)`,
+      );
+      const result = await this.downloadFileWithSession(
+        info.server,
+        fileEntry.file,
+      );
       results.push(result);
     }
 
@@ -84,7 +99,10 @@ export class GigafileService {
   /**
    * ギガファイル便URLのファイル一覧を取得（DLはしない、メタ情報のみ）
    */
-  async getFileList(gigafileUrl: string): Promise<{ server: string; files: { file: string; size: number }[] } | null> {
+  async getFileList(gigafileUrl: string): Promise<{
+    server: string;
+    files: { file: string; size: number }[];
+  } | null> {
     const html = await this.fetchPage(gigafileUrl);
     const info = this.parsePageInfo(html);
     if (!info) return null;
@@ -97,7 +115,10 @@ export class GigafileService {
   /**
    * 個別ファイルキーから1本だけDL
    */
-  async downloadSingleFile(server: string, fileKey: string): Promise<{ buffer: Buffer; filename: string }> {
+  async downloadSingleFile(
+    server: string,
+    fileKey: string,
+  ): Promise<{ buffer: Buffer; filename: string }> {
     return this.downloadFileWithSession(server, fileKey);
   }
 
@@ -106,7 +127,10 @@ export class GigafileService {
    * 1. 個別ファイルページにGET → gfsid cookieを取得
    * 2. download.php?file=xxx にcookie付きGET → バイナリ取得
    */
-  private async downloadFileWithSession(server: string, fileKey: string): Promise<{ buffer: Buffer; filename: string }> {
+  private async downloadFileWithSession(
+    server: string,
+    fileKey: string,
+  ): Promise<{ buffer: Buffer; filename: string }> {
     // Step 1: 個別ファイルページにアクセスしてセッションcookieを取得
     const filePageUrl = `https://${server}/${fileKey}`;
     this.logger.log(`セッション取得: ${filePageUrl}`);
@@ -115,11 +139,13 @@ export class GigafileService {
       headers: { 'User-Agent': UA },
     });
     const setCookies: string[] = pageResp.headers['set-cookie'] || [];
-    const cookieStr = setCookies.map(c => c.split(';')[0]).join('; ');
+    const cookieStr = setCookies.map((c) => c.split(';')[0]).join('; ');
 
     // Step 2: prog_keyを追加してDL実行
     const progKey = Math.random().toString(36).substring(2, 10);
-    const allCookies = cookieStr ? `${cookieStr}; prog_key=${progKey}` : `prog_key=${progKey}`;
+    const allCookies = cookieStr
+      ? `${cookieStr}; prog_key=${progKey}`
+      : `prog_key=${progKey}`;
     const downloadUrl = `https://${server}/download.php?file=${fileKey}`;
 
     this.logger.log(`DL実行: ${downloadUrl}`);
@@ -130,8 +156,8 @@ export class GigafileService {
       maxBodyLength: Infinity,
       headers: {
         'User-Agent': UA,
-        'Cookie': allCookies,
-        'Referer': filePageUrl,
+        Cookie: allCookies,
+        Referer: filePageUrl,
       },
     });
 
@@ -141,7 +167,9 @@ export class GigafileService {
     if (buffer.length < 10000) {
       const preview = buffer.toString('utf-8', 0, Math.min(500, buffer.length));
       if (preview.includes('<html') || preview.includes('<!DOCTYPE')) {
-        throw new Error(`ギガファイル便: 動画ではなくHTMLがダウンロードされました（${buffer.length}bytes）。セッション取得に失敗した可能性があります。`);
+        throw new Error(
+          `ギガファイル便: 動画ではなくHTMLがダウンロードされました（${buffer.length}bytes）。セッション取得に失敗した可能性があります。`,
+        );
       }
     }
 
@@ -158,7 +186,9 @@ export class GigafileService {
       if (basicMatch) filename = basicMatch[1];
     }
 
-    this.logger.log(`DL完了: ${filename} (${(buffer.length / 1024 / 1024).toFixed(2)}MB)`);
+    this.logger.log(
+      `DL完了: ${filename} (${(buffer.length / 1024 / 1024).toFixed(2)}MB)`,
+    );
     return { buffer, filename };
   }
 
@@ -215,11 +245,18 @@ export class GigafileService {
   /**
    * フォールバック: HTMLからダウンロードURLを直接抽出
    */
-  private extractDownloadUrlFromHtml(html: string, originalUrl: string): string {
-    const downloadBtnMatch = html.match(/id="download_btn"[^>]*(?:href|onclick)[^"]*"([^"]+)"/);
+  private extractDownloadUrlFromHtml(
+    html: string,
+    originalUrl: string,
+  ): string {
+    const downloadBtnMatch = html.match(
+      /id="download_btn"[^>]*(?:href|onclick)[^"]*"([^"]+)"/,
+    );
     if (downloadBtnMatch) return downloadBtnMatch[1];
 
-    const dlLinkMatch = html.match(/(https?:\/\/dl\d*\.gigafile\.nu\/[^\s"'<>]+)/);
+    const dlLinkMatch = html.match(
+      /(https?:\/\/dl\d*\.gigafile\.nu\/[^\s"'<>]+)/,
+    );
     if (dlLinkMatch) return dlLinkMatch[1];
 
     const fileKeyMatch = html.match(/name="file"\s+value="([^"]+)"/);
@@ -229,9 +266,12 @@ export class GigafileService {
     }
 
     const keyMatch = html.match(/name="download_key"\s+value="([^"]+)"/);
-    if (keyMatch) return `https://gigafile.nu/download.php?download_key=${keyMatch[1]}`;
+    if (keyMatch)
+      return `https://gigafile.nu/download.php?download_key=${keyMatch[1]}`;
 
-    throw new Error('ギガファイル便: ダウンロードURLが見つかりません。URLを確認してください。');
+    throw new Error(
+      'ギガファイル便: ダウンロードURLが見つかりません。URLを確認してください。',
+    );
   }
 
   /**
@@ -246,7 +286,9 @@ export class GigafileService {
 
     const titleMatch = html.match(/<title>([^<]+)</);
     if (titleMatch) {
-      const title = titleMatch[1].replace(/\s*-\s*ギガファイル便.*$/, '').trim();
+      const title = titleMatch[1]
+        .replace(/\s*-\s*ギガファイル便.*$/, '')
+        .trim();
       if (title && title !== 'ギガファイル便') return title;
     }
 

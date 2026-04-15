@@ -26,10 +26,12 @@ export function calculateRequiredAcquisition(
 
 /** ROAS vs 集客数の改善方向を判定する */
 export function judgeDirection(input: DirectionInput): DirectionJudgment {
-  const { currentROAS, targetROAS, currentAcquisition, requiredAcquisition } = input;
+  const { currentROAS, targetROAS, currentAcquisition, requiredAcquisition } =
+    input;
 
   const roasOk = currentROAS >= targetROAS;
-  const acquisitionOk = isFinite(requiredAcquisition) && currentAcquisition >= requiredAcquisition;
+  const acquisitionOk =
+    isFinite(requiredAcquisition) && currentAcquisition >= requiredAcquisition;
 
   let direction: ImprovementDirection;
   let reason: string;
@@ -45,7 +47,8 @@ export function judgeDirection(input: DirectionInput): DirectionJudgment {
     reason = '集客は足りているがROASが低い。ファネル効率の改善が必要。';
   } else {
     direction = 'INCREASE_ACQUISITION';
-    reason = 'ROASは健全だが集客数が不足。スケーリング（横展開・再出稿・予算増）が必要。';
+    reason =
+      'ROASは健全だが集客数が不足。スケーリング（横展開・再出稿・予算増）が必要。';
   }
 
   return {

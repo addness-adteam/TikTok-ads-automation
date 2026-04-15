@@ -39,6 +39,8 @@ export class DeliveryPeriod {
 
   private toJstDate(d: Date): Date {
     const jst = new Date(d.getTime() + 9 * 60 * 60 * 1000);
-    return new Date(Date.UTC(jst.getUTCFullYear(), jst.getUTCMonth(), jst.getUTCDate()));
+    return new Date(
+      Date.UTC(jst.getUTCFullYear(), jst.getUTCMonth(), jst.getUTCDate()),
+    );
   }
 }

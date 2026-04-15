@@ -100,7 +100,9 @@ export class AdvertiserService {
    * Advertiserに訴求を紐付け
    */
   async assignAppeal(advertiserId: string, appealId: string | null) {
-    this.logger.log(`Assigning appeal ${appealId} to advertiser ${advertiserId}`);
+    this.logger.log(
+      `Assigning appeal ${appealId} to advertiser ${advertiserId}`,
+    );
 
     // Advertiserが存在するか確認
     const advertiser = await this.prisma.advertiser.findUnique({
@@ -108,7 +110,9 @@ export class AdvertiserService {
     });
 
     if (!advertiser) {
-      throw new NotFoundException(`Advertiser with ID ${advertiserId} not found`);
+      throw new NotFoundException(
+        `Advertiser with ID ${advertiserId} not found`,
+      );
     }
 
     // appealIdがnullでない場合、Appealが存在するか確認

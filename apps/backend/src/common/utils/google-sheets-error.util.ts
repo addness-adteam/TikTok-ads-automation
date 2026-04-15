@@ -43,7 +43,11 @@ export function classifyGoogleSheetsError(error: any): GoogleSheetsErrorInfo {
   const code = error.code || error.response?.status;
 
   // ネットワークエラー
-  if (error.code === 'ECONNABORTED' || error.code === 'ETIMEDOUT' || error.code === 'ENOTFOUND') {
+  if (
+    error.code === 'ECONNABORTED' ||
+    error.code === 'ETIMEDOUT' ||
+    error.code === 'ENOTFOUND'
+  ) {
     return {
       type: GoogleSheetsErrorType.NETWORK_ERROR,
       code: error.code,
@@ -66,12 +70,17 @@ export function classifyGoogleSheetsError(error: any): GoogleSheetsErrorInfo {
     return {
       type: GoogleSheetsErrorType.PERMISSION_ERROR,
       code,
-      message: '[G-03] 権限エラー: スプレッドシートへのアクセス権がありません。',
+      message:
+        '[G-03] 権限エラー: スプレッドシートへのアクセス権がありません。',
       isRetryable: false,
     };
   }
 
-  if (code === 404 || message.includes('Unable to parse range') || message.includes('not found')) {
+  if (
+    code === 404 ||
+    message.includes('Unable to parse range') ||
+    message.includes('not found')
+  ) {
     return {
       type: GoogleSheetsErrorType.SHEET_NOT_FOUND,
       code,
@@ -119,28 +128,40 @@ export function logGoogleSheetsError(
 
   switch (errorInfo.type) {
     case GoogleSheetsErrorType.AUTH_ERROR:
-      logger.error(`${prefix}[G-01] 認証エラー${codeStr}: ${errorInfo.message}`);
+      logger.error(
+        `${prefix}[G-01] 認証エラー${codeStr}: ${errorInfo.message}`,
+      );
       break;
     case GoogleSheetsErrorType.SHEET_NOT_FOUND:
-      logger.error(`${prefix}[G-02] シート不存在${codeStr}: ${errorInfo.message}`);
+      logger.error(
+        `${prefix}[G-02] シート不存在${codeStr}: ${errorInfo.message}`,
+      );
       break;
     case GoogleSheetsErrorType.PERMISSION_ERROR:
-      logger.error(`${prefix}[G-03] 権限エラー${codeStr}: ${errorInfo.message}`);
+      logger.error(
+        `${prefix}[G-03] 権限エラー${codeStr}: ${errorInfo.message}`,
+      );
       break;
     case GoogleSheetsErrorType.RATE_LIMIT:
       logger.warn(`${prefix}[G-04] レート制限${codeStr}: ${errorInfo.message}`);
       break;
     case GoogleSheetsErrorType.DATA_FORMAT_ERROR:
-      logger.warn(`${prefix}[G-05] データ形式不正${codeStr}: ${errorInfo.message}`);
+      logger.warn(
+        `${prefix}[G-05] データ形式不正${codeStr}: ${errorInfo.message}`,
+      );
       break;
     case GoogleSheetsErrorType.DATA_STALENESS:
-      logger.warn(`${prefix}[G-06] データ鮮度警告${codeStr}: ${errorInfo.message}`);
+      logger.warn(
+        `${prefix}[G-06] データ鮮度警告${codeStr}: ${errorInfo.message}`,
+      );
       break;
     case GoogleSheetsErrorType.COLUMN_SHIFT:
       logger.warn(`${prefix}[G-07] 列ズレ検出${codeStr}: ${errorInfo.message}`);
       break;
     case GoogleSheetsErrorType.INVALID_URL:
-      logger.error(`${prefix}[G-08] URL形式エラー${codeStr}: ${errorInfo.message}`);
+      logger.error(
+        `${prefix}[G-08] URL形式エラー${codeStr}: ${errorInfo.message}`,
+      );
       break;
     default:
       logger.error(`${prefix}不明なエラー${codeStr}: ${errorInfo.message}`);
@@ -262,7 +283,9 @@ export function checkDataFreshness(
   today.setHours(0, 0, 0, 0);
   latestDate.setHours(0, 0, 0, 0);
 
-  const daysDiff = Math.floor((today.getTime() - latestDate.getTime()) / (1000 * 60 * 60 * 24));
+  const daysDiff = Math.floor(
+    (today.getTime() - latestDate.getTime()) / (1000 * 60 * 60 * 24),
+  );
 
   if (daysDiff > maxStaleDays) {
     return {
@@ -321,7 +344,9 @@ export function detectColumnPositions(
   }
 
   // 全ての期待する列が見つかったかチェック
-  const missingColumns = Object.keys(expectedColumns).filter((key) => positions[key] === undefined);
+  const missingColumns = Object.keys(expectedColumns).filter(
+    (key) => positions[key] === undefined,
+  );
 
   if (missingColumns.length > 0) {
     return {
@@ -385,9 +410,12 @@ function parseFlexibleDate(dateString: string): Date | null {
     }
 
     // yyyy/MM/dd HH:mm:ss 形式
-    const jpFormat = dateString.match(/(\d{4})\/(\d{1,2})\/(\d{1,2})\s*(\d{1,2})?:?(\d{1,2})?:?(\d{1,2})?/);
+    const jpFormat = dateString.match(
+      /(\d{4})\/(\d{1,2})\/(\d{1,2})\s*(\d{1,2})?:?(\d{1,2})?:?(\d{1,2})?/,
+    );
     if (jpFormat) {
-      const [, year, month, day, hour = '0', minute = '0', second = '0'] = jpFormat;
+      const [, year, month, day, hour = '0', minute = '0', second = '0'] =
+        jpFormat;
       date = new Date(
         parseInt(year),
         parseInt(month) - 1,

@@ -194,10 +194,7 @@ export class CreatorStopRateService {
 
     // Step 5: 制作者 × CR名 でグループ化
     // 同じCR名で複数出稿されている場合、全て停止された場合のみ「停止」とカウント
-    const creatorCRMap = new Map<
-      string,
-      Map<string, CreatorAd[]>
-    >();
+    const creatorCRMap = new Map<string, Map<string, CreatorAd[]>>();
 
     for (const ad of targetAds) {
       if (!creatorCRMap.has(ad.creator)) {
@@ -258,7 +255,13 @@ export class CreatorStopRateService {
         }
         const isBigHit = crTotalSpend >= BIG_HIT_SPEND_THRESHOLD;
 
-        crs.push({ crName, ads, isFullyPaused, totalSpend: Math.round(crTotalSpend), isBigHit });
+        crs.push({
+          crName,
+          ads,
+          isFullyPaused,
+          totalSpend: Math.round(crTotalSpend),
+          isBigHit,
+        });
         allAds.push(...ads);
         if (isFullyPaused) {
           creatorPauseCount++;
@@ -272,7 +275,9 @@ export class CreatorStopRateService {
       const stopRate =
         crCount > 0 ? Math.round((creatorPauseCount / crCount) * 1000) / 10 : 0;
       const bigHitRate =
-        crCount > 0 ? Math.round((creatorBigHitCount / crCount) * 1000) / 10 : 0;
+        crCount > 0
+          ? Math.round((creatorBigHitCount / crCount) * 1000) / 10
+          : 0;
 
       creators.push({
         creatorName,

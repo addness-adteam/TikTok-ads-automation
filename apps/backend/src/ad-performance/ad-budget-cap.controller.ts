@@ -74,8 +74,16 @@ export class AdBudgetCapController {
     return this.adBudgetCapService.updateBudgetCap(id, {
       maxDailyBudget: body.maxDailyBudget,
       enabled: body.enabled,
-      startDate: body.startDate ? new Date(body.startDate) : body.startDate === null ? null : undefined,
-      endDate: body.endDate ? new Date(body.endDate) : body.endDate === null ? null : undefined,
+      startDate: body.startDate
+        ? new Date(body.startDate)
+        : body.startDate === null
+          ? null
+          : undefined,
+      endDate: body.endDate
+        ? new Date(body.endDate)
+        : body.endDate === null
+          ? null
+          : undefined,
     });
   }
 

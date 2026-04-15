@@ -1,4 +1,8 @@
-import { parseKpiValue, parseKpiPercentage, parseKpiAmount } from './kpi-value-parser';
+import {
+  parseKpiValue,
+  parseKpiPercentage,
+  parseKpiAmount,
+} from './kpi-value-parser';
 
 describe('KpiValueParser', () => {
   describe('parseKpiPercentage', () => {

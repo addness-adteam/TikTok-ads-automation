@@ -95,19 +95,29 @@ export function logBatchError(
 
   switch (errorInfo.type) {
     case BatchErrorType.CONCURRENT_EXECUTION:
-      logger.warn(`${prefix}[S-01] 同時実行競合${jobStr}: ${errorInfo.message}`);
+      logger.warn(
+        `${prefix}[S-01] 同時実行競合${jobStr}: ${errorInfo.message}`,
+      );
       break;
     case BatchErrorType.BATCH_TIMEOUT:
-      logger.error(`${prefix}[S-02] バッチタイムアウト${jobStr}: ${errorInfo.message}`);
+      logger.error(
+        `${prefix}[S-02] バッチタイムアウト${jobStr}: ${errorInfo.message}`,
+      );
       break;
     case BatchErrorType.PARTIAL_SYNC_FAILURE:
-      logger.warn(`${prefix}[S-03] 部分的同期失敗${jobStr}: ${errorInfo.message}`);
+      logger.warn(
+        `${prefix}[S-03] 部分的同期失敗${jobStr}: ${errorInfo.message}`,
+      );
       break;
     case BatchErrorType.JOB_SKIPPED:
-      logger.warn(`${prefix}[S-04] ジョブスキップ${jobStr}: ${errorInfo.message}`);
+      logger.warn(
+        `${prefix}[S-04] ジョブスキップ${jobStr}: ${errorInfo.message}`,
+      );
       break;
     default:
-      logger.error(`${prefix}不明なバッチエラー${jobStr}: ${errorInfo.message}`);
+      logger.error(
+        `${prefix}不明なバッチエラー${jobStr}: ${errorInfo.message}`,
+      );
   }
 }
 

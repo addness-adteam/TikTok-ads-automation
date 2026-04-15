@@ -20,9 +20,14 @@ export function calculateProfitSimulation(
   input: ProfitSimulationInput,
 ): ProfitSimulation {
   const {
-    channelType, year, month,
-    actualDays, totalDaysInMonth,
-    actualAdSpend, actualRevenue, targetProfit,
+    channelType,
+    year,
+    month,
+    actualDays,
+    totalDaysInMonth,
+    actualAdSpend,
+    actualRevenue,
+    targetProfit,
   } = input;
 
   const actualProfit = actualRevenue - actualAdSpend;
@@ -59,9 +64,18 @@ export function calculateTotalProfitSummary(
   channels: ProfitSimulation[],
   period: { year: number; month: number },
 ): TotalProfitSummary {
-  const totalActualProfit = channels.reduce((sum, c) => sum + c.actualProfit, 0);
-  const totalProjectedProfit = channels.reduce((sum, c) => sum + c.projectedProfit, 0);
-  const totalTargetProfit = channels.reduce((sum, c) => sum + c.targetProfit, 0);
+  const totalActualProfit = channels.reduce(
+    (sum, c) => sum + c.actualProfit,
+    0,
+  );
+  const totalProjectedProfit = channels.reduce(
+    (sum, c) => sum + c.projectedProfit,
+    0,
+  );
+  const totalTargetProfit = channels.reduce(
+    (sum, c) => sum + c.targetProfit,
+    0,
+  );
   const totalGapToTarget = totalProjectedProfit - totalTargetProfit;
 
   return {

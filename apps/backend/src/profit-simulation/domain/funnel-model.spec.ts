@@ -40,15 +40,15 @@ describe('FunnelModel', () => {
   describe('buildFunnelModel', () => {
     it('ステージ実績からFunnelModelを構築する', () => {
       const stageMetrics: Record<string, number> = {
-        'インプレッション': 100000,
-        'クリック': 1000,
-        'オプトイン': 50,
-        'フロント購入': 5,
-        '秘密の部屋購入': 2,
-        'LINE登録': 3,
-        '個別予約': 4,
-        '個別着座': 3,
-        'バックエンド購入': 1,
+        インプレッション: 100000,
+        クリック: 1000,
+        オプトイン: 50,
+        フロント購入: 5,
+        秘密の部屋購入: 2,
+        LINE登録: 3,
+        個別予約: 4,
+        個別着座: 3,
+        バックエンド購入: 1,
       };
 
       const model = buildFunnelModel('AI', stageMetrics, 200000, 800000);
@@ -57,21 +57,28 @@ describe('FunnelModel', () => {
       expect(model.adSpend).toBe(200000);
       expect(model.totalRevenue).toBe(800000);
       expect(model.stages).toHaveLength(9);
-      expect(model.stages[0]).toEqual({ name: 'インプレッション', count: 100000 });
+      expect(model.stages[0]).toEqual({
+        name: 'インプレッション',
+        count: 100000,
+      });
       expect(model.stages[2]).toEqual({ name: 'オプトイン', count: 50 });
     });
 
     it('存在しないステージは0件として扱う', () => {
       const stageMetrics: Record<string, number> = {
-        'インプレッション': 100000,
-        'クリック': 1000,
-        'オプトイン': 50,
+        インプレッション: 100000,
+        クリック: 1000,
+        オプトイン: 50,
       };
 
       const model = buildFunnelModel('AI', stageMetrics, 200000, 0);
 
-      expect(model.stages.find(s => s.name === 'フロント購入')?.count).toBe(0);
-      expect(model.stages.find(s => s.name === 'バックエンド購入')?.count).toBe(0);
+      expect(model.stages.find((s) => s.name === 'フロント購入')?.count).toBe(
+        0,
+      );
+      expect(
+        model.stages.find((s) => s.name === 'バックエンド購入')?.count,
+      ).toBe(0);
     });
   });
 
@@ -121,9 +128,7 @@ describe('FunnelModel', () => {
     });
 
     it('ステージが1つだけの場合、空配列を返す', () => {
-      const stages: FunnelStage[] = [
-        { name: 'クリック', count: 1000 },
-      ];
+      const stages: FunnelStage[] = [{ name: 'クリック', count: 1000 }];
 
       const rates = calculateConversionRates(stages);
 

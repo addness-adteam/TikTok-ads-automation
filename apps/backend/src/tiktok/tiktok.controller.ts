@@ -1,4 +1,12 @@
-import { Controller, Get, Post, Query, Body, Logger, Res } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Query,
+  Body,
+  Logger,
+  Res,
+} from '@nestjs/common';
 import type { Response } from 'express';
 import { TiktokService } from './tiktok.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -31,7 +39,9 @@ export class TiktokController {
     @Query('auth_code') authCode: string,
     @Res() res: Response,
   ) {
-    this.logger.log(`OAuth callback received with auth_code: ${authCode?.substring(0, 10)}...`);
+    this.logger.log(
+      `OAuth callback received with auth_code: ${authCode?.substring(0, 10)}...`,
+    );
 
     const frontendUrl = process.env.FRONTEND_URL || 'https://adsp-database.com';
 
@@ -44,11 +54,17 @@ export class TiktokController {
       const tokenData = await this.tiktokService.getAccessToken(authCode);
 
       // 認証成功 - ダッシュボードにリダイレクト
-      this.logger.log('OAuth authentication successful, redirecting to dashboard');
+      this.logger.log(
+        'OAuth authentication successful, redirecting to dashboard',
+      );
       return res.redirect(`${frontendUrl}/dashboard`);
     } catch (error) {
       this.logger.error('OAuth callback failed', error);
-      const errorMessage = encodeURIComponent(error.response?.data?.message || error.message || 'Authentication failed');
+      const errorMessage = encodeURIComponent(
+        error.response?.data?.message ||
+          error.message ||
+          'Authentication failed',
+      );
       return res.redirect(`${frontendUrl}/login?error=${errorMessage}`);
     }
   }
@@ -60,7 +76,9 @@ export class TiktokController {
    */
   @Post('token')
   async getToken(@Body('authCode') authCode: string) {
-    this.logger.log(`Manual token request with auth_code: ${authCode?.substring(0, 10)}...`);
+    this.logger.log(
+      `Manual token request with auth_code: ${authCode?.substring(0, 10)}...`,
+    );
 
     if (!authCode) {
       return { success: false, error: 'authCode is required in request body' };
@@ -114,11 +132,15 @@ export class TiktokController {
     this.logger.log('Token refresh requested');
 
     if (!refreshToken) {
-      return { success: false, error: 'refreshToken is required in request body' };
+      return {
+        success: false,
+        error: 'refreshToken is required in request body',
+      };
     }
 
     try {
-      const tokenData = await this.tiktokService.refreshAccessToken(refreshToken);
+      const tokenData =
+        await this.tiktokService.refreshAccessToken(refreshToken);
       return {
         success: true,
         data: tokenData,
@@ -142,11 +164,15 @@ export class TiktokController {
     this.logger.log('Advertiser info request');
 
     if (!accessToken) {
-      return { success: false, error: 'accessToken is required in request body' };
+      return {
+        success: false,
+        error: 'accessToken is required in request body',
+      };
     }
 
     try {
-      const advertiserData = await this.tiktokService.getAdvertiserInfo(accessToken);
+      const advertiserData =
+        await this.tiktokService.getAdvertiserInfo(accessToken);
       return {
         success: true,
         data: advertiserData,
@@ -171,7 +197,9 @@ export class TiktokController {
     @Body('advertiserIds') advertiserIds: string[],
     @Body('scope') scope?: number[],
   ) {
-    this.logger.log(`Saving token for ${advertiserIds?.length || 0} advertisers`);
+    this.logger.log(
+      `Saving token for ${advertiserIds?.length || 0} advertisers`,
+    );
 
     if (!accessToken || !advertiserIds || advertiserIds.length === 0) {
       return {
@@ -181,7 +209,12 @@ export class TiktokController {
     }
 
     try {
-      await this.tiktokService.saveTokens(advertiserIds, accessToken, undefined, scope);
+      await this.tiktokService.saveTokens(
+        advertiserIds,
+        accessToken,
+        undefined,
+        scope,
+      );
       return {
         success: true,
         message: `Saved tokens for ${advertiserIds.length} advertisers`,
@@ -248,12 +281,15 @@ export class TiktokController {
     @Body('budgetMode') budgetMode?: string,
     @Body('budget') budget?: number,
   ) {
-    this.logger.log(`Creating campaign: ${campaignName} for advertiser: ${advertiserId}`);
+    this.logger.log(
+      `Creating campaign: ${campaignName} for advertiser: ${advertiserId}`,
+    );
 
     if (!advertiserId || !accessToken || !campaignName || !objectiveType) {
       return {
         success: false,
-        error: 'advertiserId, accessToken, campaignName, and objectiveType are required',
+        error:
+          'advertiserId, accessToken, campaignName, and objectiveType are required',
       };
     }
 
@@ -289,7 +325,8 @@ export class TiktokController {
     @Body('advertiserId') advertiserId: string,
     @Body('accessToken') accessToken: string,
     @Body('campaignId') campaignId: string,
-    @Body('updates') updates: {
+    @Body('updates')
+    updates: {
       campaignName?: string;
       budgetMode?: string;
       budget?: number;
@@ -334,7 +371,8 @@ export class TiktokController {
   async getReport(
     @Body('advertiserId') advertiserId: string,
     @Body('accessToken') accessToken: string,
-    @Body('dataLevel') dataLevel: 'AUCTION_CAMPAIGN' | 'AUCTION_ADGROUP' | 'AUCTION_AD',
+    @Body('dataLevel')
+    dataLevel: 'AUCTION_CAMPAIGN' | 'AUCTION_ADGROUP' | 'AUCTION_AD',
     @Body('startDate') startDate: string,
     @Body('endDate') endDate: string,
     @Body('dimensions') dimensions?: string[],
@@ -343,12 +381,15 @@ export class TiktokController {
     @Body('page') page?: number,
     @Body('pageSize') pageSize?: number,
   ) {
-    this.logger.log(`Getting report for advertiser: ${advertiserId}, level: ${dataLevel}`);
+    this.logger.log(
+      `Getting report for advertiser: ${advertiserId}, level: ${dataLevel}`,
+    );
 
     if (!advertiserId || !accessToken || !dataLevel || !startDate || !endDate) {
       return {
         success: false,
-        error: 'advertiserId, accessToken, dataLevel, startDate, and endDate are required',
+        error:
+          'advertiserId, accessToken, dataLevel, startDate, and endDate are required',
       };
     }
 
@@ -389,19 +430,23 @@ export class TiktokController {
   async fetchAndSaveReport(
     @Body('advertiserId') advertiserId: string,
     @Body('accessToken') accessToken: string,
-    @Body('dataLevel') dataLevel: 'AUCTION_CAMPAIGN' | 'AUCTION_ADGROUP' | 'AUCTION_AD',
+    @Body('dataLevel')
+    dataLevel: 'AUCTION_CAMPAIGN' | 'AUCTION_ADGROUP' | 'AUCTION_AD',
     @Body('startDate') startDate: string,
     @Body('endDate') endDate: string,
     @Body('dimensions') dimensions?: string[],
     @Body('metrics') metrics?: string[],
     @Body('filtering') filtering?: any,
   ) {
-    this.logger.log(`Fetching and saving report for advertiser: ${advertiserId}`);
+    this.logger.log(
+      `Fetching and saving report for advertiser: ${advertiserId}`,
+    );
 
     if (!advertiserId || !accessToken || !dataLevel || !startDate || !endDate) {
       return {
         success: false,
-        error: 'advertiserId, accessToken, dataLevel, startDate, and endDate are required',
+        error:
+          'advertiserId, accessToken, dataLevel, startDate, and endDate are required',
       };
     }
 
@@ -445,7 +490,9 @@ export class TiktokController {
    */
   @Get('verify-smart-plus')
   async verifySmartPlusSync(@Query('advertiserId') advertiserId: string) {
-    this.logger.log(`Verifying Smart+ ads sync for advertiser: ${advertiserId}`);
+    this.logger.log(
+      `Verifying Smart+ ads sync for advertiser: ${advertiserId}`,
+    );
 
     if (!advertiserId) {
       return {
@@ -498,7 +545,7 @@ export class TiktokController {
 
       // 配信中のSmart+広告
       const activeSmartPlusAds = smartPlusAds.filter(
-        (ad) => ad.status === 'ENABLE'
+        (ad) => ad.status === 'ENABLE',
       );
 
       // サンプルデータ（最新10件）

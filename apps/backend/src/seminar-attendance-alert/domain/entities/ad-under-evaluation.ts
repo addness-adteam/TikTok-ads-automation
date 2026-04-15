@@ -27,15 +27,24 @@ export class AdUnderEvaluation {
     attendanceCount: number;
   }): AdUnderEvaluation {
     if (!params.adTiktokId) throw new Error('adTiktokId is required');
-    if (params.reservationCount < 0) throw new Error('reservationCount must be >=0');
-    if (params.attendanceCount < 0) throw new Error('attendanceCount must be >=0');
+    if (params.reservationCount < 0)
+      throw new Error('reservationCount must be >=0');
+    if (params.attendanceCount < 0)
+      throw new Error('attendanceCount must be >=0');
     if (params.attendanceCount > params.reservationCount) {
-      throw new Error(`attendanceCount(${params.attendanceCount}) cannot exceed reservationCount(${params.reservationCount})`);
+      throw new Error(
+        `attendanceCount(${params.attendanceCount}) cannot exceed reservationCount(${params.reservationCount})`,
+      );
     }
     return new AdUnderEvaluation(
-      params.adTiktokId, params.adName, params.advertiserName,
-      params.lpCrCode, params.deliveryPeriod, params.totalSpend,
-      params.reservationCount, params.attendanceCount,
+      params.adTiktokId,
+      params.adName,
+      params.advertiserName,
+      params.lpCrCode,
+      params.deliveryPeriod,
+      params.totalSpend,
+      params.reservationCount,
+      params.attendanceCount,
     );
   }
 

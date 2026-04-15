@@ -51,7 +51,9 @@ export class CampaignBuilderService {
       });
 
       if (!advertiser || !advertiser.appeal) {
-        throw new Error(`Advertiser ${input.advertiserId} not found or has no appeal`);
+        throw new Error(
+          `Advertiser ${input.advertiserId} not found or has no appeal`,
+        );
       }
 
       const appealName = advertiser.appeal.name; // SNS or AI
@@ -156,14 +158,23 @@ export class CampaignBuilderService {
     // スケジュール設定（15時判定）
     // API v1.3: Use 'YYYY-MM-DD HH:mm:ss' format for SCHEDULE_FROM_NOW
     const currentHour = today.getHours();
-    const startTime = currentHour < 15
-      ? today.toISOString().replace('T', ' ').split('.')[0]
-      : new Date(today.setDate(today.getDate() + 1)).toISOString().split('T')[0] + ' 00:00:00';
+    const startTime =
+      currentHour < 15
+        ? today.toISOString().replace('T', ' ').split('.')[0]
+        : new Date(today.setDate(today.getDate() + 1))
+            .toISOString()
+            .split('T')[0] + ' 00:00:00';
 
     // ターゲティング設定
     const targeting = {
       location_ids: ['1861060'], // 日本 (JP)
-      age_groups: ['AGE_18_24', 'AGE_25_34', 'AGE_35_44', 'AGE_45_54', 'AGE_55_100'],
+      age_groups: [
+        'AGE_18_24',
+        'AGE_25_34',
+        'AGE_35_44',
+        'AGE_45_54',
+        'AGE_55_100',
+      ],
       gender: 'GENDER_UNLIMITED',
       languages: ['ja'], // 日本語
       spending_power: 'ALL', // API v1.3: 'ALL' or 'HIGH' (was 'UNLIMITED' in v1.2)
@@ -220,16 +231,19 @@ export class CampaignBuilderService {
     }
 
     // 広告テキスト生成
-    const adText = appealName === 'SNS'
-      ? 'SNSで独立するなら学んでおきたい本質のSNSマーケ特商法（https://skill.addness.co.jp/tokushoho）'
-      : 'AIで独立するなら学んでおきたい本質のAI活用術特商法（https://skill.addness.co.jp/tokushoho）';
+    const adText =
+      appealName === 'SNS'
+        ? 'SNSで独立するなら学んでおきたい本質のSNSマーケ特商法（https://skill.addness.co.jp/tokushoho）'
+        : 'AIで独立するなら学んでおきたい本質のAI活用術特商法（https://skill.addness.co.jp/tokushoho）';
 
     // Creative typeに基づいて適切なパラメータを設定
     if (creative.type === 'VIDEO') {
       // 動画広告: video_id + サムネイル画像ID
       // DBに保存されているtiktokImageIdは動画のサムネイル画像ID
       if (!creative.tiktokImageId) {
-        throw new Error(`Video creative ${creativeId} missing thumbnail image ID`);
+        throw new Error(
+          `Video creative ${creativeId} missing thumbnail image ID`,
+        );
       }
 
       return this.tiktokService.createAd(

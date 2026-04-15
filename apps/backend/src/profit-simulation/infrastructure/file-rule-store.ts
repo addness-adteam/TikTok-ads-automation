@@ -9,7 +9,11 @@ import { RuleStore } from '../domain/ports';
 import { OpsRule } from '../domain/types';
 
 const RULES_FILE_PATH = path.join(
-  __dirname, '..', '..', '..', 'daily-ops-rules.md',
+  __dirname,
+  '..',
+  '..',
+  '..',
+  'daily-ops-rules.md',
 );
 
 @Injectable()
@@ -25,7 +29,10 @@ export class FileRuleStore implements RuleStore {
 
       const ruleBlocks = content.match(/```rule\n([\s\S]*?)```/g) || [];
       for (const block of ruleBlocks) {
-        const inner = block.replace(/```rule\n/, '').replace(/```$/, '').trim();
+        const inner = block
+          .replace(/```rule\n/, '')
+          .replace(/```$/, '')
+          .trim();
         try {
           const parsed = JSON.parse(inner);
           rules.push(parsed);
@@ -53,7 +60,11 @@ export class FileRuleStore implements RuleStore {
       // FBログの直前に挿入
       const fbLogIndex = content.indexOf('## FBログ');
       if (fbLogIndex !== -1) {
-        content = content.slice(0, fbLogIndex) + ruleBlock + '\n' + content.slice(fbLogIndex);
+        content =
+          content.slice(0, fbLogIndex) +
+          ruleBlock +
+          '\n' +
+          content.slice(fbLogIndex);
       } else {
         content += ruleBlock;
       }
