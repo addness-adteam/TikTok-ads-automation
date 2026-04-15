@@ -84,3 +84,21 @@ jobs:
           fi
 
           echo "Daily metrics collection completed successfully"
+
+      - name: Notify LINE on failure
+        if: failure()
+        run: |
+          if [ -z "${{ secrets.LINE_CHANNEL_ACCESS_TOKEN }}" ] || [ -z "${{ secrets.LINE_USER_ID }}" ]; then
+            echo "LINE Secrets未設定"; exit 0
+          fi
+          jst_time=$(TZ='Asia/Tokyo' date '+%Y-%m-%d %H:%M JST')
+          text="🚨 Daily Metrics Collection 失敗
+時刻: $jst_time
+メトリクス取得が失敗。広告成績分析が遅延します。
+
+GitHub Actions:
+https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          curl -s -X POST https://api.line.me/v2/bot/message/push \
+            -H "Authorization: Bearer ${{ secrets.LINE_CHANNEL_ACCESS_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            -d "{\"to\":\"${{ secrets.LINE_USER_ID }}\",\"messages\":[{\"type\":\"text\",\"text\":$(echo "$text" | jq -Rs .)}]}"

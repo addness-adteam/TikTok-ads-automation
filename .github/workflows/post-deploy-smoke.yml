@@ -1,0 +1,86 @@
+name: Post-deploy Smoke Test
+
+on:
+  push:
+    branches:
+      - master
+    paths:
+      - 'apps/backend/**'
+      - 'package.json'
+      - 'package-lock.json'
+  workflow_dispatch:
+
+env:
+  API_BASE_URL: https://tik-tok-ads-automation-backend.vercel.app
+
+jobs:
+  wait-and-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Wait for Vercel deploy
+        # Vercelデプロイは通常2〜3分。余裕を見て4分待つ
+        run: sleep 240
+
+      - name: Smoke test critical endpoints
+        id: smoke
+        run: |
+          failures=""
+
+          check_endpoint() {
+            local name=$1
+            local method=$2
+            local path=$3
+            local expected_http=$4
+
+            echo "━━━ $name ━━━"
+            response=$(curl -s -w "\n%{http_code}" --max-time 30 -X "$method" "${{ env.API_BASE_URL }}$path")
+            http_code=$(echo "$response" | tail -n1)
+            body=$(echo "$response" | sed '$d' | head -c 300)
+
+            if [ "$http_code" = "$expected_http" ]; then
+              echo "  ✅ HTTP $http_code"
+            else
+              echo "  ❌ HTTP $http_code (expected $expected_http)"
+              echo "     body: $body"
+              failures="$failures $name"
+            fi
+          }
+
+          # NestJSアプリが bootstrap 成功しているかを主要エンドポイントで確認
+          check_endpoint "diagnostics" "GET" "/jobs/diagnostics" "200"
+          check_endpoint "budget-monitoring" "POST" "/api/budget-monitoring/check" "201"
+
+          if [ -n "$failures" ]; then
+            echo ""
+            echo "❌ Failed endpoints:$failures"
+            echo "failures=$failures" >> $GITHUB_OUTPUT
+            exit 1
+          fi
+
+          echo ""
+          echo "✅ 全smoke test通過"
+
+      - name: Notify LINE on failure
+        if: failure()
+        run: |
+          if [ -z "${{ secrets.LINE_CHANNEL_ACCESS_TOKEN }}" ] || [ -z "${{ secrets.LINE_USER_ID }}" ]; then
+            echo "LINE Secrets未設定 → 通知スキップ"
+            exit 0
+          fi
+
+          commit_sha="${{ github.sha }}"
+          commit_msg=$(git log -1 --pretty=%s 2>/dev/null || echo "N/A")
+          failures="${{ steps.smoke.outputs.failures || 'unknown' }}"
+
+          text="🚨 Vercelデプロイ後のsmoke test失敗
+コミット: ${commit_sha:0:7}
+メッセージ: $commit_msg
+失敗エンドポイント:$failures
+
+Vercelが500を返している可能性大。
+即座に前コミットへrevertするか修正push推奨。"
+
+          curl -s -X POST https://api.line.me/v2/bot/message/push \
+            -H "Authorization: Bearer ${{ secrets.LINE_CHANNEL_ACCESS_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            -d "{\"to\":\"${{ secrets.LINE_USER_ID }}\",\"messages\":[{\"type\":\"text\",\"text\":$(echo "$text" | jq -Rs .)}]}"

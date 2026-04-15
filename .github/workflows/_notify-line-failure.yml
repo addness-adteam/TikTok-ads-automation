@@ -1,0 +1,36 @@
+name: Notify LINE on workflow failure (reusable)
+
+on:
+  workflow_call:
+    inputs:
+      workflow_name:
+        required: true
+        type: string
+      failure_context:
+        required: false
+        type: string
+        default: ''
+    secrets:
+      LINE_CHANNEL_ACCESS_TOKEN:
+        required: true
+      LINE_USER_ID:
+        required: true
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Push LINE message
+        run: |
+          jst_time=$(TZ='Asia/Tokyo' date '+%Y-%m-%d %H:%M JST')
+          text="🚨 定時ジョブ失敗: ${{ inputs.workflow_name }}
+時刻: $jst_time
+${{ inputs.failure_context }}
+
+GitHub Actions で詳細確認してください:
+https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+
+          curl -s -X POST https://api.line.me/v2/bot/message/push \
+            -H "Authorization: Bearer ${{ secrets.LINE_CHANNEL_ACCESS_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            -d "{\"to\":\"${{ secrets.LINE_USER_ID }}\",\"messages\":[{\"type\":\"text\",\"text\":$(echo "$text" | jq -Rs .)}]}"

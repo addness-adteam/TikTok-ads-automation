@@ -126,6 +126,25 @@ jobs:
             fi
           fi
 
+      - name: Notify LINE on failure
+        if: failure()
+        run: |
+          if [ -z "${{ secrets.LINE_CHANNEL_ACCESS_TOKEN }}" ] || [ -z "${{ secrets.LINE_USER_ID }}" ]; then
+            echo "LINE Secrets未設定 → 通知スキップ"
+            exit 0
+          fi
+          jst_time=$(TZ='Asia/Tokyo' date '+%Y-%m-%d %H:%M JST')
+          text="🚨 Budget Reset Midnight 失敗
+時刻: $jst_time
+予算リセットが全滅または部分失敗しています。手動で即対応してください。
+
+GitHub Actions:
+https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          curl -s -X POST https://api.line.me/v2/bot/message/push \
+            -H "Authorization: Bearer ${{ secrets.LINE_CHANNEL_ACCESS_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            -d "{\"to\":\"${{ secrets.LINE_USER_ID }}\",\"messages\":[{\"type\":\"text\",\"text\":$(echo "$text" | jq -Rs .)}]}"
+
       - name: Generate Summary
         if: always()
         run: |
