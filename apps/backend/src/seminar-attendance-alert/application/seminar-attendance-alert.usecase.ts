@@ -31,6 +31,8 @@ export interface AlertRunResult {
 @Injectable()
 export class SeminarAttendanceAlertUseCase {
   private readonly logger = new Logger(SeminarAttendanceAlertUseCase.name);
+  private readonly counter = new AttendanceCountService();
+  private readonly evaluator = new AlertRuleEvaluator();
 
   constructor(
     private readonly prisma: PrismaService,
@@ -40,8 +42,6 @@ export class SeminarAttendanceAlertUseCase {
     private readonly historyRepo: PrismaAlertHistoryRepository,
     private readonly notifier: AiSecretaryLineNotifier,
     private readonly scraper: PlaywrightLstepScraper,
-    private readonly counter: AttendanceCountService = new AttendanceCountService(),
-    private readonly evaluator: AlertRuleEvaluator = new AlertRuleEvaluator(),
   ) {}
 
   async run(options: { dryRun?: boolean; attendanceCsvFetcher?: AttendanceCsvFetcher } = {}): Promise<AlertRunResult> {
@@ -73,9 +73,10 @@ export class SeminarAttendanceAlertUseCase {
     // 3) LP-CR × {予約数, 着座数}
     const countsByLpCr = this.counter.countByLpCr(optMap, reservations, attendedEmails);
 
-    // 4) SP配下の広告を取得（status ENABLE 含む、停止済みでも配信実績評価のため含める）
+    // 4) SP配下のアクティブ広告を取得（A: status ENABLE のみ）
     const ads = await this.prisma.ad.findMany({
       where: {
+        status: 'ENABLE',
         adGroup: { campaign: { advertiser: { tiktokAdvertiserId: { in: Object.keys(SP_ADVERTISER_IDS) } } } },
       },
       include: { adGroup: { include: { campaign: { include: { advertiser: true } } } } },
@@ -105,6 +106,8 @@ export class SeminarAttendanceAlertUseCase {
       if (!startDate) continue;
 
       const period = DeliveryPeriod.between(startDate, now);
+      // B: 配信開始から30日超過した広告は監視対象外（古い広告を一斉通知しないため）
+      if (period.elapsedDays > 30) continue;
       const spend = JPY.of(spendByAd.get(ad.id) ?? 0);
       const counts = countsByLpCr.get(lpCr) ?? { reservationCount: 0, attendanceCount: 0 };
 
