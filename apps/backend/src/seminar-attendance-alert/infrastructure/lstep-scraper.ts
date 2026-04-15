@@ -37,34 +37,39 @@ export class PlaywrightLstepScraper implements AttendanceCsvFetcher {
     const context = await browser.newContext({ acceptDownloads: true });
     const page = await context.newPage();
 
+    page.setDefaultTimeout(60000);
+    page.setDefaultNavigationTimeout(60000);
+
     try {
       // 1) ログイン
-      await page.goto('https://manager.linestep.net/account/login', { waitUntil: 'networkidle' });
+      await page.goto('https://manager.linestep.net/account/login', { waitUntil: 'domcontentloaded', timeout: 60000 });
+      // メアドフィールドが見えるまで待つ
+      await page.waitForSelector('input[type="email"], input[name="email"]', { timeout: 30000 });
       await page.fill('input[name="email"], input[type="email"]', email);
       await page.fill('input[name="password"], input[type="password"]', password);
       // 「機械じゃない」チェックボックス（reCAPTCHAではない単純checkbox想定）
-      const notRobot = await page.locator('input[type="checkbox"]').first();
+      const notRobot = page.locator('input[type="checkbox"]').first();
       if (await notRobot.isVisible().catch(() => false)) {
-        await notRobot.check();
+        await notRobot.check().catch(() => {});
       }
       await Promise.all([
-        page.waitForLoadState('networkidle'),
+        page.waitForLoadState('domcontentloaded'),
         page.click('button[type="submit"], input[type="submit"]'),
       ]);
-      this.logger.log('ログイン完了');
+      // ログイン後の遷移を待つ
+      await page.waitForURL((url) => !url.toString().includes('/account/login'), { timeout: 30000 });
+      this.logger.log(`ログイン完了: ${page.url()}`);
 
       // 2) 友だちリスト → CSV操作
-      // TODO: 実UIで具体セレクタ確定。暫定はテキストマッチで辿る
       await page.getByText('友だちリスト', { exact: false }).first().click();
-      await page.waitForLoadState('networkidle');
-      // サイドバー下部にスクロール
+      await page.waitForLoadState('domcontentloaded');
       await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
       await page.getByText('CSV操作', { exact: false }).first().click();
-      await page.waitForLoadState('networkidle');
+      await page.waitForLoadState('domcontentloaded');
 
       // 3) CSVエクスポート
       await page.getByText('CSVエクスポート', { exact: false }).first().click();
-      await page.waitForLoadState('networkidle');
+      await page.waitForLoadState('domcontentloaded');
 
       // 4) 条件設定:
       //    - 「LINE登録名」チェックを追加
@@ -74,7 +79,7 @@ export class PlaywrightLstepScraper implements AttendanceCsvFetcher {
 
       // 5) ダウンロード実行
       const [download] = await Promise.all([
-        page.waitForEvent('download'),
+        page.waitForEvent('download', { timeout: 60000 }),
         page.getByText('この条件でダウンロード', { exact: false }).first().click(),
       ]);
       const csvPath = await download.path();
