@@ -699,10 +699,24 @@ async function main() {
   // 数値の引数: budget, --limit=N もしくは positional 4番目=budget, 5番目=videoLimit
   let budgetOverride: number | undefined;
   let videoLimit: number | undefined;
+  // --video-indices=1,3,5 でsource広告から特定インデックスのみ選択 (1-based)
+  let videoIndices: number[] | undefined;
+  // --extra-videos=advId:videoId,... で別広告の動画を追加
+  let extraVideos: { advId: string; videoId: string }[] = [];
   for (const a of args.slice(3)) {
-    const m = a.match(/^--limit=(\d+)$/);
-    if (m) videoLimit = parseInt(m[1]);
-    else if (/^\d+$/.test(a)) {
+    const limitM = a.match(/^--limit=(\d+)$/);
+    if (limitM) { videoLimit = parseInt(limitM[1]); continue; }
+    const idxM = a.match(/^--video-indices=(.+)$/);
+    if (idxM) { videoIndices = idxM[1].split(',').map((s) => parseInt(s.trim())).filter((n) => !isNaN(n)); continue; }
+    const extM = a.match(/^--extra-videos=(.+)$/);
+    if (extM) {
+      extraVideos = extM[1].split(',').map((s) => {
+        const [adv, vid] = s.split(':');
+        return { advId: adv.trim(), videoId: vid.trim() };
+      });
+      continue;
+    }
+    if (/^\d+$/.test(a)) {
       if (budgetOverride === undefined) budgetOverride = parseInt(a);
       else if (videoLimit === undefined) videoLimit = parseInt(a);
     }
@@ -730,9 +744,17 @@ async function main() {
 
     // 1. 元広告情報取得
     const source = await getSourceAdDetail(sourceAdvertiserId, sourceAdId);
-    if (videoLimit && source.videoIds.length > videoLimit) {
+    // --video-indices が優先 (特定インデックスのみ選択)
+    if (videoIndices && videoIndices.length > 0) {
+      const selected = videoIndices.map((i) => source.videoIds[i - 1]).filter(Boolean);
+      console.log(`   動画を${source.videoIds.length}本 → インデックス[${videoIndices.join(',')}]の ${selected.length}本に絞り込み`);
+      source.videoIds = selected;
+    } else if (videoLimit && source.videoIds.length > videoLimit) {
       console.log(`   動画本数を ${source.videoIds.length} → ${videoLimit} に制限`);
       source.videoIds = source.videoIds.slice(0, videoLimit);
+    }
+    if (extraVideos.length > 0) {
+      console.log(`   追加動画: ${extraVideos.length}本 (別アカから)`);
     }
 
     // appeal/LP推定
@@ -746,8 +768,22 @@ async function main() {
     console.log(`   appeal: ${appeal}, LP: ${lpNumber}, 日予算: ¥${dailyBudget}`);
 
     // 2. メディアダウンロード＆アップロード
-    const videoMapping = await downloadAndUploadVideos(sourceAdvertiserId, targetAdvertiserId, source.videoIds);
+    let videoMapping = await downloadAndUploadVideos(sourceAdvertiserId, targetAdvertiserId, source.videoIds);
     const imageMapping = await downloadAndUploadImages(sourceAdvertiserId, targetAdvertiserId, source.imageIds);
+
+    // 2c. 追加動画 (--extra-videos) を別advertiserから取得
+    if (extraVideos.length > 0) {
+      const byAdv = new Map<string, string[]>();
+      for (const e of extraVideos) {
+        if (!byAdv.has(e.advId)) byAdv.set(e.advId, []);
+        byAdv.get(e.advId)!.push(e.videoId);
+      }
+      for (const [advId, vids] of byAdv) {
+        console.log(`\n2c. 追加動画 ${vids.length}本 (source: ${advId})`);
+        const extraMapping = await downloadAndUploadVideos(advId, targetAdvertiserId, vids);
+        videoMapping = { ...videoMapping, ...extraMapping };
+      }
+    }
 
     // 3. UTAGE
     await utageLogin();
