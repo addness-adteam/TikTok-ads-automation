@@ -40,11 +40,37 @@ export class PlaywrightLstepScraper implements AttendanceCsvFetcher {
     page.setDefaultTimeout(60000);
     page.setDefaultNavigationTimeout(60000);
 
+    const dumpOnError = async (stage: string) => {
+      try {
+        const html = await page.content();
+        this.logger.warn(`[DIAG:${stage}] url=${page.url()}`);
+        this.logger.warn(`[DIAG:${stage}] title=${await page.title()}`);
+        // input要素を列挙
+        const inputs = await page.$$eval('input', (els) =>
+          els.map((e: any) => ({ type: e.type, name: e.name, id: e.id, placeholder: e.placeholder, class: e.className })),
+        );
+        this.logger.warn(`[DIAG:${stage}] inputs=${JSON.stringify(inputs).slice(0, 2000)}`);
+        // フォーム要素
+        const forms = await page.$$eval('form', (els) =>
+          els.map((e: any) => ({ id: e.id, action: e.action, method: e.method })),
+        );
+        this.logger.warn(`[DIAG:${stage}] forms=${JSON.stringify(forms).slice(0, 1000)}`);
+        this.logger.warn(`[DIAG:${stage}] HTML先頭2KB:\n${html.slice(0, 2000)}`);
+      } catch (e: any) {
+        this.logger.warn(`[DIAG] 診断失敗: ${e.message}`);
+      }
+    };
+
     try {
       // 1) ログイン
       await page.goto('https://manager.linestep.net/account/login', { waitUntil: 'domcontentloaded', timeout: 60000 });
       // メアドフィールドが見えるまで待つ
-      await page.waitForSelector('input[type="email"], input[name="email"]', { timeout: 30000 });
+      try {
+        await page.waitForSelector('input[type="email"], input[name="email"]', { timeout: 30000 });
+      } catch (e) {
+        await dumpOnError('login-selector-timeout');
+        throw e;
+      }
       await page.fill('input[name="email"], input[type="email"]', email);
       await page.fill('input[name="password"], input[type="password"]', password);
       // 「機械じゃない」チェックボックス（reCAPTCHAではない単純checkbox想定）
