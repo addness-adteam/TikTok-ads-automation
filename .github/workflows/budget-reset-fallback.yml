@@ -63,12 +63,7 @@ jobs:
             exit 0
           fi
           jst_time=$(TZ='Asia/Tokyo' date '+%Y-%m-%d %H:%M JST')
-          text="⚠️ 予算リセット フォールバック発動
-時刻: $jst_time
-0時の予算リセットが未実行だったため、フォールバックから再起動しました。
-
-GitHub Actions:
-https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          text=$(printf '⚠️ 予算リセット フォールバック発動\n時刻: %s\n0時の予算リセットが未実行だったため、フォールバックから再起動しました。\n\nGitHub Actions:\nhttps://github.com/%s/actions/runs/%s' "$jst_time" "${{ github.repository }}" "${{ github.run_id }}")
           curl -s -X POST https://api.line.me/v2/bot/message/push \
             -H "Authorization: Bearer ${{ secrets.LINE_CHANNEL_ACCESS_TOKEN }}" \
             -H "Content-Type: application/json" \

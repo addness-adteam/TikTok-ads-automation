@@ -134,12 +134,7 @@ jobs:
             exit 0
           fi
           jst_time=$(TZ='Asia/Tokyo' date '+%Y-%m-%d %H:%M JST')
-          text="🚨 Budget Reset Midnight 失敗
-時刻: $jst_time
-予算リセットが全滅または部分失敗しています。手動で即対応してください。
-
-GitHub Actions:
-https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          text=$(printf '🚨 Budget Reset Midnight 失敗\n時刻: %s\n予算リセットが全滅または部分失敗しています。手動で即対応してください。\n\nGitHub Actions:\nhttps://github.com/%s/actions/runs/%s' "$jst_time" "${{ github.repository }}" "${{ github.run_id }}")
           curl -s -X POST https://api.line.me/v2/bot/message/push \
             -H "Authorization: Bearer ${{ secrets.LINE_CHANNEL_ACCESS_TOKEN }}" \
             -H "Content-Type: application/json" \
