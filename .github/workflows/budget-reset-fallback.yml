@@ -1,0 +1,75 @@
+name: Budget Reset Fallback
+
+# 本体(budget-reset-midnight)が不発 or 失敗した場合のフォールバック
+# 本体の30分後に実行し、DBに今日のリセットログが無ければ本体を再起動する
+
+on:
+  schedule:
+    # JST 00:30 = UTC 15:30
+    - cron: '30 15 * * *'
+  workflow_dispatch: {}
+
+env:
+  API_BASE_URL: https://tik-tok-ads-automation-backend.vercel.app
+
+jobs:
+  check-and-trigger:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check if budget reset completed today
+        id: check
+        run: |
+          jst_time=$(TZ='Asia/Tokyo' date '+%Y-%m-%d %H:%M JST')
+          echo "Checking reset status at $jst_time"
+
+          response=$(curl -s --max-time 15 --retry 2 --retry-delay 5 \
+            "${{ env.API_BASE_URL }}/api/budget-optimization-v2/reset-status-today")
+
+          echo "Response: $response"
+
+          completed=$(echo "$response" | jq -r '.data.completed // false')
+          reset_count=$(echo "$response" | jq -r '.data.resetCount // 0')
+          error_count=$(echo "$response" | jq -r '.data.errorCount // 0')
+
+          echo "completed=$completed reset=$reset_count errors=$error_count"
+          echo "completed=$completed" >> $GITHUB_OUTPUT
+          echo "reset_count=$reset_count" >> $GITHUB_OUTPUT
+          echo "error_count=$error_count" >> $GITHUB_OUTPUT
+
+      - name: Trigger budget reset (fallback)
+        if: steps.check.outputs.completed == 'false'
+        run: |
+          echo "⚠️ 今日のリセットが未実行。フォールバック起動..."
+
+          # 本体ワークフローをworkflow_dispatchで起動
+          curl -s -X POST \
+            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${{ github.repository }}/actions/workflows/budget-reset-midnight.yml/dispatches" \
+            -d '{"ref":"master"}'
+
+          echo "✅ 本体ワークフローを起動しました"
+
+      - name: Skip (already completed)
+        if: steps.check.outputs.completed == 'true'
+        run: |
+          echo "✅ 今日のリセット済み (reset=${{ steps.check.outputs.reset_count }}, errors=${{ steps.check.outputs.error_count }})"
+
+      - name: Notify LINE on fallback trigger
+        if: steps.check.outputs.completed == 'false'
+        run: |
+          if [ -z "${{ secrets.LINE_CHANNEL_ACCESS_TOKEN }}" ] || [ -z "${{ secrets.LINE_USER_ID }}" ]; then
+            echo "LINE Secrets未設定 → 通知スキップ"
+            exit 0
+          fi
+          jst_time=$(TZ='Asia/Tokyo' date '+%Y-%m-%d %H:%M JST')
+          text="⚠️ 予算リセット フォールバック発動
+時刻: $jst_time
+0時の予算リセットが未実行だったため、フォールバックから再起動しました。
+
+GitHub Actions:
+https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          curl -s -X POST https://api.line.me/v2/bot/message/push \
+            -H "Authorization: Bearer ${{ secrets.LINE_CHANNEL_ACCESS_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            -d "{\"to\":\"${{ secrets.LINE_USER_ID }}\",\"messages\":[{\"type\":\"text\",\"text\":$(echo "$text" | jq -Rs .)}]}"

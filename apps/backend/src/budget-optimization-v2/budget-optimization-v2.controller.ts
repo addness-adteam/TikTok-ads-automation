@@ -245,6 +245,62 @@ export class BudgetOptimizationV2Controller {
     }
   }
 
+  /**
+   * 今日の予算リセットが完了済みか確認
+   * GET /api/budget-optimization-v2/reset-status-today
+   * フォールバックcronが「リセット済みかどうか」を判定するために使用
+   */
+  @Get('reset-status-today')
+  async getResetStatusToday() {
+    try {
+      // JST 0:00 を基準にする (UTC 15:00 前日)
+      const now = new Date();
+      const jstHour = (now.getUTCHours() + 9) % 24;
+      const todayStart = new Date(now);
+      if (jstHour < 9) {
+        // UTC的にはまだ前日 → JST 0:00 = 前日 UTC 15:00
+        todayStart.setUTCHours(15, 0, 0, 0);
+        todayStart.setUTCDate(todayStart.getUTCDate() - 1);
+      } else {
+        todayStart.setUTCHours(15, 0, 0, 0);
+      }
+
+      const resetLogs = await this.prisma.changeLog.count({
+        where: {
+          source: 'BUDGET_RESET_MIDNIGHT',
+          action: 'RESET_BUDGET',
+          createdAt: { gte: todayStart },
+        },
+      });
+
+      const errorLogs = await this.prisma.changeLog.count({
+        where: {
+          source: 'BUDGET_RESET_MIDNIGHT',
+          action: 'RESET_BUDGET_ERROR',
+          createdAt: { gte: todayStart },
+        },
+      });
+
+      const completed = resetLogs > 0 || errorLogs > 0;
+
+      return {
+        success: true,
+        data: {
+          completed,
+          resetCount: resetLogs,
+          errorCount: errorLogs,
+          checkedSince: todayStart.toISOString(),
+        },
+      };
+    } catch (error) {
+      this.logger.error('[V2] Reset-status-today failed:', error);
+      throw new HttpException(
+        { success: false, error: error.message },
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
   // ============================================================================
   // 予算調整除外 CRUD
   // ============================================================================
