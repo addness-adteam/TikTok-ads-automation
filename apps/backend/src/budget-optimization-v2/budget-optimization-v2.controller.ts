@@ -276,12 +276,16 @@ export class BudgetOptimizationV2Controller {
         },
       });
 
-      const completed = resetLogs > 0 || errorLogs > 0;
+      // リセット成功が1件以上あれば完了扱い
+      // エラーだけの場合は未完了（フォールバックを発動させる）
+      const executed = resetLogs > 0 || errorLogs > 0;
+      const completed = resetLogs > 0;
 
       return {
         success: true,
         data: {
           completed,
+          executed,
           resetCount: resetLogs,
           errorCount: errorLogs,
           checkedSince: todayStart.toISOString(),

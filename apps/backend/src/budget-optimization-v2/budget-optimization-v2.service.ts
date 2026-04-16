@@ -2441,6 +2441,14 @@ export class BudgetOptimizationV2Service {
       // ※ initialBudget はEntity Syncで増額後の値が入ることがあるため信頼しない
       const resetBudget = defaultBudget;
 
+      // 予算¥0の広告はスキップ（creative_list内の個別素材等、予算取得できないもの）
+      if (ad.dailyBudget === 0) {
+        this.logger.log(
+          `[V2-RESET] SKIP ${ad.adName}: budget is ¥0 (no valid budget entity)`,
+        );
+        continue;
+      }
+
       // 既にリセット先予算と同じ場合はスキップ
       if (ad.dailyBudget === resetBudget) {
         adResults.push({
