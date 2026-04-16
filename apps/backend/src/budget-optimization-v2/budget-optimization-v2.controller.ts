@@ -253,17 +253,12 @@ export class BudgetOptimizationV2Controller {
   @Get('reset-status-today')
   async getResetStatusToday() {
     try {
-      // JST 0:00 を基準にする (UTC 15:00 前日)
+      // JST今日の0:00をUTCで求める
+      // JST = UTC+9 なので、JST 0:00 = UTC 前日15:00
       const now = new Date();
-      const jstHour = (now.getUTCHours() + 9) % 24;
-      const todayStart = new Date(now);
-      if (jstHour < 9) {
-        // UTC的にはまだ前日 → JST 0:00 = 前日 UTC 15:00
-        todayStart.setUTCHours(15, 0, 0, 0);
-        todayStart.setUTCDate(todayStart.getUTCDate() - 1);
-      } else {
-        todayStart.setUTCHours(15, 0, 0, 0);
-      }
+      const jstNow = new Date(now.getTime() + 9 * 60 * 60 * 1000);
+      const jstDateStr = jstNow.toISOString().slice(0, 10); // YYYY-MM-DD in JST
+      const todayStart = new Date(jstDateStr + 'T00:00:00+09:00');
 
       const resetLogs = await this.prisma.changeLog.count({
         where: {
