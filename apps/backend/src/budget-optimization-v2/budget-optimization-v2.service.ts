@@ -1389,6 +1389,7 @@ export class BudgetOptimizationV2Service {
     appeal: any,
   ): Promise<V2SmartPlusAd[]> {
     // === Smart+広告を取得 ===
+    let smartPlusAllRaw: any[] = []; // フィルタ前（通常広告の重複除外に使用）
     let smartPlusRawAds: any[] = [];
     try {
       const response = await this.tiktokService.getSmartPlusAds(
@@ -1397,13 +1398,13 @@ export class BudgetOptimizationV2Service {
         undefined,
         'ENABLE',
       );
-      const rawList = response.data?.list || [];
+      smartPlusAllRaw = response.data?.list || [];
       // Smart+ APIのoperation_statusフィルタが効かないバグがあるため、コード側で二重チェック
-      smartPlusRawAds = rawList.filter(
+      smartPlusRawAds = smartPlusAllRaw.filter(
         (ad: any) => ad.operation_status === 'ENABLE',
       );
       this.logger.log(
-        `[V2] Fetched ${rawList.length} Smart+ ads, ${smartPlusRawAds.length} after ENABLE filter`,
+        `[V2] Fetched ${smartPlusAllRaw.length} Smart+ ads, ${smartPlusRawAds.length} after ENABLE filter`,
       );
     } catch (error) {
       this.logger.warn(
@@ -1420,15 +1421,22 @@ export class BudgetOptimizationV2Service {
         undefined,
         'ENABLE',
       );
-      const allRegularAds = regularResponse.data?.list || [];
+      const rawRegularAds = regularResponse.data?.list || [];
+      // TikTok APIのoperation_statusフィルタが効かない場合があるため二重チェック
+      const allRegularAds = rawRegularAds.filter(
+        (ad: any) =>
+          ad.operation_status === 'ENABLE' ||
+          ad.primary_status === 'STATUS_DELIVERY_OK',
+      );
       // Smart+広告と重複する広告を除外
       // 1. Smart+広告IDと同じad_idを除外
       const smartPlusAdIds = new Set(
         smartPlusRawAds.map((ad: any) => ad.smart_plus_ad_id),
       );
       // 2. Smart+キャンペーンに属する通常広告も除外（同一キャンペーン内の通常広告が二重評価されるのを防ぐ）
+      // ※ フィルタ前の全Smart+広告を使う（DISABLEのSmart+キャンペーンも除外対象にする）
       const smartPlusCampaignIds = new Set(
-        smartPlusRawAds.map((ad: any) => ad.campaign_id),
+        smartPlusAllRaw.map((ad: any) => ad.campaign_id),
       );
       regularRawAds = allRegularAds.filter(
         (ad: any) =>
