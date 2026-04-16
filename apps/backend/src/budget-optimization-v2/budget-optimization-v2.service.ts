@@ -1397,8 +1397,14 @@ export class BudgetOptimizationV2Service {
         undefined,
         'ENABLE',
       );
-      smartPlusRawAds = response.data?.list || [];
-      this.logger.log(`[V2] Fetched ${smartPlusRawAds.length} Smart+ ads`);
+      const rawList = response.data?.list || [];
+      // Smart+ APIのoperation_statusフィルタが効かないバグがあるため、コード側で二重チェック
+      smartPlusRawAds = rawList.filter(
+        (ad: any) => ad.operation_status === 'ENABLE',
+      );
+      this.logger.log(
+        `[V2] Fetched ${rawList.length} Smart+ ads, ${smartPlusRawAds.length} after ENABLE filter`,
+      );
     } catch (error) {
       this.logger.warn(
         `[V2] Failed to fetch Smart+ ads for ${advertiserId} (may not support Smart+): ${error.message}`,
