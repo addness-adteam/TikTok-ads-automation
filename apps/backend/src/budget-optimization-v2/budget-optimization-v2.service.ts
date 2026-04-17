@@ -25,8 +25,7 @@ import {
   INDIVIDUAL_RESERVATION_SPREADSHEET_ID,
   INDIVIDUAL_RESERVATION_CONFIG,
   WINNING_CR_BUDGET_TIER,
-  SEMINAR_LINEAR_INCREASE_THRESHOLD,
-  SEMINAR_LINEAR_INCREASE_AMOUNT,
+  LINEAR_INCREASE_CONFIG,
   detectChannelType,
   usesFrontCPO,
   type ChannelType,
@@ -1142,14 +1141,12 @@ export class BudgetOptimizationV2Service {
       return { ...base, action: 'CONTINUE', reason: `オプト数不足: ${reason}` };
     }
 
-    // 新予算を計算（セミナー導線は¥7万超で+1万刻み）
+    // 新予算を計算（導線別: 閾値超で1.3倍→+固定額に切替）
     let newBudget: number;
-    if (
-      channelType === 'SEMINAR' &&
-      currentBudget >= SEMINAR_LINEAR_INCREASE_THRESHOLD
-    ) {
-      newBudget = currentBudget + SEMINAR_LINEAR_INCREASE_AMOUNT;
-      reason += ` [セミナー導線: ¥${currentBudget.toFixed(0)} ≥ ¥${SEMINAR_LINEAR_INCREASE_THRESHOLD} → +¥${SEMINAR_LINEAR_INCREASE_AMOUNT}]`;
+    const linearConfig = LINEAR_INCREASE_CONFIG[channelType];
+    if (linearConfig && currentBudget >= linearConfig.threshold) {
+      newBudget = currentBudget + linearConfig.amount;
+      reason += ` [${channelType}: ¥${currentBudget.toFixed(0)} ≥ ¥${linearConfig.threshold} → +¥${linearConfig.amount}]`;
     } else {
       newBudget = Math.round(currentBudget * BUDGET_INCREASE_RATE);
     }

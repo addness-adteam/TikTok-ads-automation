@@ -5,9 +5,15 @@
 /** 増額倍率 */
 export const BUDGET_INCREASE_RATE = 1.3;
 
-/** セミナー導線: この予算を超えたら1.3倍ではなく+1万円刻みに切替 */
-export const SEMINAR_LINEAR_INCREASE_THRESHOLD = 70_000;
-export const SEMINAR_LINEAR_INCREASE_AMOUNT = 10_000;
+/** 導線別: 予算がこの値以上なら1.3倍→+固定額に切替 */
+export const LINEAR_INCREASE_CONFIG: Record<
+  ChannelType,
+  { threshold: number; amount: number } | null
+> = {
+  SEMINAR: { threshold: 70_000, amount: 10_000 },
+  AI: { threshold: 50_000, amount: 10_000 },
+  SNS: null, // SNS導線は未設定（従来通り1.3倍）
+};
 
 /** 予算帯の閾値（円） */
 export const BUDGET_TIER = {
