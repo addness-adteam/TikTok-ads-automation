@@ -12,7 +12,7 @@ export const LINEAR_INCREASE_CONFIG: Record<
 > = {
   SEMINAR: { threshold: 70_000, amount: 10_000 },
   AI: { threshold: 50_000, amount: 10_000 },
-  SNS: null, // SNS導線は未設定（従来通り1.3倍）
+  SNS: { threshold: 50_000, amount: 10_000 },
 };
 
 /** 予算帯の閾値（円） */
