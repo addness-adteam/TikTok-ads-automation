@@ -25,6 +25,8 @@ import {
   INDIVIDUAL_RESERVATION_SPREADSHEET_ID,
   INDIVIDUAL_RESERVATION_CONFIG,
   WINNING_CR_BUDGET_TIER,
+  SEMINAR_LINEAR_INCREASE_THRESHOLD,
+  SEMINAR_LINEAR_INCREASE_AMOUNT,
   detectChannelType,
   usesFrontCPO,
   type ChannelType,
@@ -561,6 +563,7 @@ export class BudgetOptimizationV2Service {
         const todayCPA = todayCV > 0 ? todaySpend / todayCV : null;
 
         // 増額判定
+        const channelType = detectChannelType(appeal.name);
         const decision = await this.evaluateBudgetIncrease(
           ad,
           todayCPA,
@@ -568,6 +571,7 @@ export class BudgetOptimizationV2Service {
           todaySpend,
           appeal.targetCPA,
           advertiserId,
+          channelType,
         );
 
         // 増額実行（Snapshot保存を先に行い、成功した場合のみ予算変更）
@@ -1021,6 +1025,7 @@ export class BudgetOptimizationV2Service {
         const todayCPA = todayCV > 0 ? todaySpend / todayCV : null;
 
         // 増額判定
+        const channelType = detectChannelType(appeal.name);
         const decision = await this.evaluateBudgetIncrease(
           ad,
           todayCPA,
@@ -1028,6 +1033,7 @@ export class BudgetOptimizationV2Service {
           todaySpend,
           appeal.targetCPA,
           advertiserId,
+          channelType,
         );
 
         // 増額実行（Snapshot保存を先に行い、成功した場合のみ予算変更）
@@ -1082,6 +1088,7 @@ export class BudgetOptimizationV2Service {
     todaySpend: number,
     targetCPA: number,
     advertiserId: string,
+    channelType: ChannelType = 'AI',
   ): Promise<BudgetIncreaseDecision> {
     const currentBudget = ad.dailyBudget;
     const base = {
@@ -1135,8 +1142,17 @@ export class BudgetOptimizationV2Service {
       return { ...base, action: 'CONTINUE', reason: `オプト数不足: ${reason}` };
     }
 
-    // 新予算を計算
-    let newBudget = Math.round(currentBudget * BUDGET_INCREASE_RATE);
+    // 新予算を計算（セミナー導線は¥7万超で+1万刻み）
+    let newBudget: number;
+    if (
+      channelType === 'SEMINAR' &&
+      currentBudget >= SEMINAR_LINEAR_INCREASE_THRESHOLD
+    ) {
+      newBudget = currentBudget + SEMINAR_LINEAR_INCREASE_AMOUNT;
+      reason += ` [セミナー導線: ¥${currentBudget.toFixed(0)} ≥ ¥${SEMINAR_LINEAR_INCREASE_THRESHOLD} → +¥${SEMINAR_LINEAR_INCREASE_AMOUNT}]`;
+    } else {
+      newBudget = Math.round(currentBudget * BUDGET_INCREASE_RATE);
+    }
 
     // AdBudgetCapチェック
     const budgetCap = await this.getEffectiveBudgetCap(ad.adId, advertiserId);
@@ -2440,7 +2456,7 @@ export class BudgetOptimizationV2Service {
     const todayStr = now.toLocaleDateString('sv-SE', {
       timeZone: 'Asia/Tokyo',
     });
-    let todaySpendMap = new Map<string, number>();
+    const todaySpendMap = new Map<string, number>();
     try {
       const reportData = await this.tiktokService.getAllReportData(
         advertiserId,
@@ -2454,10 +2470,7 @@ export class BudgetOptimizationV2Service {
       for (const row of reportData) {
         const adId = row.dimensions?.ad_id;
         if (adId) {
-          todaySpendMap.set(
-            adId,
-            parseFloat(row.metrics?.spend || '0'),
-          );
+          todaySpendMap.set(adId, parseFloat(row.metrics?.spend || '0'));
         }
       }
       this.logger.log(
@@ -2556,9 +2569,7 @@ export class BudgetOptimizationV2Service {
                 msg.includes('budget cannot be less than') ||
                 msg.includes('deep_funnel_optimization_status')
               ) {
-                this.logger.warn(
-                  `[V2-RESET] SKIP ${ad.adName}: ${msg}`,
-                );
+                this.logger.warn(`[V2-RESET] SKIP ${ad.adName}: ${msg}`);
                 adResults.push({
                   adId: ad.adId,
                   adName: ad.adName,

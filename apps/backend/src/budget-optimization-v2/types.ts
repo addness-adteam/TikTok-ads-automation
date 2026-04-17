@@ -5,6 +5,10 @@
 /** 増額倍率 */
 export const BUDGET_INCREASE_RATE = 1.3;
 
+/** セミナー導線: この予算を超えたら1.3倍ではなく+1万円刻みに切替 */
+export const SEMINAR_LINEAR_INCREASE_THRESHOLD = 70_000;
+export const SEMINAR_LINEAR_INCREASE_AMOUNT = 10_000;
+
 /** 予算帯の閾値（円） */
 export const BUDGET_TIER = {
   LOW_MAX: 8_000,
