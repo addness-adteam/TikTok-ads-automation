@@ -1100,15 +1100,21 @@ export class BudgetOptimizationV2Service {
       todaySpend,
     };
 
-    // 当日CPA > 目標CPA → 継続
-    if (todayCPA === null || todayCPA > targetCPA) {
+    // CPA null（消化0）→ 全導線で増額不要
+    if (todayCPA === null) {
       return {
         ...base,
         action: 'CONTINUE',
-        reason:
-          todayCPA === null
-            ? '当日CPA算出不可（広告費0）'
-            : `当日CPA ¥${todayCPA.toFixed(0)} > 目標CPA ¥${targetCPA}`,
+        reason: '当日CPA算出不可（広告費0）',
+      };
+    }
+
+    // 当日CPA > 目標CPA → 継続（セミナー導線は¥7万+1万刻みで制御するためスキップ）
+    if (channelType !== 'SEMINAR' && todayCPA > targetCPA) {
+      return {
+        ...base,
+        action: 'CONTINUE',
+        reason: `当日CPA ¥${todayCPA.toFixed(0)} > 目標CPA ¥${targetCPA}`,
       };
     }
 
