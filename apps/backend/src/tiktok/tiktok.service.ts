@@ -2893,10 +2893,46 @@ export class TiktokService {
         `Updating Smart+ campaign budget: campaignId=${campaignId}, budget=${budget}`,
       );
 
+      // deep_funnel_optimization_status ON のキャンペーンでは関連fieldsが必須
+      // 事前に現在のキャンペーン設定を取得して、deep_funnel fieldsを維持する
+      let deepFunnelFields: Record<string, any> = {};
+      try {
+        const campRes = await this.httpClient.get(
+          '/v1.3/campaign/get/',
+          {
+            headers: { 'Access-Token': accessToken },
+            params: {
+              advertiser_id: advertiserId,
+              filtering: JSON.stringify({ campaign_ids: [campaignId] }),
+              fields: JSON.stringify([
+                'campaign_id',
+                'deep_bid_type',
+                'deep_cpabid',
+              ]),
+            },
+          },
+        );
+        const campData = campRes.data?.data?.list?.[0];
+        if (campData?.deep_bid_type) {
+          deepFunnelFields = {
+            deep_bid_type: campData.deep_bid_type,
+            ...(campData.deep_cpabid ? { deep_cpabid: campData.deep_cpabid } : {}),
+          };
+          this.logger.log(
+            `Deep funnel fields found for campaign ${campaignId}: ${JSON.stringify(deepFunnelFields)}`,
+          );
+        }
+      } catch (fetchErr) {
+        this.logger.warn(
+          `Failed to fetch campaign deep_funnel info for ${campaignId}: ${fetchErr.message}. Proceeding without.`,
+        );
+      }
+
       const requestBody = {
         advertiser_id: advertiserId,
         campaign_id: campaignId,
         budget: budget,
+        ...deepFunnelFields,
       };
 
       const response = await this.httpClient.post(

@@ -2436,9 +2436,54 @@ export class BudgetOptimizationV2Service {
     );
     this.logger.log(`[V2-RESET] Found ${activeAds.length} active Smart+ ads`);
 
+    // 当日消化額を取得（消化額がデフォルト予算を超えている場合のフォールバック用）
+    const todayStr = now.toLocaleDateString('sv-SE', {
+      timeZone: 'Asia/Tokyo',
+    });
+    let todaySpendMap = new Map<string, number>();
+    try {
+      const reportData = await this.tiktokService.getAllReportData(
+        advertiserId,
+        accessToken,
+        {
+          dataLevel: 'AUCTION_AD',
+          startDate: todayStr,
+          endDate: todayStr,
+        },
+      );
+      for (const row of reportData) {
+        const adId = row.dimensions?.ad_id;
+        if (adId) {
+          todaySpendMap.set(
+            adId,
+            parseFloat(row.metrics?.spend || '0'),
+          );
+        }
+      }
+      this.logger.log(
+        `[V2-RESET] Today spend fetched: ${todaySpendMap.size} ads`,
+      );
+    } catch (e) {
+      this.logger.warn(
+        `[V2-RESET] Failed to fetch today spend: ${e.message}. Proceeding without spend check.`,
+      );
+    }
+
     const adResults: BudgetResetAdResult[] = [];
     // 同一entity (campaign/adgroup) の重複リセットを防止
     const processedEntities = new Set<string>();
+    // entity (campaign/adgroup) ごとの消化額を集計
+    const entitySpendMap = new Map<string, number>();
+    for (const ad of activeAds) {
+      const entityKey = ad.isCBO
+        ? `CAMPAIGN:${ad.campaignId}`
+        : `ADGROUP:${ad.adgroupId}`;
+      const adSpend = todaySpendMap.get(ad.adId) || 0;
+      entitySpendMap.set(
+        entityKey,
+        (entitySpendMap.get(entityKey) || 0) + adSpend,
+      );
+    }
 
     for (const ad of activeAds) {
       const entityType = ad.isCBO ? 'CAMPAIGN' : 'ADGROUP';
@@ -2451,9 +2496,16 @@ export class BudgetOptimizationV2Service {
       }
       processedEntities.add(entityKey);
 
-      // リセット先予算: 常にチャネルのデフォルト予算を使用
-      // ※ initialBudget はEntity Syncで増額後の値が入ることがあるため信頼しない
-      const resetBudget = defaultBudget;
+      // リセット先予算: デフォルト予算 or 消化額×1.2 の大きい方
+      // 消化額がデフォルト予算を超えている場合、TikTokは消化額以下への変更をsilent ignoreするため
+      const entitySpend = entitySpendMap.get(entityKey) || 0;
+      let resetBudget = defaultBudget;
+      if (entitySpend > defaultBudget) {
+        resetBudget = Math.ceil(entitySpend * 1.2);
+        this.logger.log(
+          `[V2-RESET] ${ad.adName}: 消化額¥${entitySpend.toFixed(0)} > デフォルト¥${defaultBudget} → リセット先を¥${resetBudget}(消化×1.2)に調整`,
+        );
+      }
 
       // 予算¥0の広告はスキップ（creative_list内の個別素材等、予算取得できないもの）
       if (ad.dailyBudget === 0) {
@@ -2491,12 +2543,48 @@ export class BudgetOptimizationV2Service {
               { budget: resetBudget },
             );
           } else if (ad.isCBO) {
-            await this.tiktokService.updateSmartPlusCampaignBudget(
-              advertiserId,
-              accessToken,
-              ad.campaignId,
-              resetBudget,
-            );
+            try {
+              await this.tiktokService.updateSmartPlusCampaignBudget(
+                advertiserId,
+                accessToken,
+                ad.campaignId,
+                resetBudget,
+              );
+            } catch (cboError) {
+              const msg = cboError.message || '';
+              if (
+                msg.includes('budget cannot be less than') ||
+                msg.includes('deep_funnel_optimization_status')
+              ) {
+                this.logger.warn(
+                  `[V2-RESET] SKIP ${ad.adName}: ${msg}`,
+                );
+                adResults.push({
+                  adId: ad.adId,
+                  adName: ad.adName,
+                  action: 'SKIP_ALREADY_DEFAULT',
+                  entityType,
+                  entityId,
+                  oldBudget: ad.dailyBudget,
+                  newBudget: ad.dailyBudget,
+                });
+                continue;
+              }
+              throw cboError;
+            }
+            // Smart+ CBO: 通常API側のadgroup予算も書き込む（動的日予算の自動拡張を上書き）
+            try {
+              await this.tiktokService.updateAdGroup(
+                advertiserId,
+                accessToken,
+                ad.adgroupId,
+                { budget: resetBudget },
+              );
+            } catch (regularError) {
+              this.logger.warn(
+                `[V2-RESET] CBO adgroup regular API failed for ${ad.adName}: ${regularError.message} (non-fatal)`,
+              );
+            }
           } else {
             // Smart+ ABO: Smart+ APIと通常API両方に予算を書き込む
             try {
