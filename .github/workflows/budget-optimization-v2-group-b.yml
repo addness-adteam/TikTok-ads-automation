@@ -2,9 +2,8 @@ name: Hourly Budget Optimization V2 - Group B (SkillPlus)
 
 on:
   schedule:
-    - cron: '15,30,45 15 * * *'
-    - cron: '0,15,30,45 16,17,18,19,20,21,22,23 * * *'
-    - cron: '0,15,30,45 0,1,2,3,4,5,6,7,8,9,10,11,12,13,14 * * *'
+    # V1日次判定方式: 1日1回 JST 03:00 (UTC 18:00)
+    - cron: '0 18 * * *'
   workflow_dispatch:
     inputs:
       dry_run:

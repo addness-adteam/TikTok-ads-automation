@@ -26,7 +26,6 @@ import {
   INDIVIDUAL_RESERVATION_CONFIG,
   WINNING_CR_BUDGET_TIER,
   LINEAR_INCREASE_CONFIG,
-  DAILY_MODE_AD_IDS,
   V1_BUDGET_MAX,
   V1_COOLDOWN_DAYS,
   detectChannelType,
@@ -179,7 +178,7 @@ export class BudgetOptimizationV2Service {
     let stage2Results: PauseDecision[] = [];
 
     if (isFirstRound) {
-      // 第1回：第1段階（当日CPA増額）+ 第2段階（停止判定）
+      // 第1回：V1日次判定による増額 + 停止判定
       stage1Results = await this.executeStage1(
         activeAds,
         appeal,
@@ -197,15 +196,8 @@ export class BudgetOptimizationV2Service {
         dryRun,
       );
     } else {
-      // 第2回以降：差分CV増額のみ
-      stage1Results = await this.executeSubsequentRound(
-        activeAds,
-        appeal,
-        advertiserId,
-        accessToken,
-        jstDateStr,
-        dryRun,
-      );
+      // 第2回以降：V1方式では増額判定しない（1日1回のみ）
+      this.logger.log('[V2] V1日次判定モード: 第2回以降は増額スキップ');
     }
 
     // Snapshot記録（失敗しても処理全体は止めない）
@@ -564,31 +556,13 @@ export class BudgetOptimizationV2Service {
         // 当日CPA計算
         const todayCPA = todayCV > 0 ? todaySpend / todayCV : null;
 
-        // 増額判定（V1日次判定モード or V2通常モード）
-        const channelType = detectChannelType(appeal.name);
-        let decision: BudgetIncreaseDecision;
-
-        if (DAILY_MODE_AD_IDS.has(ad.adId)) {
-          this.logger.log(
-            `[V2-V1MODE] Ad ${ad.adId} (${ad.adName}): V1日次判定モードで増額判定`,
-          );
-          decision = await this.evaluateBudgetIncreaseV1(
-            ad,
-            appeal,
-            advertiserId,
-            todayStr,
-          );
-        } else {
-          decision = await this.evaluateBudgetIncrease(
-            ad,
-            todayCPA,
-            todayCV,
-            todaySpend,
-            appeal.targetCPA,
-            advertiserId,
-            channelType,
-          );
-        }
+        // V1日次判定モードで増額判定（全広告対象）
+        const decision = await this.evaluateBudgetIncreaseV1(
+          ad,
+          appeal,
+          advertiserId,
+          todayStr,
+        );
 
         // 増額実行（Snapshot保存を先に行い、成功した場合のみ予算変更）
         if (decision.action === 'INCREASE' && decision.newBudget && !dryRun) {
@@ -978,17 +952,6 @@ export class BudgetOptimizationV2Service {
 
     for (const ad of ads) {
       try {
-        // V1日次判定モードの広告は第2回以降スキップ（1日1回のみ判定）
-        if (DAILY_MODE_AD_IDS.has(ad.adId)) {
-          this.logger.log(
-            `[V2-V1MODE] Ad ${ad.adId} (${ad.adName}): V1日次判定モード → 第2回以降スキップ`,
-          );
-          results.push(
-            this.skipDecision(ad, 'V1日次判定モード: 第2回以降スキップ'),
-          );
-          continue;
-        }
-
         if (!ad.parsedName) {
           results.push(this.skipDecision(ad, '広告名パース不可'));
           continue;

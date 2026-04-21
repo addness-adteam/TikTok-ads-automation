@@ -4,9 +4,9 @@ name: Budget Reset Fallback
 # 本体の30分後に実行し、DBに今日のリセットログが無ければ本体を再起動する
 
 on:
-  schedule:
-    # JST 00:30 = UTC 15:30
-    - cron: '30 15 * * *'
+  # スケジュール実行は無効化（V1日次判定方式に切替のため日予算リセット不要）
+  # schedule:
+  #   - cron: '30 15 * * *'
   workflow_dispatch: {}
 
 env:

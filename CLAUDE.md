@@ -34,6 +34,24 @@ npx tsx apps/backend/<script-name>.ts
 - masterブランチにpush → Vercel自動デプロイ
 - コミット前にtscチェック必須
 
+## 作業前のルール確認（必須）
+分析スクリプト・データ取得・検証を行う前に、以下を必ず確認してから着手する:
+1. `memory/` 配下のfeedbackメモリ（特にデータ取得方法・検証フォーマットのルール）
+2. `docs/knowledge/` 配下の関連ナレッジ（過去の検証で判明したハマりポイント）
+3. `docs/` 配下の仕様書（API仕様・データ構造の制約）
+
+確認せずにスクリプトを書き始めることを禁止する。ルールに反するやり方をしていたら作り直す。
+
+## 広告費取得ルール（最重要・過去に5回以上ミスあり）
+TikTok広告のCR別広告費を取得するとき、**3ソース全てから取得して合算する**:
+1. **通常広告**: `/v1.3/report/integrated/get/` (AUCTION_CAMPAIGN) → campaign_nameからCR抽出
+2. **Smart+広告**: `/v1.3/smart_plus/ad/get/` + `/v1.3/smart_plus/material_report/overview/` → smart_plus_ad_idベース
+3. **Upgraded Smart+で消えた広告**: DBのcampaign tiktokId → Report APIで直接フィルタ
+
+**絶対禁止**: DB Metricテーブルから広告費取得（Smart+子広告重複で10-20倍になる）
+**広告費0のCRがあったら提出前に個別確認**
+詳細は `memory/feedback_hypothesis_verification_workflow.md` を参照
+
 ## ナレッジベース
 - 運用分析・検証結果: `docs/knowledge/` に日付付きMarkdownで蓄積
 - 検証を行ったら必ず結果と考察をナレッジに記録する
