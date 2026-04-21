@@ -2479,6 +2479,29 @@ export class BudgetOptimizationV2Service {
       );
     }
 
+    // DBから初期予算(initialBudget)を取得
+    const initialBudgetMap = new Map<string, number>();
+    const dbCampaigns = await this.prisma.campaign.findMany({
+      where: { advertiserId: advertiser.id, initialBudget: { not: null } },
+      select: { tiktokId: true, initialBudget: true },
+    });
+    for (const c of dbCampaigns) {
+      initialBudgetMap.set(`CAMPAIGN:${c.tiktokId}`, c.initialBudget!);
+    }
+    const dbAdGroups = await this.prisma.adGroup.findMany({
+      where: {
+        campaign: { advertiserId: advertiser.id },
+        initialBudget: { not: null },
+      },
+      select: { tiktokId: true, initialBudget: true },
+    });
+    for (const ag of dbAdGroups) {
+      initialBudgetMap.set(`ADGROUP:${ag.tiktokId}`, ag.initialBudget!);
+    }
+    this.logger.log(
+      `[V2-RESET] Initial budgets loaded: ${initialBudgetMap.size} entities`,
+    );
+
     const adResults: BudgetResetAdResult[] = [];
     // 同一entity (campaign/adgroup) の重複リセットを防止
     const processedEntities = new Set<string>();
@@ -2506,14 +2529,20 @@ export class BudgetOptimizationV2Service {
       }
       processedEntities.add(entityKey);
 
-      // リセット先予算: デフォルト予算 or 消化額×1.2 の大きい方
-      // 消化額がデフォルト予算を超えている場合、TikTokは消化額以下への変更をsilent ignoreするため
+      // リセット先予算: 出稿時の初期予算 → なければチャネル別デフォルト
+      const baseBudget = initialBudgetMap.get(entityKey) ?? defaultBudget;
+      // 消化額が基準予算を超えている場合、TikTokは消化額以下への変更をsilent ignoreするため
       const entitySpend = entitySpendMap.get(entityKey) || 0;
-      let resetBudget = defaultBudget;
-      if (entitySpend > defaultBudget) {
+      let resetBudget = baseBudget;
+      if (entitySpend > baseBudget) {
         resetBudget = Math.ceil(entitySpend * 1.2);
         this.logger.log(
-          `[V2-RESET] ${ad.adName}: 消化額¥${entitySpend.toFixed(0)} > デフォルト¥${defaultBudget} → リセット先を¥${resetBudget}(消化×1.2)に調整`,
+          `[V2-RESET] ${ad.adName}: 消化額¥${entitySpend.toFixed(0)} > 基準¥${baseBudget} → リセット先を¥${resetBudget}(消化×1.2)に調整`,
+        );
+      }
+      if (baseBudget !== defaultBudget) {
+        this.logger.log(
+          `[V2-RESET] ${ad.adName}: 初期予算¥${baseBudget}を使用（デフォルト¥${defaultBudget}ではなく出稿時の値）`,
         );
       }
 

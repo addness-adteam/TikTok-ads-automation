@@ -2,8 +2,8 @@ name: Midnight Budget Reset
 
 on:
   schedule:
-    # JST 00:00 = UTC 15:00
-    - cron: '0 15 * * *'
+    # JST 00:15 = UTC 15:15（Entity Syncが00:05に走った後に実行）
+    - cron: '15 15 * * *'
   workflow_dispatch:
     inputs:
       dry_run:
