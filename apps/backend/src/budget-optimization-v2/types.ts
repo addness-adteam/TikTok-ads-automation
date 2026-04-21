@@ -67,6 +67,22 @@ export const TIKTOK_BUDGET_LIMITS = {
 /** 予算減額率（個別予約CPO超過時） */
 export const BUDGET_DECREASE_RATE = 0.8;
 
+// ----------------------------------------------------------------------------
+// A/Bテス���: V1日次判定モード
+// ----------------------------------------------------------------------------
+
+/** V1日次判定モード対象のadId（TikTok Ad ID） */
+export const DAILY_MODE_AD_IDS: Set<string> = new Set([
+  '1863058904286610', // CR01252 (元CR01144) V1日次判定テスト
+  '1863058920195074', // CR01254 (元CR01169) V1日次判定テスト
+]);
+
+/** V1日次判定モードの予算上限 */
+export const V1_BUDGET_MAX = 40_000;
+
+/** V1日次判定モードのクールダウン日数 */
+export const V1_COOLDOWN_DAYS = 3;
+
 /** チャネル別デフォルト日予算（円） */
 export const DEFAULT_DAILY_BUDGET: Record<ChannelType, number> = {
   AI: 3_000,

@@ -26,6 +26,9 @@ import {
   INDIVIDUAL_RESERVATION_CONFIG,
   WINNING_CR_BUDGET_TIER,
   LINEAR_INCREASE_CONFIG,
+  DAILY_MODE_AD_IDS,
+  V1_BUDGET_MAX,
+  V1_COOLDOWN_DAYS,
   detectChannelType,
   usesFrontCPO,
   type ChannelType,
@@ -561,17 +564,31 @@ export class BudgetOptimizationV2Service {
         // 当日CPA計算
         const todayCPA = todayCV > 0 ? todaySpend / todayCV : null;
 
-        // 増額判定
+        // 増額判定（V1日次判定モード or V2通常モード）
         const channelType = detectChannelType(appeal.name);
-        const decision = await this.evaluateBudgetIncrease(
-          ad,
-          todayCPA,
-          todayCV,
-          todaySpend,
-          appeal.targetCPA,
-          advertiserId,
-          channelType,
-        );
+        let decision: BudgetIncreaseDecision;
+
+        if (DAILY_MODE_AD_IDS.has(ad.adId)) {
+          this.logger.log(
+            `[V2-V1MODE] Ad ${ad.adId} (${ad.adName}): V1日次判定モードで増額判定`,
+          );
+          decision = await this.evaluateBudgetIncreaseV1(
+            ad,
+            appeal,
+            advertiserId,
+            todayStr,
+          );
+        } else {
+          decision = await this.evaluateBudgetIncrease(
+            ad,
+            todayCPA,
+            todayCV,
+            todaySpend,
+            appeal.targetCPA,
+            advertiserId,
+            channelType,
+          );
+        }
 
         // 増額実行（Snapshot保存を先に行い、成功した場合のみ予算変更）
         if (decision.action === 'INCREASE' && decision.newBudget && !dryRun) {
@@ -961,6 +978,17 @@ export class BudgetOptimizationV2Service {
 
     for (const ad of ads) {
       try {
+        // V1日次判定モードの広告は第2回以降スキップ（1日1回のみ判定）
+        if (DAILY_MODE_AD_IDS.has(ad.adId)) {
+          this.logger.log(
+            `[V2-V1MODE] Ad ${ad.adId} (${ad.adName}): V1日次判定モード → 第2回以降スキップ`,
+          );
+          results.push(
+            this.skipDecision(ad, 'V1日次判定モード: 第2回以降スキップ'),
+          );
+          continue;
+        }
+
         if (!ad.parsedName) {
           results.push(this.skipDecision(ad, '広告名パース不可'));
           continue;
@@ -1188,6 +1216,161 @@ export class BudgetOptimizationV2Service {
       ...base,
       action: 'INCREASE',
       reason: `増額: ${reason}`,
+      newBudget,
+    };
+  }
+
+  // ============================================================================
+  // V1日次判定モード増額判定（A/Bテスト用）
+  // ============================================================================
+
+  /**
+   * V1日次判定モードの増額判定
+   * - 1日1回（第1回のみ）実行
+   * - 過去7日フロントCPO ≤ 目標値 AND フロント ≥ 1 で増額
+   * - imp ≥ 5,000が前提条件
+   * - 1.3倍固定、上限¥40,000
+   * - クールダウン3日
+   */
+  private async evaluateBudgetIncreaseV1(
+    ad: V2SmartPlusAd,
+    appeal: any,
+    advertiserId: string,
+    todayStr: string,
+  ): Promise<BudgetIncreaseDecision> {
+    const currentBudget = ad.dailyBudget;
+    const base: Omit<BudgetIncreaseDecision, 'action' | 'reason'> = {
+      adId: ad.adId,
+      adName: ad.adName,
+      currentBudget,
+      todayCPA: null,
+      todayCV: 0,
+      todaySpend: 0,
+    };
+
+    // 1. 上限チェック
+    if (currentBudget >= V1_BUDGET_MAX) {
+      return {
+        ...base,
+        action: 'CONTINUE',
+        reason: `[V1] 予算上限 ¥${V1_BUDGET_MAX} に到達済み`,
+      };
+    }
+
+    // 2. クールダウン3日チェック（changeLogから直近の増額を検索）
+    const cooldownCutoff = new Date();
+    cooldownCutoff.setDate(cooldownCutoff.getDate() - V1_COOLDOWN_DAYS);
+    const entityType = ad.isCBO ? 'CAMPAIGN' : 'ADGROUP';
+    const entityId = ad.isCBO ? ad.campaignId : ad.adgroupId;
+
+    const recentIncrease = await this.prisma.changeLog.findFirst({
+      where: {
+        entityType,
+        entityId,
+        action: 'UPDATE_BUDGET',
+        createdAt: { gt: cooldownCutoff },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    if (recentIncrease) {
+      const lastDate = recentIncrease.createdAt.toISOString().split('T')[0];
+      return {
+        ...base,
+        action: 'CONTINUE',
+        reason: `[V1] クールダウン期間中（前回増額: ${lastDate}、${V1_COOLDOWN_DAYS}日間待機）`,
+      };
+    }
+
+    // 3. 過去7日間のメトリクス取得（imp ≥ 5,000チェック用）
+    const { startDate, endDate } = this.calculateLast7DaysPeriod(todayStr);
+    const last7DaysMetrics = await this.prisma.metric.aggregate({
+      where: {
+        adId: ad.adId,
+        entityType: 'AD',
+        statDate: { gte: startDate, lte: endDate },
+      },
+      _sum: { impressions: true, spend: true },
+    });
+
+    const last7DaysImpressions = last7DaysMetrics._sum.impressions || 0;
+    const last7DaysSpend = last7DaysMetrics._sum.spend || 0;
+
+    if (last7DaysImpressions < MIN_IMPRESSIONS_FOR_PAUSE) {
+      return {
+        ...base,
+        action: 'CONTINUE',
+        reason: `[V1] imp ${last7DaysImpressions} < ${MIN_IMPRESSIONS_FOR_PAUSE}（データ不足）`,
+      };
+    }
+
+    // 4. 過去7日フロントCPO判定
+    const channelType = detectChannelType(appeal.name);
+    if (!usesFrontCPO(channelType)) {
+      // セミナー導線はこのテストの対象外だが念のため
+      return {
+        ...base,
+        action: 'CONTINUE',
+        reason: `[V1] 非フロントCPO導線（${channelType}）はV1モード対象外`,
+      };
+    }
+
+    const registrationPath = this.generateRegistrationPath(
+      ad.parsedName!.lpName,
+      appeal.name,
+    );
+
+    let last7DaysFrontSalesCount = 0;
+    if (appeal.frontSpreadsheetUrl) {
+      last7DaysFrontSalesCount =
+        await this.googleSheetsService.getFrontSalesCount(
+          appeal.name,
+          appeal.frontSpreadsheetUrl,
+          registrationPath,
+          startDate,
+          endDate,
+        );
+    }
+
+    if (last7DaysFrontSalesCount < 1) {
+      return {
+        ...base,
+        action: 'CONTINUE',
+        reason: `[V1] 過去7日フロント販売 0件（増額にはフロント ≥ 1 必要）`,
+      };
+    }
+
+    const last7DaysFrontCPO = last7DaysSpend / last7DaysFrontSalesCount;
+    const targetFrontCPO = appeal.targetFrontCPO || 0;
+
+    if (last7DaysFrontCPO > targetFrontCPO) {
+      return {
+        ...base,
+        action: 'CONTINUE',
+        reason: `[V1] フロントCPO ¥${last7DaysFrontCPO.toFixed(0)} > 目標 ¥${targetFrontCPO}（フロント${last7DaysFrontSalesCount}件）`,
+      };
+    }
+
+    // 5. 増額計算（1.3倍固定、上限¥40,000）
+    let newBudget = Math.round(currentBudget * BUDGET_INCREASE_RATE);
+    if (newBudget > V1_BUDGET_MAX) {
+      newBudget = V1_BUDGET_MAX;
+    }
+
+    // TikTok API制限チェック
+    newBudget = Math.max(
+      TIKTOK_BUDGET_LIMITS.MIN,
+      Math.min(TIKTOK_BUDGET_LIMITS.MAX, newBudget),
+    );
+
+    this.logger.log(
+      `[V2-V1MODE] Ad ${ad.adId}: V1増額判定=INCREASE ¥${currentBudget} → ¥${newBudget} (フロントCPO ¥${last7DaysFrontCPO.toFixed(0)} ≤ 目標 ¥${targetFrontCPO}, フロント${last7DaysFrontSalesCount}件)`,
+    );
+
+    return {
+      ...base,
+      action: 'INCREASE',
+      reason: `[V1] 増額: フロントCPO ¥${last7DaysFrontCPO.toFixed(0)} ≤ 目標 ¥${targetFrontCPO}、フロント${last7DaysFrontSalesCount}件、¥${currentBudget} → ¥${newBudget}`,
       newBudget,
     };
   }
