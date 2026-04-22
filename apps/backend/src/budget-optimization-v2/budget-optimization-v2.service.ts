@@ -527,36 +527,7 @@ export class BudgetOptimizationV2Service {
           continue;
         }
 
-        // スプレッドシートから当日CV数を取得
-        const registrationPath = this.generateRegistrationPath(
-          ad.parsedName.lpName,
-          appeal.name,
-        );
-        const todayStart = this.parseJSTDate(todayStr);
-        const todayEnd = this.parseJSTDateEnd(todayStr);
-        const todayCV = await this.googleSheetsService.getCVCount(
-          appeal.name,
-          appeal.cvSpreadsheetUrl,
-          registrationPath,
-          todayStart,
-          todayEnd,
-        );
-
-        if (todayCV < 1) {
-          results.push(
-            this.skipDecision(ad, `当日CV=0（登録経路: ${registrationPath}）`),
-          );
-          continue;
-        }
-
-        // 当日広告費を取得
-        const metrics = todayMetrics.get(ad.adId);
-        const todaySpend = metrics?.spend || 0;
-
-        // 当日CPA計算
-        const todayCPA = todayCV > 0 ? todaySpend / todayCV : null;
-
-        // V1日次判定モードで増額判定（全広告対象）
+        // V1日次判定モードで増額判定（当日CVフィルタなし、過去7日フロントCPOで判定）
         const decision = await this.evaluateBudgetIncreaseV1(
           ad,
           appeal,
