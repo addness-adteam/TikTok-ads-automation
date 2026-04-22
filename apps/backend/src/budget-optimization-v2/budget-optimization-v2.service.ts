@@ -1238,75 +1238,115 @@ export class BudgetOptimizationV2Service {
       };
     }
 
-    // 4. 過去7日フロントCPO判定
+    // 4. 導線別の増額判定
     const channelType = detectChannelType(appeal.name);
-    if (!usesFrontCPO(channelType)) {
-      // セミナー導線はこのテストの対象外だが念のため
-      return {
-        ...base,
-        action: 'CONTINUE',
-        reason: `[V1] 非フロントCPO導線（${channelType}）はV1モード対象外`,
-      };
-    }
-
     const registrationPath = this.generateRegistrationPath(
       ad.parsedName!.lpName,
       appeal.name,
     );
 
-    let last7DaysFrontSalesCount = 0;
-    if (appeal.frontSpreadsheetUrl) {
-      last7DaysFrontSalesCount =
-        await this.googleSheetsService.getFrontSalesCount(
-          appeal.name,
-          appeal.frontSpreadsheetUrl,
-          registrationPath,
-          startDate,
-          endDate,
-        );
-    }
+    if (usesFrontCPO(channelType)) {
+      // AI/SNS導線: 過去7日フロントCPO判定
+      let last7DaysFrontSalesCount = 0;
+      if (appeal.frontSpreadsheetUrl) {
+        last7DaysFrontSalesCount =
+          await this.googleSheetsService.getFrontSalesCount(
+            appeal.name,
+            appeal.frontSpreadsheetUrl,
+            registrationPath,
+            startDate,
+            endDate,
+          );
+      }
 
-    if (last7DaysFrontSalesCount < 1) {
+      if (last7DaysFrontSalesCount < 1) {
+        return {
+          ...base,
+          action: 'CONTINUE',
+          reason: `[V1] 過去7日フロント販売 0件（増額にはフロント ≥ 1 必要）`,
+        };
+      }
+
+      const last7DaysFrontCPO = last7DaysSpend / last7DaysFrontSalesCount;
+      const targetFrontCPO = appeal.targetFrontCPO || 0;
+
+      if (last7DaysFrontCPO > targetFrontCPO) {
+        return {
+          ...base,
+          action: 'CONTINUE',
+          reason: `[V1] フロントCPO ¥${last7DaysFrontCPO.toFixed(0)} > 目標 ¥${targetFrontCPO}（フロント${last7DaysFrontSalesCount}件）`,
+        };
+      }
+
+      // 増額計算
+      let newBudget = Math.round(currentBudget * BUDGET_INCREASE_RATE);
+      newBudget = Math.min(newBudget, V1_BUDGET_MAX);
+      newBudget = Math.max(TIKTOK_BUDGET_LIMITS.MIN, Math.min(TIKTOK_BUDGET_LIMITS.MAX, newBudget));
+
+      this.logger.log(
+        `[V2-V1MODE] Ad ${ad.adId}: V1増額判定=INCREASE ¥${currentBudget} → ¥${newBudget} (フロントCPO ¥${last7DaysFrontCPO.toFixed(0)} ≤ 目標 ¥${targetFrontCPO}, フロント${last7DaysFrontSalesCount}件)`,
+      );
+
       return {
         ...base,
-        action: 'CONTINUE',
-        reason: `[V1] 過去7日フロント販売 0件（増額にはフロント ≥ 1 必要）`,
+        action: 'INCREASE',
+        reason: `[V1] 増額: フロントCPO ¥${last7DaysFrontCPO.toFixed(0)} ≤ 目標 ¥${targetFrontCPO}、フロント${last7DaysFrontSalesCount}件、¥${currentBudget} → ¥${newBudget}`,
+        newBudget,
       };
-    }
+    } else {
+      // セミナー（スキルプラス）導線: 過去7日CPAベース判定
+      const targetCPA = appeal.targetCPA || 0;
+      if (targetCPA <= 0) {
+        return {
+          ...base,
+          action: 'CONTINUE',
+          reason: `[V1] targetCPA未設定（${channelType}導線）`,
+        };
+      }
 
-    const last7DaysFrontCPO = last7DaysSpend / last7DaysFrontSalesCount;
-    const targetFrontCPO = appeal.targetFrontCPO || 0;
+      // 過去7日CV数をスプシから取得
+      const last7DaysCVCount = await this.googleSheetsService.getCVCount(
+        appeal.name,
+        appeal.cvSpreadsheetUrl,
+        registrationPath,
+        startDate,
+        endDate,
+      );
 
-    if (last7DaysFrontCPO > targetFrontCPO) {
+      if (last7DaysCVCount < 1) {
+        return {
+          ...base,
+          action: 'CONTINUE',
+          reason: `[V1] 過去7日CV 0件（増額にはCV ≥ 1 必要）`,
+        };
+      }
+
+      const last7DaysCPA = last7DaysSpend / last7DaysCVCount;
+
+      if (last7DaysCPA > targetCPA) {
+        return {
+          ...base,
+          action: 'CONTINUE',
+          reason: `[V1] CPA ¥${last7DaysCPA.toFixed(0)} > 目標CPA ¥${targetCPA}（CV${last7DaysCVCount}件）`,
+        };
+      }
+
+      // 増額計算
+      let newBudget = Math.round(currentBudget * BUDGET_INCREASE_RATE);
+      newBudget = Math.min(newBudget, V1_BUDGET_MAX);
+      newBudget = Math.max(TIKTOK_BUDGET_LIMITS.MIN, Math.min(TIKTOK_BUDGET_LIMITS.MAX, newBudget));
+
+      this.logger.log(
+        `[V2-V1MODE] Ad ${ad.adId}: V1増額判定=INCREASE ¥${currentBudget} → ¥${newBudget} (CPA ¥${last7DaysCPA.toFixed(0)} ≤ 目標CPA ¥${targetCPA}, CV${last7DaysCVCount}件)`,
+      );
+
       return {
         ...base,
-        action: 'CONTINUE',
-        reason: `[V1] フロントCPO ¥${last7DaysFrontCPO.toFixed(0)} > 目標 ¥${targetFrontCPO}（フロント${last7DaysFrontSalesCount}件）`,
+        action: 'INCREASE',
+        reason: `[V1] 増額: CPA ¥${last7DaysCPA.toFixed(0)} ≤ 目標CPA ¥${targetCPA}、CV${last7DaysCVCount}件、¥${currentBudget} → ¥${newBudget}`,
+        newBudget,
       };
     }
-
-    // 5. 増額計算（1.3倍固定、上限¥40,000）
-    let newBudget = Math.round(currentBudget * BUDGET_INCREASE_RATE);
-    if (newBudget > V1_BUDGET_MAX) {
-      newBudget = V1_BUDGET_MAX;
-    }
-
-    // TikTok API制限チェック
-    newBudget = Math.max(
-      TIKTOK_BUDGET_LIMITS.MIN,
-      Math.min(TIKTOK_BUDGET_LIMITS.MAX, newBudget),
-    );
-
-    this.logger.log(
-      `[V2-V1MODE] Ad ${ad.adId}: V1増額判定=INCREASE ¥${currentBudget} → ¥${newBudget} (フロントCPO ¥${last7DaysFrontCPO.toFixed(0)} ≤ 目標 ¥${targetFrontCPO}, フロント${last7DaysFrontSalesCount}件)`,
-    );
-
-    return {
-      ...base,
-      action: 'INCREASE',
-      reason: `[V1] 増額: フロントCPO ¥${last7DaysFrontCPO.toFixed(0)} ≤ 目標 ¥${targetFrontCPO}、フロント${last7DaysFrontSalesCount}件、¥${currentBudget} → ¥${newBudget}`,
-      newBudget,
-    };
   }
 
   // ============================================================================
